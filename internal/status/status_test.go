@@ -77,9 +77,9 @@ func TestWildcardPattern_Match(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		pattern  string
-		code     int
+		name      string
+		pattern   string
+		code      int
 		wantMatch bool
 	}{
 		// 2xx
@@ -182,7 +182,7 @@ func TestRangePattern_Match(t *testing.T) {
 		{"100-200 matches 100", "100-200", 100, true},
 		{"100-200 matches 150", "100-200", 150, true},
 		{"100-200 matches 200", "100-200", 200, true},
-		{"100-200 misses 99",  "100-200", 99, false},
+		{"100-200 misses 99", "100-200", 99, false},
 		{"100-200 misses 201", "100-200", 201, false},
 
 		// 201-299
@@ -270,35 +270,35 @@ func TestFilters_Match_Composite(t *testing.T) {
 		{"2xx,303 matches 200", "2xx,303", 200, true},
 		{"2xx,303 matches 250", "2xx,303", 250, true},
 		{"2xx,303 matches 303", "2xx,303", 303, true},
-		{"2xx,303 misses 404",  "2xx,303", 404, false},
+		{"2xx,303 misses 404", "2xx,303", 404, false},
 
 		{"100-200,500-503 matches 150", "100-200,500-503", 150, true},
 		{"100-200,500-503 matches 200", "100-200,500-503", 200, true},
-		{"100-200,500-503 misses 201",  "100-200,500-503", 201, false},
+		{"100-200,500-503 misses 201", "100-200,500-503", 201, false},
 		{"100-200,500-503 matches 502", "100-200,500-503", 502, true},
 
 		// Additional combinations
 		{"200,201,204 matches 200", "200,201,204", 200, true},
 		{"200,201,204 matches 201", "200,201,204", 201, true},
 		{"200,201,204 matches 204", "200,201,204", 204, true},
-		{"200,201,204 misses 202",  "200,201,204", 202, false},
+		{"200,201,204 misses 202", "200,201,204", 202, false},
 
 		{"100-199,301,5xx matches 150", "100-199,301,5xx", 150, true},
 		{"100-199,301,5xx matches 301", "100-199,301,5xx", 301, true},
 		{"100-199,301,5xx matches 503", "100-199,301,5xx", 503, true},
-		{"100-199,301,5xx misses 200",  "100-199,301,5xx", 200, false},
+		{"100-199,301,5xx misses 200", "100-199,301,5xx", 200, false},
 
 		{"403,404,500-503 matches 403", "403,404,500-503", 403, true},
 		{"403,404,500-503 matches 501", "403,404,500-503", 501, true},
-		{"403,404,500-503 misses 405",  "403,404,500-503", 405, false},
+		{"403,404,500-503 misses 405", "403,404,500-503", 405, false},
 
 		// Whitespace-tolerant parsing from spec
-		{"'403, 404, 5xx' matches 404",  "403, 404, 5xx", 404, true},
-		{"'403, 404, 5xx' matches 500",  "403, 404, 5xx", 500, true},
-		{"'403, 404, 5xx' misses 200",   "403, 404, 5xx", 200, false},
+		{"'403, 404, 5xx' matches 404", "403, 404, 5xx", 404, true},
+		{"'403, 404, 5xx' matches 500", "403, 404, 5xx", 500, true},
+		{"'403, 404, 5xx' misses 200", "403, 404, 5xx", 200, false},
 		{"'100 - 200, 303' matches 150", "100 - 200, 303", 150, true},
 		{"'100 - 200, 303' matches 303", "100 - 200, 303", 303, true},
-		{"'100 - 200, 303' misses 301",  "100 - 200, 303", 301, false},
+		{"'100 - 200, 303' misses 301", "100 - 200, 303", 301, false},
 	}
 
 	for _, tc := range tests {
@@ -384,7 +384,7 @@ func TestParse_InvalidInputs(t *testing.T) {
 
 		// Wildcards in range bounds
 		{"wildcard as range bound low", "2xx-3xx"},
-		{"wildcard as range low only",  "2xx-300"},
+		{"wildcard as range low only", "2xx-300"},
 		{"wildcard as range high only", "200-3xx"},
 
 		// Miscellaneous
