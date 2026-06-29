@@ -4,7 +4,7 @@ Contributions are welcome. Please read this document before opening an issue or 
 
 ## Development Setup
 
-**Requirements:** Go 1.25+, Git
+**Requirements:** Go 1.26.4+, Git
 
 ```bash
 git clone https://github.com/unsubble/searchit.git
