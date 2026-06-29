@@ -1,4 +1,4 @@
-module github.com/UnSubble/searchit
+module github.com/unsubble/searchit
 
 go 1.26.4
 

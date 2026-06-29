@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/UnSubble/searchit/internal/version"
+	"github.com/unsubble/searchit/internal/version"
 
 	"github.com/spf13/cobra"
 )
