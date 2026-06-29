@@ -17,24 +17,28 @@ Searchit prefers clean abstractions and incremental development. Features are ad
 
 ## Status
 
-The project is in early development. The foundations — configuration, HTTP status matching, and application context — are in place. The scanning engine is not yet implemented.
+The project is in early development.
 
-## Planned Features
+Implemented:
 
-- High-performance concurrent engine
+- HTTP status matching and filtering
+- Shared HTTP client and connection pooling
+- Worker pool and concurrent scanning engine
+- Producer abstraction
+- Context propagation and graceful shutdown
+- Benchmarks and architectural documentation
+
+Planned:
+
+- Wordlist infrastructure
 - Recursive scanning
-- Profile system
+- Smart mutations
 - Technology detection
-- Smart extension filtering
-- Mutation engine
-- JSON output
-- HTTP/2 support
-- Plugin architecture
+- Profiles
 
 ## Building
 
 ```bash
-
 ./build.sh
 ```
 
@@ -43,7 +47,6 @@ The binary is written to `dist/searchit`. The build embeds version, commit, and 
 ## Testing
 
 ```bash
-
 go test ./...
 ```
 
