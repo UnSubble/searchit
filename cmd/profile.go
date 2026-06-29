@@ -15,6 +15,7 @@ var profileListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available profiles",
 	Run: func(cmd *cobra.Command, args []string) {
+		// TODO: Remove dummy profiles.
 		fmt.Println("default")
 		fmt.Println("pentest")
 		fmt.Println("wordpress")

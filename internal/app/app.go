@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/httpclient"
 )
 
 // App holds the shared runtime state passed to the engine.
@@ -23,9 +23,7 @@ func New(ctx context.Context, cfg config.Config) *App {
 		ctx = context.Background()
 	}
 
-	client := &http.Client{
-		Timeout: time.Duration(cfg.Timeout) * time.Second,
-	}
+	client := httpclient.New(cfg.Timeout)
 
 	return &App{
 		Context:    ctx,
