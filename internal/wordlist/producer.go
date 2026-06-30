@@ -2,7 +2,6 @@ package wordlist
 
 import (
 	"context"
-	"strings"
 
 	"github.com/unsubble/searchit/internal/engine"
 )
@@ -22,6 +21,12 @@ type Producer struct {
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 	defer close(jobs)
 
+	// Validate the base before touching the reader so a bad URL is caught
+	// immediately rather than after consuming part of the wordlist.
+	if _, err := Join(p.BaseURL, ""); err != nil {
+		return err
+	}
+
 	words := make(chan string, DefaultWordBuffer)
 	readErr := make(chan error, 1)
 
@@ -29,8 +34,6 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 		defer close(words)
 		readErr <- p.Reader.Read(ctx, words)
 	}()
-
-	base := strings.TrimRight(p.BaseURL, "/")
 
 	for {
 		select {
@@ -40,7 +43,10 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 			if !ok {
 				return <-readErr
 			}
-			url := base + "/" + strings.TrimLeft(word, "/")
+			url, err := Join(p.BaseURL, word)
+			if err != nil {
+				return err
+			}
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
