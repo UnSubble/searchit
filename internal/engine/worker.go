@@ -22,23 +22,47 @@ func Worker(ctx context.Context, a *app.App, jobs <-chan Job, results chan<- Res
 func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.URL, nil)
 	if err != nil {
+		results <- Result{
+			URL:      job.URL,
+			Depth:    job.Depth,
+			Accepted: false,
+			Err:      err,
+		}
 		return
 	}
 
 	resp, err := a.HTTPClient.Do(req)
 	if err != nil {
+		results <- Result{
+			URL:      job.URL,
+			Depth:    job.Depth,
+			Accepted: false,
+			Err:      err,
+		}
 		return
 	}
 
 	// Stage 1: Status
 	if a.Config.Status.Exclude.Match(resp.StatusCode) {
 		resp.Body.Close()
+		results <- Result{
+			URL:        job.URL,
+			StatusCode: resp.StatusCode,
+			Depth:      job.Depth,
+			Accepted:   false,
+		}
 		return
 	}
 
 	// Stage 2: Headers
 	if !AcceptHeaders(resp) {
 		resp.Body.Close()
+		results <- Result{
+			URL:        job.URL,
+			StatusCode: resp.StatusCode,
+			Depth:      job.Depth,
+			Accepted:   false,
+		}
 		return
 	}
 
@@ -46,6 +70,13 @@ func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 	length := httpclient.ContentLength(resp)
 	if !AcceptContentLength(length) {
 		resp.Body.Close()
+		results <- Result{
+			URL:        job.URL,
+			StatusCode: resp.StatusCode,
+			Length:     length,
+			Depth:      job.Depth,
+			Accepted:   false,
+		}
 		return
 	}
 
@@ -60,6 +91,9 @@ func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
 			Length:     length,
+			Depth:      job.Depth,
+			Accepted:   true,
+			Err:        err,
 		}
 		return
 	}
@@ -69,6 +103,8 @@ func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 		URL:        job.URL,
 		StatusCode: resp.StatusCode,
 		Length:     length,
+		Depth:      job.Depth,
+		Accepted:   true,
 	}
 }
 

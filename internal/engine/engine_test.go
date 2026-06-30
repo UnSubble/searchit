@@ -143,6 +143,9 @@ func TestWorker_EmitsResultForAcceptedStatus(t *testing.T) {
 	if got[0].URL != srv.URL {
 		t.Errorf("URL = %q, want %q", got[0].URL, srv.URL)
 	}
+	if !got[0].Accepted {
+		t.Error("Accepted = false, want true")
+	}
 }
 
 func TestWorker_ExcludesStatus(t *testing.T) {
@@ -161,8 +164,15 @@ func TestWorker_ExcludesStatus(t *testing.T) {
 	engine.Worker(context.Background(), a, jobs, results)
 	close(results)
 
-	if len(results) != 0 {
-		t.Errorf("got %d results, want 0 (404 excluded)", len(results))
+	var got []engine.Result
+	for r := range results {
+		got = append(got, r)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d results, want 1", len(got))
+	}
+	if got[0].Accepted {
+		t.Error("got accepted result, want non-accepted for excluded status")
 	}
 }
 
@@ -177,8 +187,18 @@ func TestWorker_SkipsBadURL(t *testing.T) {
 	engine.Worker(context.Background(), a, jobs, results)
 	close(results)
 
-	if len(results) != 0 {
-		t.Errorf("got %d results for bad URL, want 0", len(results))
+	var got []engine.Result
+	for r := range results {
+		got = append(got, r)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d results, want 1", len(got))
+	}
+	if got[0].Accepted {
+		t.Error("got accepted result for bad URL")
+	}
+	if got[0].Err == nil {
+		t.Error("got nil error for bad URL, want non-nil")
 	}
 }
 
@@ -193,8 +213,18 @@ func TestWorker_SkipsUnreachableHost(t *testing.T) {
 	engine.Worker(context.Background(), a, jobs, results)
 	close(results)
 
-	if len(results) != 0 {
-		t.Errorf("got %d results for unreachable host, want 0", len(results))
+	var got []engine.Result
+	for r := range results {
+		got = append(got, r)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d results, want 1", len(got))
+	}
+	if got[0].Accepted {
+		t.Error("got accepted result for unreachable host")
+	}
+	if got[0].Err == nil {
+		t.Error("got nil error for unreachable host, want non-nil")
 	}
 }
 
@@ -247,10 +277,20 @@ func TestWorker_CancelledContextSkipsRequests(t *testing.T) {
 	engine.Worker(ctx, a, jobs, results)
 	close(results)
 
-	// With a cancelled context every HTTP request should fail immediately.
-	// Zero results expected.
-	if len(results) != 0 {
-		t.Errorf("got %d results with cancelled context, want 0", len(results))
+	var got []engine.Result
+	for r := range results {
+		got = append(got, r)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d results, want 2", len(got))
+	}
+	for _, r := range got {
+		if r.Accepted {
+			t.Error("got accepted result with cancelled context")
+		}
+		if r.Err == nil {
+			t.Error("got nil error with cancelled context")
+		}
 	}
 }
 
@@ -339,8 +379,11 @@ func TestStart_ExcludeFilterAppliedAcrossWorkers(t *testing.T) {
 	close(jobs)
 
 	for r := range engine.Start(context.Background(), a, 4, jobs) {
-		if r.StatusCode == http.StatusNotFound {
-			t.Errorf("404 leaked into results: %+v", r)
+		if r.Accepted && r.StatusCode == http.StatusNotFound {
+			t.Errorf("accepted 404 result leaked: %+v", r)
+		}
+		if !r.Accepted && r.StatusCode == http.StatusOK {
+			t.Errorf("rejected 200 result: %+v", r)
 		}
 	}
 }

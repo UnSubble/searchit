@@ -6,4 +6,7 @@ type Result struct {
 	URL        string
 	StatusCode int
 	Length     int64 // -1 when Content-Length is absent
+	Depth      uint16
+	Accepted   bool
+	Err        error
 }

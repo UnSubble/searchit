@@ -26,6 +26,7 @@ func NewScanner(a *app.App) *Scanner {
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
 	results := Start(ctx, s.app, workers, jobs)
+	out := make(chan Result, workers)
 
 	go func() {
 		if err := producer.Produce(ctx, jobs); err != nil && ctx.Err() == nil {
@@ -38,7 +39,16 @@ func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-ch
 		}
 	}()
 
-	return results
+	go func() {
+		defer close(out)
+		for r := range results {
+			if r.Accepted {
+				out <- r
+			}
+		}
+	}()
+
+	return out
 }
 
 // Err returns the first producer error encountered during the last scan, if any.
