@@ -66,7 +66,10 @@ func TestSliceProducer_EmitsAllJobs(t *testing.T) {
 
 func TestSliceProducer_ClosesChannelWhenDone(t *testing.T) {
 	jobs := make(chan engine.Job, 1)
-	engine.SliceProducer{URLs: []string{"http://x"}}.Produce(context.Background(), jobs) //nolint:errcheck
+	p := engine.SliceProducer{URLs: []string{"http://x"}}
+	if err := p.Produce(context.Background(), jobs); err != nil {
+		t.Fatalf("Produce returned error: %v", err)
+	}
 
 	// Drain all items; the range must terminate because Produce closed the channel.
 	var count int
@@ -200,7 +203,9 @@ func TestWorker_ContentLengthInResult(t *testing.T) {
 		body := []byte("hello")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteHeader(http.StatusOK)
-		w.Write(body) //nolint:errcheck
+		if _, err := w.Write(body); err != nil {
+			t.Errorf("handler Write: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 

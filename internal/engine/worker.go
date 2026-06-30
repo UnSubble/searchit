@@ -52,7 +52,17 @@ func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 	// Stage 4: Body - read at most bodyReadLimit bytes.
 	// Responses larger than this limit will not be fully drained, which
 	// intentionally favors bounded memory usage over maximum keep-alive reuse.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit))
+	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
+		// Body read errors after passing all filters do not discard the result;
+		// the status and headers were already validated. Close and continue.
+		resp.Body.Close()
+		results <- Result{
+			URL:        job.URL,
+			StatusCode: resp.StatusCode,
+			Length:     length,
+		}
+		return
+	}
 	resp.Body.Close()
 
 	results <- Result{
