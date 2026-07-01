@@ -41,6 +41,18 @@ func okServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
+func runWorker(ctx context.Context, a *app.App, jobs <-chan engine.Job, results chan<- engine.Result) {
+	engine.Worker(ctx, a.HTTPClient, a.Config.Status.Exclude, jobs, results)
+}
+
+func startEngine(ctx context.Context, a *app.App, workers int, jobs <-chan engine.Job) <-chan engine.Result {
+	return engine.Start(ctx, a.HTTPClient, a.Config.Status.Exclude, workers, jobs)
+}
+
+func newScanner(a *app.App) *engine.Scanner {
+	return engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SliceProducer
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,7 +139,7 @@ func TestWorker_EmitsResultForAcceptedStatus(t *testing.T) {
 	jobs <- engine.Job{URL: srv.URL}
 	close(jobs)
 
-	engine.Worker(context.Background(), a, jobs, results)
+	runWorker(context.Background(), a, jobs, results)
 	close(results)
 
 	var got []engine.Result
@@ -161,7 +173,7 @@ func TestWorker_ExcludesStatus(t *testing.T) {
 	jobs <- engine.Job{URL: srv.URL}
 	close(jobs)
 
-	engine.Worker(context.Background(), a, jobs, results)
+	runWorker(context.Background(), a, jobs, results)
 	close(results)
 
 	var got []engine.Result
@@ -184,7 +196,7 @@ func TestWorker_SkipsBadURL(t *testing.T) {
 	jobs <- engine.Job{URL: "://bad-url"}
 	close(jobs)
 
-	engine.Worker(context.Background(), a, jobs, results)
+	runWorker(context.Background(), a, jobs, results)
 	close(results)
 
 	var got []engine.Result
@@ -210,7 +222,7 @@ func TestWorker_SkipsUnreachableHost(t *testing.T) {
 	jobs <- engine.Job{URL: "http://127.0.0.1:1"}
 	close(jobs)
 
-	engine.Worker(context.Background(), a, jobs, results)
+	runWorker(context.Background(), a, jobs, results)
 	close(results)
 
 	var got []engine.Result
@@ -246,7 +258,7 @@ func TestWorker_ContentLengthInResult(t *testing.T) {
 	jobs <- engine.Job{URL: srv.URL}
 	close(jobs)
 
-	engine.Worker(context.Background(), a, jobs, results)
+	runWorker(context.Background(), a, jobs, results)
 	close(results)
 
 	var got []engine.Result
@@ -274,7 +286,7 @@ func TestWorker_CancelledContextSkipsRequests(t *testing.T) {
 	jobs <- engine.Job{URL: srv.URL}
 	close(jobs)
 
-	engine.Worker(ctx, a, jobs, results)
+	runWorker(ctx, a, jobs, results)
 	close(results)
 
 	var got []engine.Result
@@ -326,7 +338,7 @@ func TestStart_CollectsAllResults(t *testing.T) {
 	close(jobs)
 
 	var got []engine.Result
-	for r := range engine.Start(context.Background(), a, 5, jobs) {
+	for r := range startEngine(context.Background(), a, 5, jobs) {
 		got = append(got, r)
 	}
 	if len(got) != n {
@@ -339,7 +351,7 @@ func TestStart_ResultsChannelClosedAfterDone(t *testing.T) {
 	jobs := make(chan engine.Job)
 	close(jobs)
 
-	for range engine.Start(context.Background(), a, 3, jobs) {
+	for range startEngine(context.Background(), a, 3, jobs) {
 	}
 	// If we reach here the channel was closed and the loop terminated.
 }
@@ -378,7 +390,7 @@ func TestStart_ExcludeFilterAppliedAcrossWorkers(t *testing.T) {
 
 	close(jobs)
 
-	for r := range engine.Start(context.Background(), a, 4, jobs) {
+	for r := range startEngine(context.Background(), a, 4, jobs) {
 		if r.Accepted && r.StatusCode == http.StatusNotFound {
 			t.Errorf("accepted 404 result leaked: %+v", r)
 		}
@@ -400,7 +412,7 @@ func TestStart_URLsPreservedInResults(t *testing.T) {
 	close(jobs)
 
 	var got []string
-	for r := range engine.Start(context.Background(), a, 3, jobs) {
+	for r := range startEngine(context.Background(), a, 3, jobs) {
 		got = append(got, r.URL)
 	}
 	sort.Strings(got)
@@ -425,7 +437,7 @@ func TestStart_CancelledContextDrainsCleanly(t *testing.T) {
 	}
 	close(jobs)
 
-	results := engine.Start(ctx, a, 8, jobs)
+	results := startEngine(ctx, a, 8, jobs)
 
 	// Cancel after receiving the first result (or immediately if none come).
 	cancel()
@@ -445,7 +457,7 @@ func TestScanner_Scan_CollectsResults(t *testing.T) {
 	urls := []string{srv.URL + "/1", srv.URL + "/2", srv.URL + "/3"}
 
 	a := newApp(t, "404")
-	s := engine.NewScanner(a)
+	s := newScanner(a)
 	producer := engine.SliceProducer{URLs: urls}
 
 	var got []engine.Result
@@ -459,7 +471,7 @@ func TestScanner_Scan_CollectsResults(t *testing.T) {
 
 func TestScanner_Scan_EmptyProducer(t *testing.T) {
 	a := newApp(t, "404")
-	s := engine.NewScanner(a)
+	s := newScanner(a)
 
 	for range s.Scan(context.Background(), engine.SliceProducer{}, 4) {
 		t.Error("expected no results from empty producer")
@@ -469,7 +481,7 @@ func TestScanner_Scan_EmptyProducer(t *testing.T) {
 func TestScanner_Scan_CancelledContext(t *testing.T) {
 	srv := okServer(t)
 	a := newApp(t, "404")
-	s := engine.NewScanner(a)
+	s := newScanner(a)
 
 	urls := make([]string, 100)
 	for i := range urls {
@@ -491,7 +503,7 @@ func TestScanner_Scan_ExcludesStatus(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	a := newApp(t, "404")
-	s := engine.NewScanner(a)
+	s := newScanner(a)
 	producer := engine.SliceProducer{URLs: []string{srv.URL + "/x", srv.URL + "/y"}}
 
 	for r := range s.Scan(context.Background(), producer, 2) {

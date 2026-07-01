@@ -2,21 +2,24 @@ package engine
 
 import (
 	"context"
+	"net/http"
 
-	"github.com/unsubble/searchit/internal/app"
+	"github.com/unsubble/searchit/internal/status"
 )
 
 // Scanner is the public orchestration entry point.
 // Workers and pool management are internal details.
 type Scanner struct {
-	app    *app.App
-	errors chan error
+	client  *http.Client
+	exclude status.Filters
+	errors  chan error
 }
 
-func NewScanner(a *app.App) *Scanner {
+func NewScanner(client *http.Client, exclude status.Filters) *Scanner {
 	return &Scanner{
-		app:    a,
-		errors: make(chan error, 1),
+		client:  client,
+		exclude: exclude,
+		errors:  make(chan error, 1),
 	}
 }
 
@@ -25,7 +28,7 @@ func NewScanner(a *app.App) *Scanner {
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.app, workers, jobs)
+	results := Start(ctx, s.client, s.exclude, workers, jobs)
 	out := make(chan Result, workers)
 
 	go func() {

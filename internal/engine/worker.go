@@ -5,21 +5,21 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/httpclient"
+	"github.com/unsubble/searchit/internal/status"
 )
 
 const bodyReadLimit = 4096
 
 // Worker executes the response pipeline for incoming jobs.
 // Pipeline: Status -> Headers -> Content-Length -> Body
-func Worker(ctx context.Context, a *app.App, jobs <-chan Job, results chan<- Result) {
+func Worker(ctx context.Context, client *http.Client, exclude status.Filters, jobs <-chan Job, results chan<- Result) {
 	for job := range jobs {
-		process(ctx, a, job, results)
+		process(ctx, client, exclude, job, results)
 	}
 }
 
-func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
+func process(ctx context.Context, client *http.Client, exclude status.Filters, job Job, results chan<- Result) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.URL, nil)
 	if err != nil {
 		results <- Result{
@@ -31,7 +31,7 @@ func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 		return
 	}
 
-	resp, err := a.HTTPClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		results <- Result{
 			URL:      job.URL,
@@ -43,7 +43,7 @@ func process(ctx context.Context, a *app.App, job Job, results chan<- Result) {
 	}
 
 	// Stage 1: Status
-	if a.Config.Status.Exclude.Match(resp.StatusCode) {
+	if exclude.Match(resp.StatusCode) {
 		resp.Body.Close()
 		results <- Result{
 			URL:        job.URL,
