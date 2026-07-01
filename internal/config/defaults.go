@@ -1,6 +1,9 @@
 package config
 
-import "github.com/unsubble/searchit/internal/status"
+import (
+	"github.com/unsubble/searchit/internal/recursion"
+	"github.com/unsubble/searchit/internal/status"
+)
 
 // Default returns a Config populated with sane baseline values.
 func Default() Config {
@@ -10,8 +13,11 @@ func Default() Config {
 	}
 
 	return Config{
-		Threads: 64,
-		Timeout: 10,
+		Threads:   32,
+		Timeout:   10,
+		Recursive: false,
+		MaxDepth:  3,
+		Strategy:  recursion.BFS,
 		Status: StatusConfig{
 			Exclude: exclude,
 		},

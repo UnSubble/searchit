@@ -4,17 +4,31 @@ import (
 	"testing"
 
 	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/recursion"
 )
 
 func TestDefault_Threads(t *testing.T) {
-	if got := config.Default().Threads; got != 64 {
-		t.Errorf("Threads = %d, want 64", got)
+	if got := config.Default().Threads; got != 32 {
+		t.Errorf("Threads = %d, want 32", got)
 	}
 }
 
 func TestDefault_Timeout(t *testing.T) {
 	if got := config.Default().Timeout; got != 10 {
 		t.Errorf("Timeout = %d, want 10", got)
+	}
+}
+
+func TestDefault_Recursive(t *testing.T) {
+	cfg := config.Default()
+	if cfg.Recursive {
+		t.Error("Recursive = true, want false")
+	}
+	if cfg.MaxDepth != 3 {
+		t.Errorf("MaxDepth = %d, want 3", cfg.MaxDepth)
+	}
+	if cfg.Strategy != recursion.BFS {
+		t.Errorf("Strategy = %v, want BFS", cfg.Strategy)
 	}
 }
 
