@@ -15,26 +15,32 @@ Fast and smart web content discovery tool inspired by [dirsearch](https://github
 
 Searchit prefers clean abstractions and incremental development. Features are added only when they solve real problems and avoid premature complexity.
 
-## Status
+## Release
 
-The project is in early development.
+The current version is `v0.1.0-alpha`. This is an experimental release intended for early adopters and benchmarking.
 
-Implemented:
+## Current Features
 
-- HTTP status matching and filtering
-- Shared HTTP client and connection pooling
-- Worker pool and concurrent scanning engine
-- Producer abstraction
-- Context propagation and graceful shutdown
-- Benchmarks and architectural documentation
-
-Planned:
-
-- Wordlist infrastructure
+- Concurrent scanning
+- Embedded wordlists
+- File wordlists
+- Status filtering
 - Recursive scanning
-- Smart mutations
-- Technology detection
-- Profiles
+- BFS traversal
+- DFS traversal
+- Configurable depth
+- Configurable threads
+- HTTP connection pooling
+
+## Roadmap
+
+- Output abstraction
+- JSON output
+- Header filtering
+- Content-length filtering
+- Mutation engine
+- Progress indicators
+- Advanced recursion policies
 
 ## Building
 
@@ -42,7 +48,7 @@ Planned:
 ./build.sh
 ```
 
-The binary is written to `dist/searchit`. The build embeds version, commit, and date via linker flags.
+Binaries for supported platforms (Linux, Windows, macOS) are written to `dist/`. The build script embeds version metadata via linker flags.
 
 ## Testing
 
