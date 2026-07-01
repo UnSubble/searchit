@@ -1,6 +1,9 @@
 package recursion
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/unsubble/searchit/internal/engine"
 )
 
@@ -11,6 +14,19 @@ const (
 	BFS Strategy = iota
 	DFS
 )
+
+// ParseStrategy parses a string representation into a Strategy.
+// It accepts "bfs" and "dfs" case-insensitively, returning an error for other inputs.
+func ParseStrategy(s string) (Strategy, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "bfs":
+		return BFS, nil
+	case "dfs":
+		return DFS, nil
+	default:
+		return BFS, fmt.Errorf("unknown strategy: %q", s)
+	}
+}
 
 const DefaultJobBuffer = 2048
 
