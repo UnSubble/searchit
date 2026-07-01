@@ -13,6 +13,7 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/recursion"
+	"github.com/unsubble/searchit/internal/wordlist"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,9 +49,36 @@ func collectResults(ch <-chan engine.Result) []engine.Result {
 	return out
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Frontier
-// ─────────────────────────────────────────────────────────────────────────────
+func newManager(t *testing.T, reader wordlist.Reader, strategy recursion.Strategy, maxDepth uint16) *recursion.Manager {
+	a := newApp(t)
+	return recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, strategy, maxDepth)
+}
+
+func TestParseStrategy(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    recursion.Strategy
+		wantErr bool
+	}{
+		{"bfs", recursion.BFS, false},
+		{"BFS", recursion.BFS, false},
+		{"dfs", recursion.DFS, false},
+		{"DFS", recursion.DFS, false},
+		{" Bfs ", recursion.BFS, false},
+		{"invalid", recursion.BFS, true},
+		{"", recursion.BFS, true},
+	}
+
+	for _, tc := range tests {
+		got, err := recursion.ParseStrategy(tc.input)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("ParseStrategy(%q) error = %v, wantErr %v", tc.input, err, tc.wantErr)
+		}
+		if err == nil && got != tc.want {
+			t.Errorf("ParseStrategy(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
 
 func TestFrontier_BFS_Order(t *testing.T) {
 	f := recursion.NewFrontier(recursion.BFS)
@@ -168,7 +196,7 @@ func TestManager_VisitedURLsNotRevisited(t *testing.T) {
 	seeds := []string{srv.URL + "/admin", srv.URL + "/admin/"}
 	reader := staticReader{words: []string{"x"}}
 
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 0)
+	m := newManager(t, reader, recursion.BFS, 0)
 	results := collectResults(m.Run(context.Background(), seeds, 4))
 
 	// maxDepth=0 means no recursion; we only expect the seeds themselves.
@@ -188,7 +216,7 @@ func TestManager_MaxDepthEnforced(t *testing.T) {
 	reader := staticReader{words: []string{"child"}}
 
 	// maxDepth=1: seed (depth 0) recurses, but children (depth 1) do not.
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 1)
+	m := newManager(t, reader, recursion.BFS, 1)
 	results := collectResults(m.Run(context.Background(), seeds, 4))
 
 	for _, r := range results {
@@ -210,7 +238,7 @@ func TestManager_NonRecursingStatusSkipped(t *testing.T) {
 	// but 404 must not recurse.
 	reader := staticReader{words: []string{"child", "grandchild"}}
 
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 3)
+	m := newManager(t, reader, recursion.BFS, 3)
 	results := collectResults(m.Run(context.Background(), seeds, 4))
 
 	// Default config excludes 404; only /start (200) should appear.
@@ -237,7 +265,7 @@ func TestManager_NoDuplicateJobsScheduled(t *testing.T) {
 	seeds := []string{srv.URL + "/a"}
 	reader := staticReader{words: []string{"dup", "dup", "dup"}}
 
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 1)
+	m := newManager(t, reader, recursion.BFS, 1)
 	collectResults(m.Run(context.Background(), seeds, 4))
 
 	mu.Lock()
@@ -264,7 +292,7 @@ func TestManager_BFS_TraversalOrder(t *testing.T) {
 	}
 	reader := staticReader{words: []string{"leaf"}}
 
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 1)
+	m := newManager(t, reader, recursion.BFS, 1)
 	results := collectResults(m.Run(context.Background(), seeds, 1))
 
 	depth0, depth1 := 0, 0
@@ -293,7 +321,7 @@ func TestManager_DFS_TraversalOrder(t *testing.T) {
 	seeds := []string{fmt.Sprintf("%s/root", srv.URL)}
 	reader := staticReader{words: []string{"child"}}
 
-	m := recursion.NewManager(newApp(t), reader, recursion.DFS, 2)
+	m := newManager(t, reader, recursion.DFS, 2)
 	results := collectResults(m.Run(context.Background(), seeds, 1))
 
 	// With DFS and a single worker, /root/child must be visited before any
@@ -330,7 +358,7 @@ func TestManager_CleanShutdown_Cancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 3)
+	m := newManager(t, reader, recursion.BFS, 3)
 	ch := m.Run(ctx, seeds, 8)
 
 	// Cancel after seeing the first result; the channel must still close cleanly.
@@ -343,7 +371,7 @@ func TestManager_CleanShutdown_Cancellation(t *testing.T) {
 }
 
 func TestManager_EmptySeeds(t *testing.T) {
-	m := recursion.NewManager(newApp(t), staticReader{}, recursion.BFS, 1)
+	m := newManager(t, staticReader{}, recursion.BFS, 1)
 	results := collectResults(m.Run(context.Background(), nil, 4))
 	if len(results) != 0 {
 		t.Errorf("got %d results for empty seed list, want 0", len(results))
@@ -359,7 +387,7 @@ func TestManager_ResultsContainAllDepths(t *testing.T) {
 	seeds := []string{srv.URL + "/root"}
 	reader := staticReader{words: []string{"a"}}
 
-	m := recursion.NewManager(newApp(t), reader, recursion.BFS, 2)
+	m := newManager(t, reader, recursion.BFS, 2)
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 
 	seen := map[uint16]bool{}

@@ -2,10 +2,11 @@ package recursion
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
-	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
 )
 
@@ -24,15 +25,17 @@ func ShouldRecurse(status int) bool {
 // It owns the frontier, the visited set, and all traversal decisions.
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
-	app      *app.App
+	client   *http.Client
+	exclude  status.Filters
 	reader   wordlist.Reader
 	strategy Strategy
 	maxDepth uint16
 }
 
-func NewManager(a *app.App, reader wordlist.Reader, strategy Strategy, maxDepth uint16) *Manager {
+func NewManager(client *http.Client, exclude status.Filters, reader wordlist.Reader, strategy Strategy, maxDepth uint16) *Manager {
 	return &Manager{
-		app:      a,
+		client:   client,
+		exclude:  exclude,
 		reader:   reader,
 		strategy: strategy,
 		maxDepth: maxDepth,
@@ -63,7 +66,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		}
 
 		jobs := make(chan engine.Job, workers)
-		results := engine.Start(ctx, m.app, workers, jobs)
+		results := engine.Start(ctx, m.client, m.exclude, workers, jobs)
 
 		// pending counts jobs dispatched to workers but not yet returned.
 		// The loop ends when the frontier is empty and no in-flight work remains.
