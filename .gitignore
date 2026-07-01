@@ -1,3 +1,34 @@
+# Build artifacts
+dist/
 out/
-log/
 build/
+bin/
+
+# Logs
+log/
+logs/
+*.log
+
+# Coverage & profiling
+coverage.out
+coverage.html
+*.coverprofile
+cpu.out
+mem.out
+*.prof
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
