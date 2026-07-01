@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/unsubble/searchit/internal/version"
 
@@ -11,18 +10,9 @@ import (
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Show build information",
+	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("%s %s\n\n",
-			version.Name,
-			version.Version,
-		)
-
-		fmt.Printf("Commit:      %s\n", version.Commit)
-		fmt.Printf("Built at:    %s\n", version.Date)
-		fmt.Printf("Go version:  %s\n", runtime.Version())
-		fmt.Printf("Platform:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
-		fmt.Printf("Repository:  %s\n", version.Repository)
+		fmt.Println(version.String())
 	},
 }
 

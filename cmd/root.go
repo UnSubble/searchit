@@ -16,7 +16,7 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:     "searchit",
-	Short:   version.Description,
+	Short:   "Fast and smart content discovery tool",
 	Version: version.Version,
 	Long: `Searchit is a high-performance directory and file discovery tool.
 
@@ -25,6 +25,7 @@ profiles, technology-aware mutations and smart enumeration.`,
 }
 
 func Execute() {
+	rootCmd.SetVersionTemplate("searchit v" + version.Version + "\n")
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

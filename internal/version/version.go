@@ -1,14 +1,10 @@
 package version
 
-const (
-	Name        = "searchit"
-	Description = "Fast and smart content discovery tool"
-	Author      = "UnSubble"
-	Repository  = "github.com/UnSubble/searchit"
-)
+const Name = "searchit"
 
-var (
-	Version = "dev"
-	Commit  = "none"
-	Date    = "unknown"
-)
+// Defined as a variable so it can be overridden via -ldflags at build time.
+var Version = "0.1.0-alpha"
+
+func String() string {
+	return Name + " v" + Version
+}
