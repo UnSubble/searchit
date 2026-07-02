@@ -22,7 +22,9 @@ var (
 	flagMaxDepth      uint16
 	flagStrategy      string
 	flagExcludeStatus string
-	flagRecurseOn     string
+	flagRecurseOn       string
+	flagNormalizePaths  bool
+	flagCollapseSlashes bool
 )
 
 var scanCmd = &cobra.Command{
@@ -87,6 +89,10 @@ var scanCmd = &cobra.Command{
 			MaxDepth:  flagMaxDepth,
 			Strategy:  strat,
 			RecurseOn: recurseFilters,
+			Paths: config.PathConfig{
+				NormalizePaths:  flagNormalizePaths,
+				CollapseSlashes: flagCollapseSlashes,
+			},
 			Status: config.StatusConfig{
 				Exclude: excludeFilters,
 			},
@@ -115,7 +121,16 @@ var scanCmd = &cobra.Command{
 			}
 
 			seeds := []string{cfg.URL}
-			manager := recursion.NewManager(appState.HTTPClient, appState.Config.Status.Exclude, reader, cfg.Strategy, cfg.MaxDepth, cfg.RecurseOn)
+			manager := recursion.NewManager(
+				appState.HTTPClient,
+				appState.Config.Status.Exclude,
+				reader,
+				cfg.Strategy,
+				cfg.MaxDepth,
+				cfg.RecurseOn,
+				cfg.Paths.NormalizePaths,
+				cfg.Paths.CollapseSlashes,
+			)
 			results := manager.Run(ctx, seeds, cfg.Threads)
 			for r := range results {
 				if r.Accepted {
@@ -128,8 +143,10 @@ var scanCmd = &cobra.Command{
 
 			go func() {
 				p := wordlist.Producer{
-					BaseURL: cfg.URL,
-					Reader:  reader,
+					BaseURL:         cfg.URL,
+					Reader:          reader,
+					NormalizePaths:  cfg.Paths.NormalizePaths,
+					CollapseSlashes: cfg.Paths.CollapseSlashes,
 				}
 				_ = p.Produce(ctx, jobs)
 			}()
@@ -214,6 +231,20 @@ func init() {
 		"recurse-on",
 		"200,301,302,403",
 		"comma-separated status codes to recurse on",
+	)
+
+	scanCmd.Flags().BoolVar(
+		&flagNormalizePaths,
+		"normalize-paths",
+		false,
+		"normalize relative segments in paths (e.g. ././admin -> admin)",
+	)
+
+	scanCmd.Flags().BoolVar(
+		&flagCollapseSlashes,
+		"collapse-slashes",
+		false,
+		"collapse consecutive slashes (e.g. admin////api -> admin/api)",
 	)
 
 	_ = scanCmd.MarkFlagRequired("url")

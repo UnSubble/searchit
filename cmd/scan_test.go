@@ -196,3 +196,36 @@ func TestCLI_StartupInformation(t *testing.T) {
 		})
 	}
 }
+
+func TestCLI_PathFlags(t *testing.T) {
+	flagURL = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagNormalizePaths = false
+	flagCollapseSlashes = false
+
+	cmd := rootCmd
+	cmd.SetArgs([]string{"scan", "-u", "http://localhost", "--normalize-paths", "--collapse-slashes"})
+
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = cmd.ExecuteContext(ctx)
+
+	if !flagNormalizePaths {
+		t.Error("expected flagNormalizePaths to be true when --normalize-paths is supplied")
+	}
+	if !flagCollapseSlashes {
+		t.Error("expected flagCollapseSlashes to be true when --collapse-slashes is supplied")
+	}
+}
