@@ -78,3 +78,43 @@ func TestJoin_RejectsFragment(t *testing.T) {
 		})
 	}
 }
+
+func TestCleanWord(t *testing.T) {
+	tests := []struct {
+		name     string
+		word     string
+		norm     bool
+		collapse bool
+		wantWord string
+		wantOk   bool
+	}{
+		{"dot rejected", ".", false, false, "", false},
+		{"dot rejected (norm)", ".", true, true, "", false},
+		{"double dot rejected", "..", false, false, "", false},
+		{"double dot rejected (norm)", "..", true, true, "", false},
+
+		{"preserved default", "../../admin", false, false, "../../admin", true},
+		{"preserved slash default", "admin//api", false, false, "admin//api", true},
+
+		{"normalize path", "././admin", true, false, "admin", true},
+		{"normalize sub segments", "a/./b/../c", true, false, "a/c", true},
+
+		{"collapse slashes", "admin////api", false, true, "admin/api", true},
+		{"collapse slashes multiple", "a//b///c", false, true, "a/b/c", true},
+
+		{"preserve traversal normalized", "../../admin", true, false, "../../admin", true},
+		{"preserve passwd normalized", "../../etc/passwd", true, false, "../../etc/passwd", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotWord, gotOk := wordlist.CleanWord(tc.word, tc.norm, tc.collapse)
+			if gotOk != tc.wantOk {
+				t.Errorf("CleanWord() ok = %v, wantOk %v", gotOk, tc.wantOk)
+			}
+			if gotOk && gotWord != tc.wantWord {
+				t.Errorf("CleanWord() = %q, want %q", gotWord, tc.wantWord)
+			}
+		})
+	}
+}

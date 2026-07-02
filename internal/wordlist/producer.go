@@ -14,8 +14,10 @@ const DefaultWordBuffer = 4096
 // Producer satisfies engine.Producer. It reads from a Reader, converts each
 // word into a fully-qualified URL, and emits engine.Jobs.
 type Producer struct {
-	BaseURL string
-	Reader  Reader
+	BaseURL         string
+	Reader          Reader
+	NormalizePaths  bool
+	CollapseSlashes bool
 }
 
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
@@ -43,7 +45,11 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 			if !ok {
 				return <-readErr
 			}
-			url, err := Join(p.BaseURL, word)
+			cleaned, ok := CleanWord(word, p.NormalizePaths, p.CollapseSlashes)
+			if !ok {
+				continue
+			}
+			url, err := Join(p.BaseURL, cleaned)
 			if err != nil {
 				return err
 			}

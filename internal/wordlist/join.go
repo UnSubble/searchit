@@ -3,6 +3,7 @@ package wordlist
 import (
 	"fmt"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -30,4 +31,21 @@ func Join(base, path string) (string, error) {
 	u.Path = basePath + "/" + strings.TrimLeft(path, "/")
 
 	return u.String(), nil
+}
+
+// CleanWord applies path policy checks and transformations to a word.
+// It returns the cleaned word and false if it is rejected.
+func CleanWord(word string, norm, collapse bool) (string, bool) {
+	if word == "." || word == ".." {
+		return "", false
+	}
+	if collapse {
+		for strings.Contains(word, "//") {
+			word = strings.ReplaceAll(word, "//", "/")
+		}
+	}
+	if norm {
+		word = path.Clean(word)
+	}
+	return word, true
 }
