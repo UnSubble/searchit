@@ -22,6 +22,8 @@ type Config struct {
 
 	Paths PathConfig
 
+	Output string
+
 	Status StatusConfig
 }
 

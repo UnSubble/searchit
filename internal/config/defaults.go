@@ -23,6 +23,7 @@ func Default() Config {
 			NormalizePaths:  false,
 			CollapseSlashes: false,
 		},
+		Output: "text",
 		Status: StatusConfig{
 			Exclude: exclude,
 		},

@@ -3,11 +3,13 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
@@ -25,6 +27,7 @@ var (
 	flagRecurseOn       string
 	flagNormalizePaths  bool
 	flagCollapseSlashes bool
+	flagOutput          string
 )
 
 var scanCmd = &cobra.Command{
@@ -62,6 +65,10 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
+		if flagOutput != "text" && flagOutput != "json" && flagOutput != "ndjson" {
+			return fmt.Errorf("invalid output format %q: must be one of text, json, ndjson", flagOutput)
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -93,6 +100,7 @@ var scanCmd = &cobra.Command{
 				NormalizePaths:  flagNormalizePaths,
 				CollapseSlashes: flagCollapseSlashes,
 			},
+			Output: flagOutput,
 			Status: config.StatusConfig{
 				Exclude: excludeFilters,
 			},
@@ -111,13 +119,26 @@ var scanCmd = &cobra.Command{
 			reader = wordlist.FileReader{Path: cfg.Wordlist}
 		}
 
+		var fmttr output.Formatter
+		switch cfg.Output {
+		case "json":
+			fmttr = output.NewJSONFormatter(os.Stdout)
+		case "ndjson":
+			fmttr = output.NewNDJSONFormatter(os.Stdout)
+		default:
+			fmttr = output.NewTextFormatter(os.Stdout)
+		}
+		defer fmttr.Close()
+
 		if cfg.Recursive {
-			fmt.Println("[*] Recursive scan enabled")
-			fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
-			fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
-			fmt.Printf("[*] Recurse on: %s\n", flagRecurseOn)
-			if !cfg.RecurseOn.Match(404) {
-				fmt.Println("[*] 404 responses are ignored by default.")
+			if cfg.Output == "text" {
+				fmt.Println("[*] Recursive scan enabled")
+				fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
+				fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
+				fmt.Printf("[*] Recurse on: %s\n", flagRecurseOn)
+				if !cfg.RecurseOn.Match(404) {
+					fmt.Println("[*] 404 responses are ignored by default.")
+				}
 			}
 
 			seeds := []string{cfg.URL}
@@ -134,7 +155,7 @@ var scanCmd = &cobra.Command{
 			results := manager.Run(ctx, seeds, cfg.Threads)
 			for r := range results {
 				if r.Accepted {
-					fmt.Printf("[+] %d - %s\n", r.StatusCode, r.URL)
+					_ = fmttr.Print(r)
 				}
 			}
 		} else {
@@ -153,7 +174,7 @@ var scanCmd = &cobra.Command{
 
 			for r := range results {
 				if r.Accepted {
-					fmt.Printf("[+] %d - %s\n", r.StatusCode, r.URL)
+					_ = fmttr.Print(r)
 				}
 			}
 		}
@@ -245,6 +266,13 @@ func init() {
 		"collapse-slashes",
 		false,
 		"collapse consecutive slashes (e.g. admin////api -> admin/api)",
+	)
+
+	scanCmd.Flags().StringVar(
+		&flagOutput,
+		"output",
+		"text",
+		"output format (text, json, ndjson)",
 	)
 
 	_ = scanCmd.MarkFlagRequired("url")

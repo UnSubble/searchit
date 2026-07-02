@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
 )
 
@@ -68,8 +69,23 @@ func TestCLI_Validation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "valid recurse-on exact",
-			args:    []string{"scan", "-u", "http://localhost", "-r", "--recurse-on", "404"},
+			name:    "invalid output mode",
+			args:    []string{"scan", "-u", "http://localhost", "--output", "invalid"},
+			wantErr: true,
+		},
+		{
+			name:    "explicit text output",
+			args:    []string{"scan", "-u", "http://localhost", "--output", "text"},
+			wantErr: false,
+		},
+		{
+			name:    "explicit json output",
+			args:    []string{"scan", "-u", "http://localhost", "--output", "json"},
+			wantErr: false,
+		},
+		{
+			name:    "explicit ndjson output",
+			args:    []string{"scan", "-u", "http://localhost", "--output", "ndjson"},
 			wantErr: false,
 		},
 	}
@@ -85,8 +101,11 @@ func TestCLI_Validation(t *testing.T) {
 			flagStrategy = "bfs"
 			flagExcludeStatus = "404"
 			flagRecurseOn = "200,301,302,403"
+			flagOutput = "text"
 
 			cmd := rootCmd
+			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+			scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 			cmd.SetArgs(tc.args)
 
 			buf := new(bytes.Buffer)
@@ -153,8 +172,11 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagStrategy = "bfs"
 			flagExcludeStatus = "404"
 			flagRecurseOn = "200,301,302,403"
+			flagOutput = "text"
 
 			cmd := rootCmd
+			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+			scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 			cmd.SetArgs(tc.args)
 
 			buf := new(bytes.Buffer)
@@ -209,8 +231,11 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagRecurseOn = "200,301,302,403"
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
+	flagOutput = "text"
 
 	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs([]string{"scan", "-u", "http://localhost", "--normalize-paths", "--collapse-slashes"})
 
 	buf := new(bytes.Buffer)
