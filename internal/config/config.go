@@ -20,7 +20,14 @@ type Config struct {
 
 	RecurseOn status.Filters
 
+	Paths PathConfig
+
 	Status StatusConfig
+}
+
+type PathConfig struct {
+	NormalizePaths  bool
+	CollapseSlashes bool
 }
 
 type StatusConfig struct {

@@ -14,14 +14,14 @@ import (
 )
 
 var (
-	flagURL           string
-	flagWordlist      string
-	flagThreads       int
-	flagTimeout       int
-	flagRecursive     bool
-	flagMaxDepth      uint16
-	flagStrategy      string
-	flagExcludeStatus string
+	flagURL             string
+	flagWordlist        string
+	flagThreads         int
+	flagTimeout         int
+	flagRecursive       bool
+	flagMaxDepth        uint16
+	flagStrategy        string
+	flagExcludeStatus   string
 	flagRecurseOn       string
 	flagNormalizePaths  bool
 	flagCollapseSlashes bool

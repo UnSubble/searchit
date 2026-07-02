@@ -19,6 +19,10 @@ func Default() Config {
 		MaxDepth:  3,
 		Strategy:  recursion.BFS,
 		RecurseOn: status.MustParse("200,301,302,403"),
+		Paths: PathConfig{
+			NormalizePaths:  false,
+			CollapseSlashes: false,
+		},
 		Status: StatusConfig{
 			Exclude: exclude,
 		},
