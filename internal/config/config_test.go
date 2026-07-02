@@ -60,3 +60,28 @@ func TestDefault_IncludeFiltersEmpty(t *testing.T) {
 		t.Errorf("Status.Include = %v, want empty", got)
 	}
 }
+
+func TestDefault_RecurseOn(t *testing.T) {
+	cfg := config.Default()
+	if len(cfg.RecurseOn) == 0 {
+		t.Fatal("RecurseOn is empty, want default filters")
+	}
+
+	tests := []struct {
+		code int
+		want bool
+	}{
+		{200, true},
+		{301, true},
+		{302, true},
+		{403, true},
+		{404, false},
+		{500, false},
+	}
+
+	for _, tc := range tests {
+		if got := cfg.RecurseOn.Match(tc.code); got != tc.want {
+			t.Errorf("RecurseOn.Match(%d) = %v, want %v", tc.code, got, tc.want)
+		}
+	}
+}

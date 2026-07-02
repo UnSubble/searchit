@@ -18,6 +18,8 @@ type Config struct {
 	MaxDepth  uint16
 	Strategy  recursion.Strategy
 
+	RecurseOn status.Filters
+
 	Status StatusConfig
 }
 

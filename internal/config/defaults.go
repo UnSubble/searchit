@@ -18,6 +18,7 @@ func Default() Config {
 		Recursive: false,
 		MaxDepth:  3,
 		Strategy:  recursion.BFS,
+		RecurseOn: status.MustParse("200,301,302,403"),
 		Status: StatusConfig{
 			Exclude: exclude,
 		},

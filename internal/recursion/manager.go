@@ -10,35 +10,26 @@ import (
 	"github.com/unsubble/searchit/internal/wordlist"
 )
 
-// ShouldRecurse reports whether a response with the given status code
-// should trigger a recursive scan of that URL.
-// 403 is included because protected directories often have enumerable children.
-func ShouldRecurse(status int) bool {
-	switch status {
-	case 200, 301, 302, 403:
-		return true
-	}
-	return false
-}
-
 // Manager orchestrates recursive directory scanning.
 // It owns the frontier, the visited set, and all traversal decisions.
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
-	client   *http.Client
-	exclude  status.Filters
-	reader   wordlist.Reader
-	strategy Strategy
-	maxDepth uint16
+	client    *http.Client
+	exclude   status.Filters
+	reader    wordlist.Reader
+	strategy  Strategy
+	maxDepth  uint16
+	recurseOn status.Filters
 }
 
-func NewManager(client *http.Client, exclude status.Filters, reader wordlist.Reader, strategy Strategy, maxDepth uint16) *Manager {
+func NewManager(client *http.Client, exclude status.Filters, reader wordlist.Reader, strategy Strategy, maxDepth uint16, recurseOn status.Filters) *Manager {
 	return &Manager{
-		client:   client,
-		exclude:  exclude,
-		reader:   reader,
-		strategy: strategy,
-		maxDepth: maxDepth,
+		client:    client,
+		exclude:   exclude,
+		reader:    reader,
+		strategy:  strategy,
+		maxDepth:  maxDepth,
+		recurseOn: recurseOn,
 	}
 }
 
@@ -145,7 +136,10 @@ func (m *Manager) handleResult(
 		return
 	}
 
-	if result.Depth >= m.maxDepth || !ShouldRecurse(result.StatusCode) {
+	if result.Depth >= m.maxDepth {
+		return
+	}
+	if !m.recurseOn.Match(result.StatusCode) {
 		return
 	}
 

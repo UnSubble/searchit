@@ -28,6 +28,17 @@ func ParseStrategy(s string) (Strategy, error) {
 	}
 }
 
+func (s Strategy) String() string {
+	switch s {
+	case BFS:
+		return "bfs"
+	case DFS:
+		return "dfs"
+	default:
+		return "unknown"
+	}
+}
+
 const DefaultJobBuffer = 2048
 
 // Frontier is a scheduling ring buffer for pending jobs.

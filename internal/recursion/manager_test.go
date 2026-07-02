@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/recursion"
+	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
 )
 
@@ -51,7 +53,7 @@ func collectResults(ch <-chan engine.Result) []engine.Result {
 
 func newManager(t *testing.T, reader wordlist.Reader, strategy recursion.Strategy, maxDepth uint16) *recursion.Manager {
 	a := newApp(t)
-	return recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, strategy, maxDepth)
+	return recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, strategy, maxDepth, a.Config.RecurseOn)
 }
 
 func TestParseStrategy(t *testing.T) {
@@ -148,18 +150,19 @@ func TestFrontier_Pop_EmptyReturnsFalse(t *testing.T) {
 // ShouldRecurse
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestShouldRecurse(t *testing.T) {
+func TestDefaultRecursePolicy(t *testing.T) {
+	cfg := config.Default()
 	yes := []int{200, 301, 302, 403}
 	for _, code := range yes {
-		if !recursion.ShouldRecurse(code) {
-			t.Errorf("ShouldRecurse(%d) = false, want true", code)
+		if !cfg.RecurseOn.Match(code) {
+			t.Errorf("default RecurseOn.Match(%d) = false, want true", code)
 		}
 	}
 
 	no := []int{100, 204, 400, 404, 500, 503}
 	for _, code := range no {
-		if recursion.ShouldRecurse(code) {
-			t.Errorf("ShouldRecurse(%d) = true, want false", code)
+		if cfg.RecurseOn.Match(code) {
+			t.Errorf("default RecurseOn.Match(%d) = true, want false", code)
 		}
 	}
 }
@@ -411,5 +414,58 @@ func TestManager_ResultsContainAllDepths(t *testing.T) {
 		if urls[i] == urls[i-1] {
 			t.Errorf("duplicate URL in results: %q", urls[i])
 		}
+	}
+}
+
+func TestManager_CustomRecursionPolicy(t *testing.T) {
+	srv := httptest.NewServer(respondWith(
+		map[string]int{"/start": 200, "/start/a": 201},
+		404,
+	))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	reader := staticReader{words: []string{"a", "b"}}
+
+	a := newApp(t)
+	recurseOn := status.MustParse("201")
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn)
+
+	results := collectResults(m.Run(context.Background(), seeds, 2))
+
+	for _, r := range results {
+		if r.Depth > 0 {
+			t.Errorf("expected no recursion, but got result at depth %d: %s", r.Depth, r.URL)
+		}
+	}
+}
+
+func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
+	srv := httptest.NewServer(respondWith(
+		map[string]int{"/start": 201, "/start/a": 200},
+		404,
+	))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	reader := staticReader{words: []string{"a"}}
+
+	a := newApp(t)
+	recurseOn := status.MustParse("201")
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn)
+
+	results := collectResults(m.Run(context.Background(), seeds, 2))
+
+	foundChild := false
+	for _, r := range results {
+		if r.Depth == 1 && strings.HasSuffix(r.URL, "/start/a") {
+			foundChild = true
+		}
+		if r.Depth > 1 {
+			t.Errorf("expected max depth 1 child to not recurse, but got depth %d: %s", r.Depth, r.URL)
+		}
+	}
+	if !foundChild {
+		t.Error("expected child /start/a to be discovered via custom recursion status 201")
 	}
 }

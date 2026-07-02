@@ -85,6 +85,16 @@ func (f Filters) String() string {
 	return strings.Join(parts, ",")
 }
 
+// MustParse parses a comma-separated expression into Filters, panicking on failure.
+// It is intended for initialization and test helpers.
+func MustParse(input string) Filters {
+	filters, err := Parse(input)
+	if err != nil {
+		panic("status: MustParse(" + input + "): " + err.Error())
+	}
+	return filters
+}
+
 // Parse converts a comma-separated expression into Filters.
 // Returns an error for any invalid token.
 func Parse(input string) (Filters, error) {

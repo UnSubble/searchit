@@ -22,6 +22,7 @@ var (
 	flagMaxDepth      uint16
 	flagStrategy      string
 	flagExcludeStatus string
+	flagRecurseOn     string
 )
 
 var scanCmd = &cobra.Command{
@@ -45,8 +46,18 @@ var scanCmd = &cobra.Command{
 			return fmt.Errorf("max-depth requires recursive scanning to be enabled")
 		}
 
+		if cmd.Flags().Changed("recurse-on") && !flagRecursive {
+			return fmt.Errorf("recurse-on requires recursive scanning to be enabled")
+		}
+
 		if flagMaxDepth < 1 {
 			return fmt.Errorf("max-depth must be at least 1")
+		}
+
+		if flagRecursive {
+			if _, err := status.Parse(flagRecurseOn); err != nil {
+				return fmt.Errorf("invalid recurse-on: %w", err)
+			}
 		}
 
 		return nil
@@ -62,6 +73,11 @@ var scanCmd = &cobra.Command{
 			return err
 		}
 
+		recurseFilters, err := status.Parse(flagRecurseOn)
+		if err != nil {
+			return fmt.Errorf("invalid recurse-on: %w", err)
+		}
+
 		cfg := config.Config{
 			URL:       flagURL,
 			Wordlist:  flagWordlist,
@@ -70,6 +86,7 @@ var scanCmd = &cobra.Command{
 			Recursive: flagRecursive,
 			MaxDepth:  flagMaxDepth,
 			Strategy:  strat,
+			RecurseOn: recurseFilters,
 			Status: config.StatusConfig{
 				Exclude: excludeFilters,
 			},
@@ -89,8 +106,16 @@ var scanCmd = &cobra.Command{
 		}
 
 		if cfg.Recursive {
+			fmt.Println("[*] Recursive scan enabled")
+			fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
+			fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
+			fmt.Printf("[*] Recurse on: %s\n", flagRecurseOn)
+			if !cfg.RecurseOn.Match(404) {
+				fmt.Println("[*] 404 responses are ignored by default.")
+			}
+
 			seeds := []string{cfg.URL}
-			manager := recursion.NewManager(appState.HTTPClient, appState.Config.Status.Exclude, reader, cfg.Strategy, cfg.MaxDepth)
+			manager := recursion.NewManager(appState.HTTPClient, appState.Config.Status.Exclude, reader, cfg.Strategy, cfg.MaxDepth, cfg.RecurseOn)
 			results := manager.Run(ctx, seeds, cfg.Threads)
 			for r := range results {
 				if r.Accepted {
@@ -182,6 +207,13 @@ func init() {
 		"x",
 		"404",
 		"comma-separated status codes to exclude",
+	)
+
+	scanCmd.Flags().StringVar(
+		&flagRecurseOn,
+		"recurse-on",
+		"200,301,302,403",
+		"comma-separated status codes to recurse on",
 	)
 
 	_ = scanCmd.MarkFlagRequired("url")
