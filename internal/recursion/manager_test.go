@@ -53,7 +53,7 @@ func collectResults(ch <-chan engine.Result) []engine.Result {
 
 func newManager(t *testing.T, reader wordlist.Reader, strategy recursion.Strategy, maxDepth uint16) *recursion.Manager {
 	a := newApp(t)
-	return recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, strategy, maxDepth, a.Config.RecurseOn)
+	return recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, strategy, maxDepth, a.Config.RecurseOn, a.Config.Paths.NormalizePaths, a.Config.Paths.CollapseSlashes)
 }
 
 func TestParseStrategy(t *testing.T) {
@@ -429,7 +429,7 @@ func TestManager_CustomRecursionPolicy(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 
@@ -452,7 +452,7 @@ func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 

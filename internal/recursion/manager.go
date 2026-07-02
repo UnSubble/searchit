@@ -14,22 +14,35 @@ import (
 // It owns the frontier, the visited set, and all traversal decisions.
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
-	client    *http.Client
-	exclude   status.Filters
-	reader    wordlist.Reader
-	strategy  Strategy
-	maxDepth  uint16
-	recurseOn status.Filters
+	client          *http.Client
+	exclude         status.Filters
+	reader          wordlist.Reader
+	strategy        Strategy
+	maxDepth        uint16
+	recurseOn       status.Filters
+	normalizePaths  bool
+	collapseSlashes bool
 }
 
-func NewManager(client *http.Client, exclude status.Filters, reader wordlist.Reader, strategy Strategy, maxDepth uint16, recurseOn status.Filters) *Manager {
+func NewManager(
+	client *http.Client,
+	exclude status.Filters,
+	reader wordlist.Reader,
+	strategy Strategy,
+	maxDepth uint16,
+	recurseOn status.Filters,
+	normalizePaths bool,
+	collapseSlashes bool,
+) *Manager {
 	return &Manager{
-		client:    client,
-		exclude:   exclude,
-		reader:    reader,
-		strategy:  strategy,
-		maxDepth:  maxDepth,
-		recurseOn: recurseOn,
+		client:          client,
+		exclude:         exclude,
+		reader:          reader,
+		strategy:        strategy,
+		maxDepth:        maxDepth,
+		recurseOn:       recurseOn,
+		normalizePaths:  normalizePaths,
+		collapseSlashes: collapseSlashes,
 	}
 }
 
@@ -151,7 +164,11 @@ func (m *Manager) handleResult(
 	}()
 
 	for word := range words {
-		childURL, err := wordlist.Join(result.URL, word)
+		cleaned, ok := wordlist.CleanWord(word, m.normalizePaths, m.collapseSlashes)
+		if !ok {
+			continue
+		}
+		childURL, err := wordlist.Join(result.URL, cleaned)
 		if err != nil {
 			continue
 		}
