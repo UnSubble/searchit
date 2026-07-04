@@ -273,16 +273,18 @@ func init() {
 		"enable recursive directory scanning",
 	)
 
-	scanCmd.Flags().Uint16Var(
+	scanCmd.Flags().Uint16VarP(
 		&flagMaxDepth,
 		"max-depth",
+		"d",
 		3,
 		"maximum recursion depth",
 	)
 
-	scanCmd.Flags().StringVar(
+	scanCmd.Flags().StringVarP(
 		&flagStrategy,
 		"strategy",
+		"s",
 		"bfs",
 		"recursion strategy (bfs, dfs)",
 	)
@@ -316,9 +318,10 @@ func init() {
 		"collapse consecutive slashes (e.g. admin////api -> admin/api)",
 	)
 
-	scanCmd.Flags().StringVar(
+	scanCmd.Flags().StringVarP(
 		&flagOutput,
 		"output",
+		"o",
 		"text",
 		"output format (text, json, ndjson)",
 	)
@@ -337,9 +340,10 @@ func init() {
 		"comma-separated content sizes to exclude (e.g. 0,123)",
 	)
 
-	scanCmd.Flags().StringSliceVar(
+	scanCmd.Flags().StringSliceVarP(
 		&flagIncludeHeaders,
 		"include-header",
+		"H",
 		nil,
 		"HTTP headers to include (e.g. Server=nginx)",
 	)

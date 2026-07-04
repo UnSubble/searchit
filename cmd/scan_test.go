@@ -296,3 +296,74 @@ func TestCLI_PathFlags(t *testing.T) {
 		t.Error("expected flagCollapseSlashes to be true when --collapse-slashes is supplied")
 	}
 }
+
+func TestCLI_ShorthandsValueBinding(t *testing.T) {
+	flagURL = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagOutput = "text"
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	cmd.SetArgs([]string{
+		"scan",
+		"-u", "http://localhost",
+		"-w", "my-wordlist.txt",
+		"-t", "64",
+		"-r",
+		"-d", "5",
+		"-s", "dfs",
+		"-x", "404,500",
+		"-o", "ndjson",
+		"-H", "Server=nginx",
+		"-H", "X-Header=val",
+	})
+
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = cmd.ExecuteContext(ctx)
+
+	if flagURL != "http://localhost" {
+		t.Errorf("expected flagURL='http://localhost', got %q", flagURL)
+	}
+	if flagWordlist != "my-wordlist.txt" {
+		t.Errorf("expected flagWordlist='my-wordlist.txt', got %q", flagWordlist)
+	}
+	if flagThreads != 64 {
+		t.Errorf("expected flagThreads=64, got %d", flagThreads)
+	}
+	if !flagRecursive {
+		t.Error("expected flagRecursive to be true")
+	}
+	if flagMaxDepth != 5 {
+		t.Errorf("expected flagMaxDepth=5, got %d", flagMaxDepth)
+	}
+	if flagStrategy != "dfs" {
+		t.Errorf("expected flagStrategy='dfs', got %q", flagStrategy)
+	}
+	if flagExcludeStatus != "404,500" {
+		t.Errorf("expected flagExcludeStatus='404,500', got %q", flagExcludeStatus)
+	}
+	if flagOutput != "ndjson" {
+		t.Errorf("expected flagOutput='ndjson', got %q", flagOutput)
+	}
+	if len(flagIncludeHeaders) != 2 || flagIncludeHeaders[0] != "Server=nginx" || flagIncludeHeaders[1] != "X-Header=val" {
+		t.Errorf("expected flagIncludeHeaders=[Server=nginx, X-Header=val], got %v", flagIncludeHeaders)
+	}
+}
