@@ -104,6 +104,10 @@ func TestCleanWord(t *testing.T) {
 
 		{"preserve traversal normalized", "../../admin", true, false, "../../admin", true},
 		{"preserve passwd normalized", "../../etc/passwd", true, false, "../../etc/passwd", true},
+		{"multiple root transitions", "a/../../b", true, false, "../b", true},
+		{"trailing slash clean", "a/b/", true, false, "a/b", true},
+		{"slash cleaning and dot", "a/./b/", true, false, "a/b", true},
+		{"spaces in path", "  admin  ", true, false, "  admin  ", true},
 	}
 
 	for _, tc := range tests {
@@ -116,5 +120,33 @@ func TestCleanWord(t *testing.T) {
 				t.Errorf("CleanWord() = %q, want %q", gotWord, tc.wantWord)
 			}
 		})
+	}
+}
+
+func FuzzCleanWord(f *testing.F) {
+	f.Add(".", true, true)
+	f.Add("admin//api", false, true)
+	f.Add("././admin", true, false)
+	f.Add("a/../../b", true, true)
+	f.Add("", false, false)
+
+	f.Fuzz(func(t *testing.T, word string, norm, collapse bool) {
+		_, _ = wordlist.CleanWord(word, norm, collapse)
+	})
+}
+
+func BenchmarkCleanWord(b *testing.B) {
+	words := []string{
+		"admin/./api/../v1",
+		"a//b///c////d",
+		"../../etc/passwd",
+		"normal-path",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, w := range words {
+			_, _ = wordlist.CleanWord(w, true, true)
+		}
 	}
 }

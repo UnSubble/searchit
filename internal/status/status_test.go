@@ -439,3 +439,52 @@ func TestParse_RoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestFilters_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("overlapping filters", func(t *testing.T) {
+		f, err := status.Parse("2xx,200")
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if !f.Match(200) {
+			t.Error("expected match for 200")
+		}
+		if !f.Match(201) {
+			t.Error("expected match for 201")
+		}
+	})
+
+	t.Run("duplicate status expressions", func(t *testing.T) {
+		f, err := status.Parse("200,200")
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if got := f.String(); got != "200,200" {
+			t.Errorf("got %q, want duplicate preserved or normalized", got)
+		}
+		if !f.Match(200) {
+			t.Error("expected match for 200")
+		}
+	})
+}
+
+func FuzzParseStatusFilters(f *testing.F) {
+	f.Add("200")
+	f.Add("2xx,300-350,404")
+	f.Add("abc")
+	f.Add("200,200")
+	f.Add("2xx,200")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		filters, err := status.Parse(s)
+		if err == nil && len(filters) > 0 {
+			for _, code := range []int{-1, 0, 100, 200, 299, 300, 999, 1000} {
+				filters.Match(code)
+			}
+			_ = filters.String()
+		}
+	})
+}

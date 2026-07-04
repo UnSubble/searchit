@@ -132,3 +132,39 @@ func TestNDJSONFormatter(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkFormatterNDJSON(b *testing.B) {
+	var buf bytes.Buffer
+	f := output.NewNDJSONFormatter(&buf)
+	r := engine.Result{
+		URL:        "http://example.com/admin/login/dashboard/v2/index.html",
+		StatusCode: 200,
+		Length:     1024,
+		Depth:      3,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		_ = f.Print(r)
+	}
+}
+
+func BenchmarkFormatterJSON(b *testing.B) {
+	var buf bytes.Buffer
+	r := engine.Result{
+		URL:        "http://example.com/admin/login/dashboard/v2/index.html",
+		StatusCode: 200,
+		Length:     1024,
+		Depth:      3,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		f := output.NewJSONFormatter(&buf)
+		_ = f.Print(r)
+		_ = f.Print(r)
+		_ = f.Close()
+	}
+}
