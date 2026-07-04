@@ -53,7 +53,20 @@ func collectResults(ch <-chan engine.Result) []engine.Result {
 
 func newManager(t *testing.T, reader wordlist.Reader, strategy recursion.Strategy, maxDepth uint16) *recursion.Manager {
 	a := newApp(t)
-	return recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, strategy, maxDepth, a.Config.RecurseOn, a.Config.Paths.NormalizePaths, a.Config.Paths.CollapseSlashes)
+	return recursion.NewManager(
+		a.HTTPClient,
+		a.Config.Status.Exclude,
+		reader,
+		strategy,
+		maxDepth,
+		a.Config.RecurseOn,
+		a.Config.Paths.NormalizePaths,
+		a.Config.Paths.CollapseSlashes,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }
 
 func TestParseStrategy(t *testing.T) {
@@ -429,7 +442,7 @@ func TestManager_CustomRecursionPolicy(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 
@@ -452,7 +465,7 @@ func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 
@@ -468,4 +481,52 @@ func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
 	if !foundChild {
 		t.Error("expected child /start/a to be discovered via custom recursion status 201")
 	}
+}
+
+func TestManager_RecursionDepthBoundaries(t *testing.T) {
+	srv := httptest.NewServer(respondWith(
+		map[string]int{
+			"/start":         200,
+			"/start/a":       200,
+			"/start/a/b":     200,
+			"/start/a/b/c":   200,
+			"/start/a/b/c/d": 200,
+		},
+		404,
+	))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	reader := staticReader{words: []string{"a", "b", "c", "d"}}
+
+	t.Run("max depth 2 limits traversal", func(t *testing.T) {
+		a := newApp(t)
+		m := recursion.NewManager(
+			a.HTTPClient,
+			a.Config.Status.Exclude,
+			reader,
+			recursion.BFS,
+			2,
+			a.Config.RecurseOn,
+			false,
+			false,
+			nil,
+			nil,
+			nil,
+			nil,
+		)
+
+		results := collectResults(m.Run(context.Background(), seeds, 2))
+
+		var maxDepthReached uint16
+		for _, r := range results {
+			if r.Depth > maxDepthReached {
+				maxDepthReached = r.Depth
+			}
+		}
+
+		if maxDepthReached > 2 {
+			t.Errorf("expected max depth 2, but traversed to depth %d", maxDepthReached)
+		}
+	})
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
 )
 
@@ -42,15 +43,15 @@ func okServer(t *testing.T) *httptest.Server {
 }
 
 func runWorker(ctx context.Context, a *app.App, jobs <-chan engine.Job, results chan<- engine.Result) {
-	engine.Worker(ctx, a.HTTPClient, a.Config.Status.Exclude, jobs, results)
+	engine.Worker(ctx, a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, jobs, results)
 }
 
 func startEngine(ctx context.Context, a *app.App, workers int, jobs <-chan engine.Job) <-chan engine.Result {
-	return engine.Start(ctx, a.HTTPClient, a.Config.Status.Exclude, workers, jobs)
+	return engine.Start(ctx, a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, workers, jobs)
 }
 
 func newScanner(a *app.App) *engine.Scanner {
-	return engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude)
+	return engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,24 +307,6 @@ func TestWorker_CancelledContextSkipsRequests(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AcceptHeaders / AcceptContentLength placeholders
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestAcceptHeaders_AlwaysTrue(t *testing.T) {
-	if !engine.AcceptHeaders(nil) {
-		t.Error("AcceptHeaders returned false, want true")
-	}
-}
-
-func TestAcceptContentLength_AlwaysTrue(t *testing.T) {
-	for _, l := range []int64{-1, 0, 1, 999999} {
-		if !engine.AcceptContentLength(l) {
-			t.Errorf("AcceptContentLength(%d) = false, want true", l)
-		}
-	}
-}
-
 // ── Pool ──────────────────────────────────────────────────────────────────────
 
 func TestStart_CollectsAllResults(t *testing.T) {
@@ -508,5 +491,214 @@ func TestScanner_Scan_ExcludesStatus(t *testing.T) {
 
 	for r := range s.Scan(context.Background(), producer, 2) {
 		t.Errorf("excluded result leaked: %+v", r)
+	}
+}
+
+func TestWorker_Filters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/size100":
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(make([]byte, 100))
+		case "/size200":
+			w.Header().Set("Content-Length", "200")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(make([]byte, 200))
+		case "/header-nginx":
+			w.Header().Set("Server", "nginx")
+			w.Header().Set("X-Powered-By", "PHP")
+			w.WriteHeader(http.StatusOK)
+		case "/header-apache":
+			w.Header().Set("Server", "apache")
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newApp(t, "404")
+
+	t.Run("include-size exact match", func(t *testing.T) {
+		inc := size.MustParse("100")
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/size100"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, jobs, results)
+		r := <-results
+		if !r.Accepted {
+			t.Errorf("expected accepted=true for 100 byte response, got false")
+		}
+	})
+
+	t.Run("include-size exact mismatch", func(t *testing.T) {
+		inc := size.MustParse("200")
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/size100"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, jobs, results)
+		r := <-results
+		if r.Accepted {
+			t.Errorf("expected accepted=false for 100 byte response (included 200), got true")
+		}
+	})
+
+	t.Run("include-size range match", func(t *testing.T) {
+		inc := size.MustParse("50-150")
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/size100"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, jobs, results)
+		r := <-results
+		if !r.Accepted {
+			t.Errorf("expected accepted=true for size in range, got false")
+		}
+	})
+
+	t.Run("exclude-size exact match", func(t *testing.T) {
+		exc := size.MustParse("100")
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/size100"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, exc, nil, nil, jobs, results)
+		r := <-results
+		if r.Accepted {
+			t.Errorf("expected accepted=false for excluded size, got true")
+		}
+	})
+
+	t.Run("exclude-size range match", func(t *testing.T) {
+		exc := size.MustParse("50-150")
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/size100"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, exc, nil, nil, jobs, results)
+		r := <-results
+		if r.Accepted {
+			t.Errorf("expected accepted=false for size in excluded range, got true")
+		}
+	})
+
+	t.Run("include-header matches", func(t *testing.T) {
+		inc := []engine.HeaderFilter{{Name: "Server", Value: "nginx"}}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		r := <-results
+		if !r.Accepted {
+			t.Errorf("expected accepted=true for matching header, got false")
+		}
+	})
+
+	t.Run("include-header mismatch", func(t *testing.T) {
+		inc := []engine.HeaderFilter{{Name: "Server", Value: "nginx"}}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-apache"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		r := <-results
+		if r.Accepted {
+			t.Errorf("expected accepted=false for mismatching header, got true")
+		}
+	})
+
+	t.Run("multiple include-header conditions (all match)", func(t *testing.T) {
+		inc := []engine.HeaderFilter{
+			{Name: "Server", Value: "nginx"},
+			{Name: "X-Powered-By", Value: "PHP"},
+		}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		r := <-results
+		if !r.Accepted {
+			t.Errorf("expected accepted=true when all headers match, got false")
+		}
+	})
+
+	t.Run("multiple include-header conditions (one mismatch)", func(t *testing.T) {
+		inc := []engine.HeaderFilter{
+			{Name: "Server", Value: "nginx"},
+			{Name: "X-Powered-By", Value: "Go"},
+		}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		r := <-results
+		if r.Accepted {
+			t.Errorf("expected accepted=false when one of include headers mismatch, got true")
+		}
+	})
+
+	t.Run("exclude-header match rejects", func(t *testing.T) {
+		exc := []engine.HeaderFilter{{Name: "Server", Value: "nginx"}}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, exc, jobs, results)
+		r := <-results
+		if r.Accepted {
+			t.Errorf("expected accepted=false for excluded header match, got true")
+		}
+	})
+
+	t.Run("case-insensitive header name matching", func(t *testing.T) {
+		inc := []engine.HeaderFilter{{Name: "server", Value: "nginx"}}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		r := <-results
+		if !r.Accepted {
+			t.Errorf("expected accepted=true for case-insensitive header name match, got false")
+		}
+	})
+}
+
+func BenchmarkHeaderMatch(b *testing.B) {
+	resp := &http.Response{
+		Header: http.Header{
+			"Server":       []string{"nginx"},
+			"Content-Type": []string{"text/html"},
+			"X-Powered-By": []string{"PHP"},
+		},
+	}
+	inc := []engine.HeaderFilter{
+		{Name: "Server", Value: "nginx"},
+		{Name: "X-Powered-By", Value: "PHP"},
+	}
+	exc := []engine.HeaderFilter{
+		{Name: "X-Header", Value: "val"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = engine.AcceptHeaders(resp, inc, exc)
 	}
 }

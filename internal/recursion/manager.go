@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
 )
@@ -22,6 +23,10 @@ type Manager struct {
 	recurseOn       status.Filters
 	normalizePaths  bool
 	collapseSlashes bool
+	includeSize     size.Filters
+	excludeSize     size.Filters
+	includeHeaders  []engine.HeaderFilter
+	excludeHeaders  []engine.HeaderFilter
 }
 
 func NewManager(
@@ -33,6 +38,10 @@ func NewManager(
 	recurseOn status.Filters,
 	normalizePaths bool,
 	collapseSlashes bool,
+	includeSize size.Filters,
+	excludeSize size.Filters,
+	includeHeaders []engine.HeaderFilter,
+	excludeHeaders []engine.HeaderFilter,
 ) *Manager {
 	return &Manager{
 		client:          client,
@@ -43,6 +52,10 @@ func NewManager(
 		recurseOn:       recurseOn,
 		normalizePaths:  normalizePaths,
 		collapseSlashes: collapseSlashes,
+		includeSize:     includeSize,
+		excludeSize:     excludeSize,
+		includeHeaders:  includeHeaders,
+		excludeHeaders:  excludeHeaders,
 	}
 }
 
@@ -70,7 +83,17 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		}
 
 		jobs := make(chan engine.Job, workers)
-		results := engine.Start(ctx, m.client, m.exclude, workers, jobs)
+		results := engine.Start(
+			ctx,
+			m.client,
+			m.exclude,
+			m.includeSize,
+			m.excludeSize,
+			m.includeHeaders,
+			m.excludeHeaders,
+			workers,
+			jobs,
+		)
 
 		// pending counts jobs dispatched to workers but not yet returned.
 		// The loop ends when the frontier is empty and no in-flight work remains.

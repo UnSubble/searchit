@@ -53,7 +53,7 @@ func FuzzParseSizeFilters(f *testing.F) {
 	f.Fuzz(func(t *testing.T, s string) {
 		filters, err := size.Parse(s)
 		if err == nil && len(filters) > 0 {
-			for _, val := range []int64{-1, 0, 1, 150, 999999, 1<<62} {
+			for _, val := range []int64{-1, 0, 1, 150, 999999, 1 << 62} {
 				filters.Match(val)
 			}
 			_ = filters.String()

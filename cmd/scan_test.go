@@ -88,6 +88,36 @@ func TestCLI_Validation(t *testing.T) {
 			args:    []string{"scan", "-u", "http://localhost", "--output", "ndjson"},
 			wantErr: false,
 		},
+		{
+			name:    "invalid include-size format",
+			args:    []string{"scan", "-u", "http://localhost", "--include-size", "abc"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid exclude-size range bounds",
+			args:    []string{"scan", "-u", "http://localhost", "--exclude-size", "200-100"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid include-header missing equal",
+			args:    []string{"scan", "-u", "http://localhost", "--include-header", "Server"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid exclude-header empty value",
+			args:    []string{"scan", "-u", "http://localhost", "--exclude-header", "Server="},
+			wantErr: true,
+		},
+		{
+			name:    "invalid include-header empty name",
+			args:    []string{"scan", "-u", "http://localhost", "--include-header", "=nginx"},
+			wantErr: true,
+		},
+		{
+			name:    "valid include-header and exclude-size",
+			args:    []string{"scan", "-u", "http://localhost", "--include-header", "Server=nginx", "--exclude-size", "0,123"},
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -102,6 +132,10 @@ func TestCLI_Validation(t *testing.T) {
 			flagExcludeStatus = "404"
 			flagRecurseOn = "200,301,302,403"
 			flagOutput = "text"
+			flagIncludeSize = ""
+			flagExcludeSize = ""
+			flagIncludeHeaders = nil
+			flagExcludeHeaders = nil
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -173,6 +207,10 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagExcludeStatus = "404"
 			flagRecurseOn = "200,301,302,403"
 			flagOutput = "text"
+			flagIncludeSize = ""
+			flagExcludeSize = ""
+			flagIncludeHeaders = nil
+			flagExcludeHeaders = nil
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -232,6 +270,10 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
 	flagOutput = "text"
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

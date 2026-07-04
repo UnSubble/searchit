@@ -4,22 +4,46 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/unsubble/searchit/internal/httpclient"
+	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
 )
 
 const bodyReadLimit = 4096
 
+// HeaderFilter specifies an exact match rule on a case-insensitive header name.
+type HeaderFilter struct {
+	Name  string
+	Value string
+}
+
 // Worker executes the response pipeline for incoming jobs.
 // Pipeline: Status -> Headers -> Content-Length -> Body
-func Worker(ctx context.Context, client *http.Client, exclude status.Filters, jobs <-chan Job, results chan<- Result) {
+func Worker(
+	ctx context.Context,
+	client *http.Client,
+	exclude status.Filters,
+	incSize, excSize size.Filters,
+	incHeaders, excHeaders []HeaderFilter,
+	jobs <-chan Job,
+	results chan<- Result,
+) {
 	for job := range jobs {
-		process(ctx, client, exclude, job, results)
+		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results)
 	}
 }
 
-func process(ctx context.Context, client *http.Client, exclude status.Filters, job Job, results chan<- Result) {
+func process(
+	ctx context.Context,
+	client *http.Client,
+	exclude status.Filters,
+	incSize, excSize size.Filters,
+	incHeaders, excHeaders []HeaderFilter,
+	job Job,
+	results chan<- Result,
+) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.URL, nil)
 	if err != nil {
 		results <- Result{
@@ -55,7 +79,7 @@ func process(ctx context.Context, client *http.Client, exclude status.Filters, j
 	}
 
 	// Stage 2: Headers
-	if !AcceptHeaders(resp) {
+	if !AcceptHeaders(resp, incHeaders, excHeaders) {
 		resp.Body.Close()
 		results <- Result{
 			URL:        job.URL,
@@ -68,7 +92,7 @@ func process(ctx context.Context, client *http.Client, exclude status.Filters, j
 
 	// Stage 3: Content-Length
 	length := httpclient.ContentLength(resp)
-	if !AcceptContentLength(length) {
+	if !AcceptContentLength(length, incSize, excSize) {
 		resp.Body.Close()
 		results <- Result{
 			URL:        job.URL,
@@ -108,14 +132,41 @@ func process(ctx context.Context, client *http.Client, exclude status.Filters, j
 	}
 }
 
-// AcceptHeaders is the header-filter hook.
-// TODO: Implement content-type and baseline-header matching.
-func AcceptHeaders(resp *http.Response) bool {
+// AcceptHeaders evaluates headers matching.
+func AcceptHeaders(resp *http.Response, inc, exc []HeaderFilter) bool {
+	for _, f := range exc {
+		if matchHeader(resp, f.Name, f.Value) {
+			return false
+		}
+	}
+	for _, f := range inc {
+		if !matchHeader(resp, f.Name, f.Value) {
+			return false
+		}
+	}
 	return true
 }
 
-// AcceptContentLength is the content-length filter hook.
-// TODO: Implement size-range and baseline-length filtering.
-func AcceptContentLength(length int64) bool {
+func matchHeader(resp *http.Response, name, value string) bool {
+	for k, values := range resp.Header {
+		if strings.EqualFold(k, name) {
+			for _, val := range values {
+				if val == value {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// AcceptContentLength checks size constraints.
+func AcceptContentLength(length int64, inc, exc size.Filters) bool {
+	if exc.Match(length) {
+		return false
+	}
+	if len(inc) > 0 && !inc.Match(length) {
+		return false
+	}
 	return true
 }

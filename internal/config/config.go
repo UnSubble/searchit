@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/unsubble/searchit/internal/recursion"
+	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
 )
 
@@ -24,7 +25,18 @@ type Config struct {
 
 	Output string
 
+	IncludeSize size.Filters
+	ExcludeSize size.Filters
+
+	IncludeHeaders []HeaderFilter
+	ExcludeHeaders []HeaderFilter
+
 	Status StatusConfig
+}
+
+type HeaderFilter struct {
+	Name  string
+	Value string
 }
 
 type PathConfig struct {

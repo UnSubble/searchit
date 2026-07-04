@@ -4,22 +4,36 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
 )
 
 // Scanner is the public orchestration entry point.
 // Workers and pool management are internal details.
 type Scanner struct {
-	client  *http.Client
-	exclude status.Filters
-	errors  chan error
+	client     *http.Client
+	exclude    status.Filters
+	incSize    size.Filters
+	excSize    size.Filters
+	incHeaders []HeaderFilter
+	excHeaders []HeaderFilter
+	errors     chan error
 }
 
-func NewScanner(client *http.Client, exclude status.Filters) *Scanner {
+func NewScanner(
+	client *http.Client,
+	exclude status.Filters,
+	incSize, excSize size.Filters,
+	incHeaders, excHeaders []HeaderFilter,
+) *Scanner {
 	return &Scanner{
-		client:  client,
-		exclude: exclude,
-		errors:  make(chan error, 1),
+		client:     client,
+		exclude:    exclude,
+		incSize:    incSize,
+		excSize:    excSize,
+		incHeaders: incHeaders,
+		excHeaders: excHeaders,
+		errors:     make(chan error, 1),
 	}
 }
 
@@ -28,7 +42,7 @@ func NewScanner(client *http.Client, exclude status.Filters) *Scanner {
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.client, s.exclude, workers, jobs)
+	results := Start(ctx, s.client, s.exclude, s.incSize, s.excSize, s.incHeaders, s.excHeaders, workers, jobs)
 	out := make(chan Result, workers)
 
 	go func() {
