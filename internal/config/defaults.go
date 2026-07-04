@@ -24,6 +24,7 @@ func Default() Config {
 			CollapseSlashes: false,
 		},
 		Output: "text",
+		Quiet:  false,
 		Status: StatusConfig{
 			Exclude: exclude,
 		},

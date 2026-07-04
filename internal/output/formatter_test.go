@@ -13,7 +13,7 @@ import (
 func TestTextFormatter(t *testing.T) {
 	t.Run("identical output formatting", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf)
+		f := output.NewTextFormatter(&buf, false)
 
 		r := engine.Result{
 			URL:        "http://example.com/admin",
@@ -36,12 +36,35 @@ func TestTextFormatter(t *testing.T) {
 
 	t.Run("empty output", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf)
+		f := output.NewTextFormatter(&buf, false)
 		if err := f.Close(); err != nil {
 			t.Fatalf("Close failed: %v", err)
 		}
 		if got := buf.String(); got != "" {
 			t.Errorf("got %q, want empty", got)
+		}
+	})
+
+	t.Run("quiet mode prints only URL", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, true)
+
+		r := engine.Result{
+			URL:        "http://example.com/admin",
+			StatusCode: 200,
+		}
+
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+
+		got := buf.String()
+		want := "http://example.com/admin\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 }

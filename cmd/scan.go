@@ -30,6 +30,7 @@ var (
 	flagNormalizePaths  bool
 	flagCollapseSlashes bool
 	flagOutput          string
+	flagQuiet           bool
 	flagIncludeSize     string
 	flagExcludeSize     string
 	flagIncludeHeaders  []string
@@ -131,6 +132,7 @@ var scanCmd = &cobra.Command{
 				CollapseSlashes: flagCollapseSlashes,
 			},
 			Output:         flagOutput,
+			Quiet:          flagQuiet,
 			IncludeSize:    incSize,
 			ExcludeSize:    excSize,
 			IncludeHeaders: incHeaders,
@@ -160,7 +162,7 @@ var scanCmd = &cobra.Command{
 		case "ndjson":
 			fmttr = output.NewNDJSONFormatter(os.Stdout)
 		default:
-			fmttr = output.NewTextFormatter(os.Stdout)
+			fmttr = output.NewTextFormatter(os.Stdout, cfg.Quiet)
 		}
 		defer fmttr.Close()
 
@@ -353,6 +355,14 @@ func init() {
 		"exclude-header",
 		nil,
 		"HTTP headers to exclude (e.g. Content-Type=text/plain)",
+	)
+
+	scanCmd.Flags().BoolVarP(
+		&flagQuiet,
+		"quiet",
+		"q",
+		false,
+		"print only discovered URLs in text mode",
 	)
 
 	_ = scanCmd.MarkFlagRequired("url")

@@ -8,14 +8,19 @@ import (
 )
 
 type TextFormatter struct {
-	w io.Writer
+	w     io.Writer
+	quiet bool
 }
 
-func NewTextFormatter(w io.Writer) *TextFormatter {
-	return &TextFormatter{w: w}
+func NewTextFormatter(w io.Writer, quiet bool) *TextFormatter {
+	return &TextFormatter{w: w, quiet: quiet}
 }
 
 func (f *TextFormatter) Print(r engine.Result) error {
+	if f.quiet {
+		_, err := fmt.Fprintf(f.w, "%s\n", r.URL)
+		return err
+	}
 	_, err := fmt.Fprintf(f.w, "[+] %d - %s\n", r.StatusCode, r.URL)
 	return err
 }

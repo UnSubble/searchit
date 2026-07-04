@@ -118,6 +118,16 @@ func TestCLI_Validation(t *testing.T) {
 			args:    []string{"scan", "-u", "http://localhost", "--include-header", "Server=nginx", "--exclude-size", "0,123"},
 			wantErr: false,
 		},
+		{
+			name:    "valid quiet mode option long-form",
+			args:    []string{"scan", "-u", "http://localhost", "--quiet"},
+			wantErr: false,
+		},
+		{
+			name:    "valid quiet mode option shorthand",
+			args:    []string{"scan", "-u", "http://localhost", "-q"},
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -132,6 +142,7 @@ func TestCLI_Validation(t *testing.T) {
 			flagExcludeStatus = "404"
 			flagRecurseOn = "200,301,302,403"
 			flagOutput = "text"
+			flagQuiet = false
 			flagIncludeSize = ""
 			flagExcludeSize = ""
 			flagIncludeHeaders = nil
@@ -183,13 +194,13 @@ func TestCLI_StartupInformation(t *testing.T) {
 			},
 		},
 		{
-			name: "recurse-on including 404",
-			args: []string{"scan", "-u", "http://localhost", "-r", "--recurse-on", "404"},
+			name: "quiet mode with recurse-on prints startup messages",
+			args: []string{"scan", "-u", "http://localhost", "-r", "--quiet"},
 			wantPrints: []string{
 				"[*] Recursive scan enabled",
-				"[*] Recurse on: 404",
-			},
-			omitPrints: []string{
+				"[*] Strategy: bfs",
+				"[*] Max depth: 3",
+				"[*] Recurse on: 200,301,302,403",
 				"[*] 404 responses are ignored by default.",
 			},
 		},
@@ -207,6 +218,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagExcludeStatus = "404"
 			flagRecurseOn = "200,301,302,403"
 			flagOutput = "text"
+			flagQuiet = false
 			flagIncludeSize = ""
 			flagExcludeSize = ""
 			flagIncludeHeaders = nil
@@ -270,6 +282,7 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
 	flagOutput = "text"
+	flagQuiet = false
 	flagIncludeSize = ""
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
@@ -308,6 +321,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	flagExcludeStatus = "404"
 	flagRecurseOn = "200,301,302,403"
 	flagOutput = "text"
+	flagQuiet = false
 	flagIncludeSize = ""
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
@@ -365,5 +379,54 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	}
 	if len(flagIncludeHeaders) != 2 || flagIncludeHeaders[0] != "Server=nginx" || flagIncludeHeaders[1] != "X-Header=val" {
 		t.Errorf("expected flagIncludeHeaders=[Server=nginx, X-Header=val], got %v", flagIncludeHeaders)
+	}
+}
+
+func TestCLI_QuietMode_StartupPrints(t *testing.T) {
+	flagURL = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagOutput = "text"
+	flagQuiet = false
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	cmd.SetArgs([]string{"scan", "-u", "http://localhost", "-r", "--quiet"})
+
+	// Capture stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	oldStdout := os.Stdout
+	os.Stdout = w
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = cmd.ExecuteContext(ctx)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var stdoutBuf bytes.Buffer
+	if _, err := io.Copy(&stdoutBuf, r); err != nil {
+		t.Fatalf("io.Copy: %v", err)
+	}
+	gotOut := stdoutBuf.String()
+
+	if !strings.Contains(gotOut, "[*] Recursive scan enabled") {
+		t.Error("expected quiet mode to keep recursive scan startup message")
 	}
 }

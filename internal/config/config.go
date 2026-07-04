@@ -24,6 +24,7 @@ type Config struct {
 	Paths PathConfig
 
 	Output string
+	Quiet  bool
 
 	IncludeSize size.Filters
 	ExcludeSize size.Filters
