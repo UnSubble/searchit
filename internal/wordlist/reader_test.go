@@ -2,6 +2,9 @@ package wordlist_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -249,4 +252,139 @@ func TestProducer_EmptyWordlist(t *testing.T) {
 	if _, ok := <-jobs; ok {
 		t.Error("expected closed channel for empty wordlist, got a value")
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FileReader
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestFileReader_EmitsEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "words.txt")
+	content := `
+# Comment line
+  word1  
+  
+word2
+# Another comment
+word3
+`
+	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	r := wordlist.FileReader{Path: filePath}
+	out := make(chan string, 10)
+
+	go func() {
+		defer close(out)
+		if err := r.Read(context.Background(), out); err != nil {
+			t.Errorf("FileReader.Read returned error: %v", err)
+		}
+	}()
+
+	var got []string
+	for entry := range out {
+		got = append(got, entry)
+	}
+
+	want := []string{"word1", "word2", "word3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("FileReader.Read = %v, want %v", got, want)
+	}
+}
+
+func TestFileReader_MissingFile(t *testing.T) {
+	r := wordlist.FileReader{Path: "does_not_exist_xyz.txt"}
+	out := make(chan string, 10)
+	err := r.Read(context.Background(), out)
+	if err == nil {
+		t.Error("FileReader.Read expected error for missing file, got nil")
+	}
+}
+
+func TestFileReader_Cancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "words.txt")
+	content := "w1\nw2\n"
+	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	r := wordlist.FileReader{Path: filePath}
+	out := make(chan string) // Unbuffered so it blocks on write and triggers select ctx.Done
+	err := r.Read(ctx, out)
+	if err == nil {
+		t.Error("FileReader.Read expected context error, got nil")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Producer Edge Cases
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestProducer_InvalidBaseURL(t *testing.T) {
+	r := fakeReader{lines: []string{"admin"}}
+	tests := []struct {
+		base string
+		name string
+	}{
+		{"http://example.com?query=1", "query string"},
+		{"http://example.com#frag", "fragment"},
+		{"http://[::1", "invalid parsing"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := wordlist.Producer{BaseURL: tc.base, Reader: r}
+			jobs := make(chan engine.Job, 10)
+			err := p.Produce(context.Background(), jobs)
+			if err == nil {
+				t.Errorf("expected error for base URL %q, got nil", tc.base)
+			}
+		})
+	}
+}
+
+func TestProducer_CancelDuringProduction(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// A reader that yields one word and then cancels the context to simulate
+	// cancellation during stream production.
+	r := customBlockReader{
+		onRead: func() {
+			cancel()
+		},
+		lines: []string{"a", "b", "c"},
+	}
+
+	p := wordlist.Producer{BaseURL: "http://example.com", Reader: r}
+	jobs := make(chan engine.Job, 1)
+
+	err := p.Produce(ctx, jobs)
+	if err == nil {
+		t.Error("expected context error, got nil")
+	}
+}
+
+type customBlockReader struct {
+	onRead func()
+	lines  []string
+}
+
+func (r customBlockReader) Read(ctx context.Context, out chan<- string) error {
+	for _, line := range r.lines {
+		if r.onRead != nil {
+			r.onRead()
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case out <- line:
+		}
+	}
+	return nil
 }
