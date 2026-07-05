@@ -29,7 +29,7 @@ func runBench(b *testing.B, workers int) {
 	defer srv.Close()
 
 	a := benchApp(b)
-	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil)
+	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0)
 
 	urls := make([]string, b.N)
 	for i := range urls {

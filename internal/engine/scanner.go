@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -18,6 +19,7 @@ type Scanner struct {
 	incHeaders []HeaderFilter
 	excHeaders []HeaderFilter
 	errors     chan error
+	delay      time.Duration
 }
 
 func NewScanner(
@@ -25,6 +27,7 @@ func NewScanner(
 	exclude status.Filters,
 	incSize, excSize size.Filters,
 	incHeaders, excHeaders []HeaderFilter,
+	delay time.Duration,
 ) *Scanner {
 	return &Scanner{
 		client:     client,
@@ -34,6 +37,7 @@ func NewScanner(
 		incHeaders: incHeaders,
 		excHeaders: excHeaders,
 		errors:     make(chan error, 1),
+		delay:      delay,
 	}
 }
 
@@ -42,7 +46,7 @@ func NewScanner(
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.client, s.exclude, s.incSize, s.excSize, s.incHeaders, s.excHeaders, workers, jobs)
+	results := Start(ctx, s.client, s.exclude, s.incSize, s.excSize, s.incHeaders, s.excHeaders, workers, s.delay, jobs)
 	out := make(chan Result, workers)
 
 	go func() {

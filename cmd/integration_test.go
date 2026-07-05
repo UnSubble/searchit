@@ -12,11 +12,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/pflag"
 )
 
 func runIntegrationCommand(args []string) (string, error) {
+	rootCmd.SetContext(nil)
+	scanCmd.SetContext(nil)
 	// Reset all flag variables to default
 	flagURL = ""
 	flagURLFile = ""
@@ -36,6 +39,7 @@ func runIntegrationCommand(args []string) (string, error) {
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
+	flagDelay = ""
 	resolvedTargets = nil
 
 	cmd := rootCmd
@@ -244,6 +248,32 @@ func TestIntegration_Scans(t *testing.T) {
 			t.Errorf("expected 2 hits of admin, got %d", adminHits)
 		}
 	})
+
+	t.Run("per-worker request delay", func(t *testing.T) {
+		// Use a wordlist with 2 paths and a worker pool of 1.
+		// Set delay of 50ms. Total execution should take at least 100ms.
+		delayWordlist := filepath.Join(tmpDir, "delay_wl.txt")
+		if err := os.WriteFile(delayWordlist, []byte("admin\nlogin\n"), 0600); err != nil {
+			t.Fatalf("failed to write delay wordlist: %v", err)
+		}
+
+		importTime := time.Now()
+		_, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", delayWordlist,
+			"-t", "1",
+			"--delay", "50ms",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+		elapsed := time.Since(importTime)
+
+		if elapsed < 100*time.Millisecond {
+			t.Errorf("expected elapsed time >= 100ms with 50ms delay, got %v", elapsed)
+		}
+	})
 }
 
 func TestIntegration_ValidationErrors(t *testing.T) {
@@ -256,6 +286,11 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 			name:    "missing url file",
 			args:    []string{"scan", "--url-file", "nonexistent_file_xyz.txt"},
 			wantErr: "failed to read url file",
+		},
+		{
+			name:    "invalid delay duration string",
+			args:    []string{"scan", "-u", "http://localhost", "--delay", "abc"},
+			wantErr: "invalid delay",
 		},
 		{
 			name:    "invalid strategy",

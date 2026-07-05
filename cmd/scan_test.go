@@ -145,10 +145,27 @@ func TestCLI_Validation(t *testing.T) {
 			args:    []string{"scan", "-u", "http://a.com,http://b.com"},
 			wantErr: false,
 		},
+		{
+			name:    "valid delay 100ms",
+			args:    []string{"scan", "-u", "http://localhost", "--delay", "100ms"},
+			wantErr: false,
+		},
+		{
+			name:    "valid delay 1s",
+			args:    []string{"scan", "-u", "http://localhost", "--delay", "1s"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid delay format",
+			args:    []string{"scan", "-u", "http://localhost", "--delay", "abc"},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			rootCmd.SetContext(nil)
+			scanCmd.SetContext(nil)
 			flagURL = ""
 			flagURLFile = ""
 			flagWordlist = ""
@@ -165,6 +182,7 @@ func TestCLI_Validation(t *testing.T) {
 			flagExcludeSize = ""
 			flagIncludeHeaders = nil
 			flagExcludeHeaders = nil
+			flagDelay = ""
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -226,6 +244,8 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			rootCmd.SetContext(nil)
+			scanCmd.SetContext(nil)
 			flagURL = ""
 			flagURLFile = ""
 			flagWordlist = ""
@@ -242,6 +262,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagExcludeSize = ""
 			flagIncludeHeaders = nil
 			flagExcludeHeaders = nil
+			flagDelay = ""
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -289,6 +310,8 @@ func TestCLI_StartupInformation(t *testing.T) {
 }
 
 func TestCLI_PathFlags(t *testing.T) {
+	rootCmd.SetContext(nil)
+	scanCmd.SetContext(nil)
 	flagURL = ""
 	flagURLFile = ""
 	flagWordlist = ""
@@ -307,6 +330,7 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
+	flagDelay = ""
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -331,6 +355,8 @@ func TestCLI_PathFlags(t *testing.T) {
 }
 
 func TestCLI_ShorthandsValueBinding(t *testing.T) {
+	rootCmd.SetContext(nil)
+	scanCmd.SetContext(nil)
 	flagURL = ""
 	flagURLFile = ""
 	flagWordlist = ""
@@ -347,6 +373,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
+	flagDelay = ""
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -404,6 +431,8 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 }
 
 func TestCLI_QuietMode_StartupPrints(t *testing.T) {
+	rootCmd.SetContext(nil)
+	scanCmd.SetContext(nil)
 	flagURL = ""
 	flagURLFile = ""
 	flagWordlist = ""
@@ -420,6 +449,7 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
+	flagDelay = ""
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -461,6 +491,8 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
+	rootCmd.SetContext(nil)
+	scanCmd.SetContext(nil)
 	flagURL = ""
 	flagURLFile = ""
 	flagWordlist = ""
@@ -477,6 +509,7 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	flagExcludeSize = ""
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
+	flagDelay = ""
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

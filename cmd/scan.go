@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/app"
@@ -37,6 +38,7 @@ var (
 	flagExcludeSize     string
 	flagIncludeHeaders  []string
 	flagExcludeHeaders  []string
+	flagDelay           string
 
 	resolvedTargets []string
 )
@@ -79,6 +81,12 @@ var scanCmd = &cobra.Command{
 		}
 		if _, err := size.Parse(flagExcludeSize); err != nil {
 			return fmt.Errorf("invalid exclude-size: %w", err)
+		}
+
+		if flagDelay != "" {
+			if _, err := time.ParseDuration(flagDelay); err != nil {
+				return fmt.Errorf("invalid delay: %w", err)
+			}
 		}
 
 		for _, h := range flagIncludeHeaders {
@@ -142,11 +150,17 @@ var scanCmd = &cobra.Command{
 		incHeaders := parseHeaderFlags(flagIncludeHeaders)
 		excHeaders := parseHeaderFlags(flagExcludeHeaders)
 
+		var delay time.Duration
+		if flagDelay != "" {
+			delay, _ = time.ParseDuration(flagDelay)
+		}
+
 		cfg := config.Config{
 			URLs:      resolvedTargets,
 			Wordlist:  flagWordlist,
 			Threads:   flagThreads,
 			Timeout:   flagTimeout,
+			Delay:     delay,
 			Recursive: flagRecursive,
 			MaxDepth:  flagMaxDepth,
 			Strategy:  strat,
@@ -220,6 +234,7 @@ var scanCmd = &cobra.Command{
 					cfg.ExcludeSize,
 					mapHeaders(cfg.IncludeHeaders),
 					mapHeaders(cfg.ExcludeHeaders),
+					cfg.Delay,
 				)
 				results := manager.Run(ctx, seeds, cfg.Threads)
 				for r := range results {
@@ -238,6 +253,7 @@ var scanCmd = &cobra.Command{
 					mapHeaders(cfg.IncludeHeaders),
 					mapHeaders(cfg.ExcludeHeaders),
 					cfg.Threads,
+					cfg.Delay,
 					jobs,
 				)
 
@@ -400,6 +416,13 @@ func init() {
 		"url-file",
 		"",
 		"load targets from a file (one URL per line)",
+	)
+
+	scanCmd.Flags().StringVar(
+		&flagDelay,
+		"delay",
+		"",
+		"delay between requests per worker",
 	)
 }
 

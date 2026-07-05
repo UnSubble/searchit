@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/size"
@@ -27,6 +28,7 @@ type Manager struct {
 	excludeSize     size.Filters
 	includeHeaders  []engine.HeaderFilter
 	excludeHeaders  []engine.HeaderFilter
+	delay           time.Duration
 }
 
 func NewManager(
@@ -42,6 +44,7 @@ func NewManager(
 	excludeSize size.Filters,
 	includeHeaders []engine.HeaderFilter,
 	excludeHeaders []engine.HeaderFilter,
+	delay time.Duration,
 ) *Manager {
 	return &Manager{
 		client:          client,
@@ -56,6 +59,7 @@ func NewManager(
 		excludeSize:     excludeSize,
 		includeHeaders:  includeHeaders,
 		excludeHeaders:  excludeHeaders,
+		delay:           delay,
 	}
 }
 
@@ -92,6 +96,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			m.includeHeaders,
 			m.excludeHeaders,
 			workers,
+			m.delay,
 			jobs,
 		)
 

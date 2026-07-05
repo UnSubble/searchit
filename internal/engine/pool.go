@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -19,6 +20,7 @@ func Start(
 	incSize, excSize size.Filters,
 	incHeaders, excHeaders []HeaderFilter,
 	workers int,
+	delay time.Duration,
 	jobs <-chan Job,
 ) <-chan Result {
 	results := make(chan Result, workers)
@@ -29,7 +31,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, jobs, results)
+			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, jobs, results)
 		}()
 	}
 

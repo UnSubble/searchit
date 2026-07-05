@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/size"
@@ -27,11 +28,20 @@ func Worker(
 	exclude status.Filters,
 	incSize, excSize size.Filters,
 	incHeaders, excHeaders []HeaderFilter,
+	delay time.Duration,
 	jobs <-chan Job,
 	results chan<- Result,
 ) {
 	for job := range jobs {
 		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results)
+
+		if delay > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+		}
 	}
 }
 

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -14,6 +16,7 @@ type Config struct {
 
 	Threads int
 	Timeout int // seconds
+	Delay   time.Duration
 
 	Recursive bool
 	MaxDepth  uint16

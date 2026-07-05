@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
@@ -43,15 +44,15 @@ func okServer(t *testing.T) *httptest.Server {
 }
 
 func runWorker(ctx context.Context, a *app.App, jobs <-chan engine.Job, results chan<- engine.Result) {
-	engine.Worker(ctx, a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, jobs, results)
+	engine.Worker(ctx, a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0, jobs, results)
 }
 
 func startEngine(ctx context.Context, a *app.App, workers int, jobs <-chan engine.Job) <-chan engine.Result {
-	return engine.Start(ctx, a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, workers, jobs)
+	return engine.Start(ctx, a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, workers, 0, jobs)
 }
 
 func newScanner(a *app.App) *engine.Scanner {
-	return engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil)
+	return engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -527,7 +528,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/size100"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, 0, jobs, results)
 		r := <-results
 		if !r.Accepted {
 			t.Errorf("expected accepted=true for 100 byte response, got false")
@@ -541,7 +542,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/size100"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, 0, jobs, results)
 		r := <-results
 		if r.Accepted {
 			t.Errorf("expected accepted=false for 100 byte response (included 200), got true")
@@ -555,7 +556,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/size100"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, inc, nil, nil, nil, 0, jobs, results)
 		r := <-results
 		if !r.Accepted {
 			t.Errorf("expected accepted=true for size in range, got false")
@@ -569,7 +570,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/size100"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, exc, nil, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, exc, nil, nil, 0, jobs, results)
 		r := <-results
 		if r.Accepted {
 			t.Errorf("expected accepted=false for excluded size, got true")
@@ -583,7 +584,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/size100"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, exc, nil, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, exc, nil, nil, 0, jobs, results)
 		r := <-results
 		if r.Accepted {
 			t.Errorf("expected accepted=false for size in excluded range, got true")
@@ -597,7 +598,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, 0, jobs, results)
 		r := <-results
 		if !r.Accepted {
 			t.Errorf("expected accepted=true for matching header, got false")
@@ -611,7 +612,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/header-apache"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, 0, jobs, results)
 		r := <-results
 		if r.Accepted {
 			t.Errorf("expected accepted=false for mismatching header, got true")
@@ -628,7 +629,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, 0, jobs, results)
 		r := <-results
 		if !r.Accepted {
 			t.Errorf("expected accepted=true when all headers match, got false")
@@ -645,7 +646,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, 0, jobs, results)
 		r := <-results
 		if r.Accepted {
 			t.Errorf("expected accepted=false when one of include headers mismatch, got true")
@@ -659,7 +660,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, exc, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, exc, 0, jobs, results)
 		r := <-results
 		if r.Accepted {
 			t.Errorf("expected accepted=false for excluded header match, got true")
@@ -673,7 +674,7 @@ func TestWorker_Filters(t *testing.T) {
 		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
 		close(jobs)
 
-		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, jobs, results)
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, 0, jobs, results)
 		r := <-results
 		if !r.Accepted {
 			t.Errorf("expected accepted=true for case-insensitive header name match, got false")
@@ -700,5 +701,26 @@ func BenchmarkHeaderMatch(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = engine.AcceptHeaders(resp, inc, exc)
+	}
+}
+
+func TestWorker_Delay(t *testing.T) {
+	srv := okServer(t)
+	a := newApp(t, "404")
+
+	jobs := make(chan engine.Job, 2)
+	results := make(chan engine.Result, 2)
+	jobs <- engine.Job{URL: srv.URL + "/a"}
+	jobs <- engine.Job{URL: srv.URL + "/b"}
+	close(jobs)
+
+	delay := 50 * time.Millisecond
+	start := time.Now()
+	engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, delay, jobs, results)
+	elapsed := time.Since(start)
+
+	// Sleep 50ms after first, and 50ms after second. Total sleep >= 100ms.
+	if elapsed < 100*time.Millisecond {
+		t.Errorf("expected elapsed time to be at least 100ms with 50ms delay, got %v", elapsed)
 	}
 }
