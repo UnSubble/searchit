@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -191,3 +192,50 @@ func BenchmarkFormatterJSON(b *testing.B) {
 		_ = f.Close()
 	}
 }
+
+type errorWriter struct{}
+
+func (errorWriter) Write(p []byte) (int, error) {
+	return 0, os.ErrPermission // any error
+}
+
+func TestFormatterErrors(t *testing.T) {
+	r := engine.Result{URL: "http://example.com", StatusCode: 200}
+
+	t.Run("TextFormatter write error", func(t *testing.T) {
+		f := output.NewTextFormatter(errorWriter{}, false)
+		if err := f.Print(r); err == nil {
+			t.Error("expected print error, got nil")
+		}
+	})
+
+	t.Run("TextFormatter quiet write error", func(t *testing.T) {
+		f := output.NewTextFormatter(errorWriter{}, true)
+		if err := f.Print(r); err == nil {
+			t.Error("expected print error, got nil")
+		}
+	})
+
+	t.Run("NDJSONFormatter write error", func(t *testing.T) {
+		f := output.NewNDJSONFormatter(errorWriter{})
+		if err := f.Print(r); err == nil {
+			t.Error("expected print error, got nil")
+		}
+	})
+
+	t.Run("JSONFormatter close write error", func(t *testing.T) {
+		f := output.NewJSONFormatter(errorWriter{})
+		_ = f.Print(r)
+		if err := f.Close(); err == nil {
+			t.Error("expected close error, got nil")
+		}
+	})
+
+	t.Run("JSONFormatter close empty write error", func(t *testing.T) {
+		f := output.NewJSONFormatter(errorWriter{})
+		if err := f.Close(); err == nil {
+			t.Error("expected close error, got nil")
+		}
+	})
+}
+
