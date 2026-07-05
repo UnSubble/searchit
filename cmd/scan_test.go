@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -128,11 +130,27 @@ func TestCLI_Validation(t *testing.T) {
 			args:    []string{"scan", "-u", "http://localhost", "-q"},
 			wantErr: false,
 		},
+		{
+			name:    "empty target URL and URL file",
+			args:    []string{"scan"},
+			wantErr: true,
+		},
+		{
+			name:    "missing URL file",
+			args:    []string{"scan", "--url-file", "nonexistent.txt"},
+			wantErr: true,
+		},
+		{
+			name:    "multiple target URLs via comma-separated list",
+			args:    []string{"scan", "-u", "http://a.com,http://b.com"},
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			flagURL = ""
+			flagURLFile = ""
 			flagWordlist = ""
 			flagThreads = 32
 			flagTimeout = 10
@@ -209,6 +227,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			flagURL = ""
+			flagURLFile = ""
 			flagWordlist = ""
 			flagThreads = 32
 			flagTimeout = 10
@@ -271,6 +290,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 func TestCLI_PathFlags(t *testing.T) {
 	flagURL = ""
+	flagURLFile = ""
 	flagWordlist = ""
 	flagThreads = 32
 	flagTimeout = 10
@@ -312,6 +332,7 @@ func TestCLI_PathFlags(t *testing.T) {
 
 func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	flagURL = ""
+	flagURLFile = ""
 	flagWordlist = ""
 	flagThreads = 32
 	flagTimeout = 10
@@ -384,6 +405,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 
 func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	flagURL = ""
+	flagURLFile = ""
 	flagWordlist = ""
 	flagThreads = 32
 	flagTimeout = 10
@@ -428,5 +450,50 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 
 	if !strings.Contains(gotOut, "[*] Recursive scan enabled") {
 		t.Error("expected quiet mode to keep recursive scan startup message")
+	}
+}
+
+func TestCLI_MultipleTargetsAndFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "targets.txt")
+	content := "http://b.com\nhttp://c.com\n"
+	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	flagURL = ""
+	flagURLFile = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagOutput = "text"
+	flagQuiet = false
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	cmd.SetArgs([]string{"scan", "-u", "http://a.com", "--url-file", filePath})
+
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = cmd.ExecuteContext(ctx)
+
+	wantTargets := []string{"http://a.com", "http://b.com", "http://c.com"}
+	if !reflect.DeepEqual(resolvedTargets, wantTargets) {
+		t.Errorf("resolvedTargets = %v, want %v", resolvedTargets, wantTargets)
 	}
 }

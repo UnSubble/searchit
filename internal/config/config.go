@@ -9,7 +9,7 @@ import (
 // Config is the single source of truth consumed by the engine.
 // All external inputs (CLI, YAML, env) must be translated into this struct.
 type Config struct {
-	URL      string
+	URLs     []string
 	Wordlist string
 
 	Threads int

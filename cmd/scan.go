@@ -14,11 +14,13 @@ import (
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
+	"github.com/unsubble/searchit/internal/targets"
 	"github.com/unsubble/searchit/internal/wordlist"
 )
 
 var (
 	flagURL             string
+	flagURLFile         string
 	flagWordlist        string
 	flagThreads         int
 	flagTimeout         int
@@ -35,6 +37,8 @@ var (
 	flagExcludeSize     string
 	flagIncludeHeaders  []string
 	flagExcludeHeaders  []string
+
+	resolvedTargets []string
 )
 
 var scanCmd = &cobra.Command{
@@ -88,6 +92,26 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
+		resolvedTargets = nil
+		if flagURL != "" {
+			for _, val := range strings.Split(flagURL, ",") {
+				t := strings.TrimSpace(val)
+				if t != "" {
+					resolvedTargets = append(resolvedTargets, t)
+				}
+			}
+		}
+		if flagURLFile != "" {
+			fileTargets, err := targets.ReadFile(flagURLFile)
+			if err != nil {
+				return fmt.Errorf("failed to read url file: %w", err)
+			}
+			resolvedTargets = append(resolvedTargets, fileTargets...)
+		}
+		if len(resolvedTargets) == 0 {
+			return fmt.Errorf("at least one target is required")
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -119,7 +143,7 @@ var scanCmd = &cobra.Command{
 		excHeaders := parseHeaderFlags(flagExcludeHeaders)
 
 		cfg := config.Config{
-			URL:       flagURL,
+			URLs:      resolvedTargets,
 			Wordlist:  flagWordlist,
 			Threads:   flagThreads,
 			Timeout:   flagTimeout,
@@ -166,65 +190,71 @@ var scanCmd = &cobra.Command{
 		}
 		defer fmttr.Close()
 
-		if cfg.Recursive {
+		for _, targetURL := range cfg.URLs {
 			if cfg.Output == "text" {
-				fmt.Println("[*] Recursive scan enabled")
-				fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
-				fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
-				fmt.Printf("[*] Recurse on: %s\n", flagRecurseOn)
-				if !cfg.RecurseOn.Match(404) {
-					fmt.Println("[*] 404 responses are ignored by default.")
-				}
+				fmt.Printf("[*] Target: %s\n", targetURL)
 			}
 
-			seeds := []string{cfg.URL}
-			manager := recursion.NewManager(
-				appState.HTTPClient,
-				appState.Config.Status.Exclude,
-				reader,
-				cfg.Strategy,
-				cfg.MaxDepth,
-				cfg.RecurseOn,
-				cfg.Paths.NormalizePaths,
-				cfg.Paths.CollapseSlashes,
-				cfg.IncludeSize,
-				cfg.ExcludeSize,
-				mapHeaders(cfg.IncludeHeaders),
-				mapHeaders(cfg.ExcludeHeaders),
-			)
-			results := manager.Run(ctx, seeds, cfg.Threads)
-			for r := range results {
-				if r.Accepted {
-					_ = fmttr.Print(r)
+			if cfg.Recursive {
+				if cfg.Output == "text" {
+					fmt.Println("[*] Recursive scan enabled")
+					fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
+					fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
+					fmt.Printf("[*] Recurse on: %s\n", flagRecurseOn)
+					if !cfg.RecurseOn.Match(404) {
+						fmt.Println("[*] 404 responses are ignored by default.")
+					}
 				}
-			}
-		} else {
-			jobs := make(chan engine.Job, cfg.Threads)
-			results := engine.Start(
-				ctx,
-				appState.HTTPClient,
-				appState.Config.Status.Exclude,
-				cfg.IncludeSize,
-				cfg.ExcludeSize,
-				mapHeaders(cfg.IncludeHeaders),
-				mapHeaders(cfg.ExcludeHeaders),
-				cfg.Threads,
-				jobs,
-			)
 
-			go func() {
-				p := wordlist.Producer{
-					BaseURL:         cfg.URL,
-					Reader:          reader,
-					NormalizePaths:  cfg.Paths.NormalizePaths,
-					CollapseSlashes: cfg.Paths.CollapseSlashes,
+				seeds := []string{targetURL}
+				manager := recursion.NewManager(
+					appState.HTTPClient,
+					appState.Config.Status.Exclude,
+					reader,
+					cfg.Strategy,
+					cfg.MaxDepth,
+					cfg.RecurseOn,
+					cfg.Paths.NormalizePaths,
+					cfg.Paths.CollapseSlashes,
+					cfg.IncludeSize,
+					cfg.ExcludeSize,
+					mapHeaders(cfg.IncludeHeaders),
+					mapHeaders(cfg.ExcludeHeaders),
+				)
+				results := manager.Run(ctx, seeds, cfg.Threads)
+				for r := range results {
+					if r.Accepted {
+						_ = fmttr.Print(r)
+					}
 				}
-				_ = p.Produce(ctx, jobs)
-			}()
+			} else {
+				jobs := make(chan engine.Job, cfg.Threads)
+				results := engine.Start(
+					ctx,
+					appState.HTTPClient,
+					appState.Config.Status.Exclude,
+					cfg.IncludeSize,
+					cfg.ExcludeSize,
+					mapHeaders(cfg.IncludeHeaders),
+					mapHeaders(cfg.ExcludeHeaders),
+					cfg.Threads,
+					jobs,
+				)
 
-			for r := range results {
-				if r.Accepted {
-					_ = fmttr.Print(r)
+				go func() {
+					p := wordlist.Producer{
+						BaseURL:         targetURL,
+						Reader:          reader,
+						NormalizePaths:  cfg.Paths.NormalizePaths,
+						CollapseSlashes: cfg.Paths.CollapseSlashes,
+					}
+					_ = p.Produce(ctx, jobs)
+				}()
+
+				for r := range results {
+					if r.Accepted {
+						_ = fmttr.Print(r)
+					}
 				}
 			}
 		}
@@ -365,7 +395,12 @@ func init() {
 		"print only discovered URLs in text mode",
 	)
 
-	_ = scanCmd.MarkFlagRequired("url")
+	scanCmd.Flags().StringVar(
+		&flagURLFile,
+		"url-file",
+		"",
+		"load targets from a file (one URL per line)",
+	)
 }
 
 func validateHeaderFlag(val string) error {
