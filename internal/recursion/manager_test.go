@@ -530,3 +530,139 @@ func TestManager_RecursionDepthBoundaries(t *testing.T) {
 		}
 	})
 }
+
+func TestStrategy_String(t *testing.T) {
+	tests := []struct {
+		strat recursion.Strategy
+		want  string
+	}{
+		{recursion.BFS, "bfs"},
+		{recursion.DFS, "dfs"},
+		{recursion.Strategy(-1), "unknown"},
+		{recursion.Strategy(999), "unknown"},
+	}
+
+	for _, tc := range tests {
+		if got := tc.strat.String(); got != tc.want {
+			t.Errorf("%d.String() = %q, want %q", int(tc.strat), got, tc.want)
+		}
+	}
+}
+
+func TestFrontier_Peek_Empty(t *testing.T) {
+	f := recursion.NewFrontier(recursion.BFS)
+	_, ok := f.Peek()
+	if ok {
+		t.Error("Peek on empty frontier returned true, want false")
+	}
+}
+
+func TestFrontier_Grow_BFS_DFS(t *testing.T) {
+	t.Run("BFS grow", func(t *testing.T) {
+		f := recursion.NewFrontier(recursion.BFS)
+		// Push more than default buffer capacity (2048) to trigger grow
+		numJobs := 2500
+		for i := 0; i < numJobs; i++ {
+			f.Push(engine.Job{URL: fmt.Sprintf("url-%d", i)})
+		}
+
+		if f.Len() != numJobs {
+			t.Fatalf("expected length %d, got %d", numJobs, f.Len())
+		}
+
+		for i := 0; i < numJobs; i++ {
+			job, ok := f.Pop()
+			if !ok {
+				t.Fatalf("Pop failed at index %d", i)
+			}
+			expectedURL := fmt.Sprintf("url-%d", i)
+			if job.URL != expectedURL {
+				t.Errorf("expected URL %q, got %q", expectedURL, job.URL)
+			}
+		}
+	})
+
+	t.Run("DFS grow", func(t *testing.T) {
+		f := recursion.NewFrontier(recursion.DFS)
+		numJobs := 2500
+		for i := 0; i < numJobs; i++ {
+			f.Push(engine.Job{URL: fmt.Sprintf("url-%d", i)})
+		}
+
+		if f.Len() != numJobs {
+			t.Fatalf("expected length %d, got %d", numJobs, f.Len())
+		}
+
+		// DFS reverses order
+		for i := numJobs - 1; i >= 0; i-- {
+			job, ok := f.Pop()
+			if !ok {
+				t.Fatalf("Pop failed at index %d", i)
+			}
+			expectedURL := fmt.Sprintf("url-%d", i)
+			if job.URL != expectedURL {
+				t.Errorf("expected URL %q, got %q", expectedURL, job.URL)
+			}
+		}
+	})
+}
+
+type errReader struct {
+	err error
+}
+
+func (r errReader) Read(ctx context.Context, out chan<- string) error {
+	return r.err
+}
+
+func TestManager_ReaderErrorHandling(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	r := errReader{err: fmt.Errorf("read error simulated")}
+
+	a := newApp(t)
+	// MaxDepth is 2 so it wants to recurse on /start (depth 0 -> depth 1)
+	m := recursion.NewManager(
+		a.HTTPClient,
+		a.Config.Status.Exclude,
+		r,
+		recursion.BFS,
+		2,
+		a.Config.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	results := collectResults(m.Run(context.Background(), seeds, 2))
+	// We only expect the seed (depth 0) to be returned since reader fails during handleResult.
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d: %v", len(results), results)
+	}
+}
+
+func TestManager_Run_ImmediateCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	m := newManager(t, staticReader{words: []string{"a"}}, recursion.BFS, 2)
+	results := collectResults(m.Run(ctx, seeds, 2))
+
+	// Should drain and return immediately without running
+	if len(results) > 0 {
+		t.Errorf("expected 0 results due to immediate cancellation, got %v", results)
+	}
+}

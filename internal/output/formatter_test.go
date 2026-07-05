@@ -238,4 +238,3 @@ func TestFormatterErrors(t *testing.T) {
 		}
 	})
 }
-
