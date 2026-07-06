@@ -224,7 +224,7 @@ func TestCLI_Validation(t *testing.T) {
 			flagExcludeHeaders = nil
 			flagDelay = ""
 			flagRate = 0
-			flagConnectTimeout = "10s"
+			flagConnectTimeout = "3s"
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -306,7 +306,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagExcludeHeaders = nil
 			flagDelay = ""
 			flagRate = 0
-			flagConnectTimeout = "10s"
+			flagConnectTimeout = "3s"
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -376,7 +376,7 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
-	flagConnectTimeout = "10s"
+	flagConnectTimeout = "3s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -421,7 +421,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
-	flagConnectTimeout = "10s"
+	flagConnectTimeout = "3s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -499,7 +499,7 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
-	flagConnectTimeout = "10s"
+	flagConnectTimeout = "3s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -561,7 +561,7 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
-	flagConnectTimeout = "10s"
+	flagConnectTimeout = "3s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

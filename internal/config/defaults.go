@@ -17,7 +17,7 @@ func Default() Config {
 	return Config{
 		Threads:        32,
 		Timeout:        10,
-		ConnectTimeout: 10 * time.Second,
+		ConnectTimeout: 3 * time.Second,
 		Recursive:      false,
 		MaxDepth:       3,
 		Strategy:       recursion.BFS,

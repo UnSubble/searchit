@@ -41,7 +41,7 @@ func runIntegrationCommand(args []string) (string, error) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
-	flagConnectTimeout = "10s"
+	flagConnectTimeout = "3s"
 	resolvedTargets = nil
 
 	cmd := rootCmd

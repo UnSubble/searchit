@@ -466,7 +466,7 @@ func init() {
 	scanCmd.Flags().StringVar(
 		&flagConnectTimeout,
 		"connect-timeout",
-		"10s",
+		"3s",
 		"timeout for establishing new TCP connections",
 	)
 }
