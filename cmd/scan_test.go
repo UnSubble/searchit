@@ -160,6 +160,26 @@ func TestCLI_Validation(t *testing.T) {
 			args:    []string{"scan", "-u", "http://localhost", "--delay", "abc"},
 			wantErr: true,
 		},
+		{
+			name:    "valid rate float",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "25.5"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid rate float format",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "abc"},
+			wantErr: true,
+		},
+		{
+			name:    "negative rate float",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "-5.5"},
+			wantErr: true,
+		},
+		{
+			name:    "zero rate float explicitly passed",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "0"},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -183,6 +203,7 @@ func TestCLI_Validation(t *testing.T) {
 			flagIncludeHeaders = nil
 			flagExcludeHeaders = nil
 			flagDelay = ""
+			flagRate = 0
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -263,6 +284,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagIncludeHeaders = nil
 			flagExcludeHeaders = nil
 			flagDelay = ""
+			flagRate = 0
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -331,6 +353,7 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
 	flagDelay = ""
+	flagRate = 0
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -374,6 +397,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
 	flagDelay = ""
+	flagRate = 0
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -450,6 +474,7 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
 	flagDelay = ""
+	flagRate = 0
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -510,6 +535,7 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
 	flagDelay = ""
+	flagRate = 0
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

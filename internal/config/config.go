@@ -17,6 +17,7 @@ type Config struct {
 	Threads int
 	Timeout int // seconds
 	Delay   time.Duration
+	Rate    float64
 
 	Recursive bool
 	MaxDepth  uint16

@@ -10,6 +10,7 @@ import (
 	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
+	"golang.org/x/time/rate"
 )
 
 const bodyReadLimit = 4096
@@ -29,10 +30,18 @@ func Worker(
 	incSize, excSize size.Filters,
 	incHeaders, excHeaders []HeaderFilter,
 	delay time.Duration,
+	limiter *rate.Limiter,
 	jobs <-chan Job,
 	results chan<- Result,
 ) {
 	for job := range jobs {
+		if limiter != nil {
+			err := limiter.Wait(ctx)
+			if err != nil {
+				return
+			}
+		}
+
 		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results)
 
 		if delay > 0 {

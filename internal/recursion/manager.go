@@ -10,6 +10,7 @@ import (
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
+	"golang.org/x/time/rate"
 )
 
 // Manager orchestrates recursive directory scanning.
@@ -29,6 +30,7 @@ type Manager struct {
 	includeHeaders  []engine.HeaderFilter
 	excludeHeaders  []engine.HeaderFilter
 	delay           time.Duration
+	limiter         *rate.Limiter
 }
 
 func NewManager(
@@ -45,6 +47,7 @@ func NewManager(
 	includeHeaders []engine.HeaderFilter,
 	excludeHeaders []engine.HeaderFilter,
 	delay time.Duration,
+	limiter *rate.Limiter,
 ) *Manager {
 	return &Manager{
 		client:          client,
@@ -60,6 +63,7 @@ func NewManager(
 		includeHeaders:  includeHeaders,
 		excludeHeaders:  excludeHeaders,
 		delay:           delay,
+		limiter:         limiter,
 	}
 }
 
@@ -97,6 +101,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			m.excludeHeaders,
 			workers,
 			m.delay,
+			m.limiter,
 			jobs,
 		)
 

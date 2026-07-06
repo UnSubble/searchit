@@ -8,6 +8,7 @@ import (
 
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
+	"golang.org/x/time/rate"
 )
 
 // Start launches workers goroutines and returns a results channel that is
@@ -21,6 +22,7 @@ func Start(
 	incHeaders, excHeaders []HeaderFilter,
 	workers int,
 	delay time.Duration,
+	limiter *rate.Limiter,
 	jobs <-chan Job,
 ) <-chan Result {
 	results := make(chan Result, workers)
@@ -31,7 +33,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, jobs, results)
+			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, limiter, jobs, results)
 		}()
 	}
 

@@ -40,6 +40,7 @@ func runIntegrationCommand(args []string) (string, error) {
 	flagIncludeHeaders = nil
 	flagExcludeHeaders = nil
 	flagDelay = ""
+	flagRate = 0
 	resolvedTargets = nil
 
 	cmd := rootCmd
@@ -274,6 +275,68 @@ func TestIntegration_Scans(t *testing.T) {
 			t.Errorf("expected elapsed time >= 100ms with 50ms delay, got %v", elapsed)
 		}
 	})
+
+	t.Run("global request rate limiting", func(t *testing.T) {
+		// Use 3 words and a worker pool of 3.
+		// Set rate limit of 10 requests per second.
+		// Total execution should take at least 200ms because:
+		// - 1st request consumes burst (burst = 1).
+		// - 2nd request waits 100ms.
+		// - 3rd request waits 100ms.
+		// Total wait >= 200ms.
+		rateWordlist := filepath.Join(tmpDir, "rate_wl.txt")
+		if err := os.WriteFile(rateWordlist, []byte("a\nb\nc\n"), 0600); err != nil {
+			t.Fatalf("failed to write rate wordlist: %v", err)
+		}
+
+		startTime := time.Now()
+		_, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", rateWordlist,
+			"-t", "3",
+			"--rate", "10",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+		elapsed := time.Since(startTime)
+
+		if elapsed < 200*time.Millisecond {
+			t.Errorf("expected elapsed time >= 200ms with rate=10, got %v", elapsed)
+		}
+	})
+
+	t.Run("rate limit combined with delay", func(t *testing.T) {
+		// Rate limit = 10 (100ms interval), delay = 50ms.
+		// 2 words, 1 worker.
+		// - req 1: Rate limiter waits 0, finishes, then sleeps 50ms delay.
+		// - req 2: Rate limiter waits (100ms since req 1 start), finishes, then sleeps 50ms delay.
+		// Total time should be at least:
+		// req 1 start -> req 2 start (100ms rate limit wait) -> req 2 delay (50ms delay) = 150ms.
+		rateDelayWordlist := filepath.Join(tmpDir, "rate_delay_wl.txt")
+		if err := os.WriteFile(rateDelayWordlist, []byte("a\nb\n"), 0600); err != nil {
+			t.Fatalf("failed to write rate delay wordlist: %v", err)
+		}
+
+		startTime := time.Now()
+		_, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", rateDelayWordlist,
+			"-t", "1",
+			"--rate", "10",
+			"--delay", "50ms",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+		elapsed := time.Since(startTime)
+
+		if elapsed < 150*time.Millisecond {
+			t.Errorf("expected elapsed time >= 150ms with rate=10 and delay=50ms, got %v", elapsed)
+		}
+	})
 }
 
 func TestIntegration_ValidationErrors(t *testing.T) {
@@ -286,6 +349,21 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 			name:    "missing url file",
 			args:    []string{"scan", "--url-file", "nonexistent_file_xyz.txt"},
 			wantErr: "failed to read url file",
+		},
+		{
+			name:    "invalid rate float string",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "abc"},
+			wantErr: "invalid argument",
+		},
+		{
+			name:    "negative rate limit float",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "-5"},
+			wantErr: "rate must be greater than 0",
+		},
+		{
+			name:    "zero rate limit float explicitly passed",
+			args:    []string{"scan", "-u", "http://localhost", "--rate", "0"},
+			wantErr: "rate must be greater than 0",
 		},
 		{
 			name:    "invalid delay duration string",

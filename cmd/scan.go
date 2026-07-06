@@ -17,6 +17,7 @@ import (
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/targets"
 	"github.com/unsubble/searchit/internal/wordlist"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -39,6 +40,7 @@ var (
 	flagIncludeHeaders  []string
 	flagExcludeHeaders  []string
 	flagDelay           string
+	flagRate            float64
 
 	resolvedTargets []string
 )
@@ -87,6 +89,10 @@ var scanCmd = &cobra.Command{
 			if _, err := time.ParseDuration(flagDelay); err != nil {
 				return fmt.Errorf("invalid delay: %w", err)
 			}
+		}
+
+		if cmd.Flags().Changed("rate") && flagRate <= 0 {
+			return fmt.Errorf("rate must be greater than 0")
 		}
 
 		for _, h := range flagIncludeHeaders {
@@ -161,6 +167,7 @@ var scanCmd = &cobra.Command{
 			Threads:   flagThreads,
 			Timeout:   flagTimeout,
 			Delay:     delay,
+			Rate:      flagRate,
 			Recursive: flagRecursive,
 			MaxDepth:  flagMaxDepth,
 			Strategy:  strat,
@@ -204,6 +211,11 @@ var scanCmd = &cobra.Command{
 		}
 		defer fmttr.Close()
 
+		var limiter *rate.Limiter
+		if cfg.Rate > 0 {
+			limiter = rate.NewLimiter(rate.Limit(cfg.Rate), 1)
+		}
+
 		for _, targetURL := range cfg.URLs {
 			if cfg.Output == "text" {
 				fmt.Printf("[*] Target: %s\n", targetURL)
@@ -235,6 +247,7 @@ var scanCmd = &cobra.Command{
 					mapHeaders(cfg.IncludeHeaders),
 					mapHeaders(cfg.ExcludeHeaders),
 					cfg.Delay,
+					limiter,
 				)
 				results := manager.Run(ctx, seeds, cfg.Threads)
 				for r := range results {
@@ -254,6 +267,7 @@ var scanCmd = &cobra.Command{
 					mapHeaders(cfg.ExcludeHeaders),
 					cfg.Threads,
 					cfg.Delay,
+					limiter,
 					jobs,
 				)
 
@@ -423,6 +437,13 @@ func init() {
 		"delay",
 		"",
 		"delay between requests per worker",
+	)
+
+	scanCmd.Flags().Float64Var(
+		&flagRate,
+		"rate",
+		0,
+		"maximum requests per second across all workers",
 	)
 }
 

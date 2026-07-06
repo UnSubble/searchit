@@ -29,7 +29,7 @@ func runBench(b *testing.B, workers int) {
 	defer srv.Close()
 
 	a := benchApp(b)
-	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0)
+	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0, nil)
 
 	urls := make([]string, b.N)
 	for i := range urls {
@@ -39,6 +39,28 @@ func runBench(b *testing.B, workers int) {
 	b.ResetTimer()
 
 	for range s.Scan(context.Background(), engine.SliceProducer{URLs: urls}, workers) {
+	}
+}
+
+func BenchmarkWorker_RateLimitZeroOverhead(b *testing.B) {
+	b.ReportAllocs()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a := benchApp(b)
+	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0, nil)
+
+	urls := make([]string, b.N)
+	for i := range urls {
+		urls[i] = fmt.Sprintf("%s/%d", srv.URL, i)
+	}
+
+	b.ResetTimer()
+
+	for range s.Scan(context.Background(), engine.SliceProducer{URLs: urls}, 32) {
 	}
 }
 
