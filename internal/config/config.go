@@ -14,10 +14,11 @@ type Config struct {
 	URLs     []string
 	Wordlist string
 
-	Threads int
-	Timeout int // seconds
-	Delay   time.Duration
-	Rate    float64
+	Threads        int
+	Timeout        int // seconds
+	Delay          time.Duration
+	Rate           float64
+	ConnectTimeout time.Duration
 
 	Recursive bool
 	MaxDepth  uint16

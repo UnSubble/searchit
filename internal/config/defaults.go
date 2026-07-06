@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/status"
 )
@@ -13,12 +15,13 @@ func Default() Config {
 	}
 
 	return Config{
-		Threads:   32,
-		Timeout:   10,
-		Recursive: false,
-		MaxDepth:  3,
-		Strategy:  recursion.BFS,
-		RecurseOn: status.MustParse("200,301,302,403"),
+		Threads:        32,
+		Timeout:        10,
+		ConnectTimeout: 10 * time.Second,
+		Recursive:      false,
+		MaxDepth:       3,
+		Strategy:       recursion.BFS,
+		RecurseOn:      status.MustParse("200,301,302,403"),
 		Paths: PathConfig{
 			NormalizePaths:  false,
 			CollapseSlashes: false,

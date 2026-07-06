@@ -41,6 +41,7 @@ func runIntegrationCommand(args []string) (string, error) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
+	flagConnectTimeout = "10s"
 	resolvedTargets = nil
 
 	cmd := rootCmd
@@ -337,6 +338,32 @@ func TestIntegration_Scans(t *testing.T) {
 			t.Errorf("expected elapsed time >= 150ms with rate=10 and delay=50ms, got %v", elapsed)
 		}
 	})
+
+	t.Run("custom connect timeout", func(t *testing.T) {
+		// Run with --connect-timeout 200ms
+		_, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", wordlistPath,
+			"--connect-timeout", "200ms",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+	})
+
+	t.Run("zero connect timeout", func(t *testing.T) {
+		// Run with --connect-timeout 0
+		_, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", wordlistPath,
+			"--connect-timeout", "0",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+	})
 }
 
 func TestIntegration_ValidationErrors(t *testing.T) {
@@ -429,6 +456,16 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 			name:    "invalid max depth",
 			args:    []string{"scan", "-u", "http://localhost", "-r", "--max-depth", "0"},
 			wantErr: "max depth must be at least 1",
+		},
+		{
+			name:    "invalid connect-timeout string",
+			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "abc"},
+			wantErr: "invalid connect-timeout",
+		},
+		{
+			name:    "negative connect-timeout",
+			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "-5s"},
+			wantErr: "connect-timeout cannot be negative",
 		},
 	}
 

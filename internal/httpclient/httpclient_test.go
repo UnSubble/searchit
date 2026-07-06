@@ -11,28 +11,28 @@ import (
 )
 
 func TestNew_ReturnsClient(t *testing.T) {
-	c := httpclient.New(10)
+	c := httpclient.New(10, 10*time.Second)
 	if c == nil {
 		t.Fatal("New returned nil")
 	}
 }
 
 func TestNew_TimeoutSet(t *testing.T) {
-	c := httpclient.New(5)
+	c := httpclient.New(5, 10*time.Second)
 	if c.Timeout != 5*time.Second {
 		t.Errorf("Timeout = %v, want 5s", c.Timeout)
 	}
 }
 
 func TestNew_HasTransport(t *testing.T) {
-	c := httpclient.New(10)
+	c := httpclient.New(10, 10*time.Second)
 	if c.Transport == nil {
 		t.Fatal("Transport is nil; connection pooling will be disabled")
 	}
 }
 
 func TestNew_TransportSettings(t *testing.T) {
-	c := httpclient.New(10)
+	c := httpclient.New(10, 10*time.Second)
 	tr, ok := c.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("Transport is not *http.Transport")
@@ -89,5 +89,23 @@ func TestContentLength_Absent(t *testing.T) {
 
 	if got := httpclient.ContentLength(resp); got != -1 {
 		t.Errorf("ContentLength = %d, want -1 for chunked response without Content-Length", got)
+	}
+}
+
+func TestNew_ConnectTimeout(t *testing.T) {
+	c := httpclient.New(10, 50*time.Millisecond)
+
+	// Use an unroutable IP address that will time out during TCP connection establishment
+	start := time.Now()
+	_, err := c.Get("http://10.255.255.1:80")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected connection to fail due to timeout")
+	}
+
+	// It should fail quickly (well under the 10s request timeout)
+	if elapsed > 2*time.Second {
+		t.Errorf("expected connection attempt to time out quickly, but took %v", elapsed)
 	}
 }

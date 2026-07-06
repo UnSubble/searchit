@@ -180,6 +180,26 @@ func TestCLI_Validation(t *testing.T) {
 			args:    []string{"scan", "-u", "http://localhost", "--rate", "0"},
 			wantErr: true,
 		},
+		{
+			name:    "valid connect-timeout",
+			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "500ms"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid connect-timeout format",
+			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "abc"},
+			wantErr: true,
+		},
+		{
+			name:    "negative connect-timeout",
+			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "-5s"},
+			wantErr: true,
+		},
+		{
+			name:    "zero connect-timeout",
+			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "0"},
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -204,6 +224,7 @@ func TestCLI_Validation(t *testing.T) {
 			flagExcludeHeaders = nil
 			flagDelay = ""
 			flagRate = 0
+			flagConnectTimeout = "10s"
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -285,6 +306,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 			flagExcludeHeaders = nil
 			flagDelay = ""
 			flagRate = 0
+			flagConnectTimeout = "10s"
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -354,6 +376,7 @@ func TestCLI_PathFlags(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
+	flagConnectTimeout = "10s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -398,6 +421,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
+	flagConnectTimeout = "10s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -475,6 +499,7 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
+	flagConnectTimeout = "10s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -536,6 +561,7 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	flagExcludeHeaders = nil
 	flagDelay = ""
 	flagRate = 0
+	flagConnectTimeout = "10s"
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

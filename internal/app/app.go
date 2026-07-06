@@ -23,7 +23,7 @@ func New(ctx context.Context, cfg config.Config) *App {
 		ctx = context.Background()
 	}
 
-	client := httpclient.New(cfg.Timeout)
+	client := httpclient.New(cfg.Timeout, cfg.ConnectTimeout)
 
 	return &App{
 		Context:    ctx,

@@ -41,6 +41,7 @@ var (
 	flagExcludeHeaders  []string
 	flagDelay           string
 	flagRate            float64
+	flagConnectTimeout  string
 
 	resolvedTargets []string
 )
@@ -93,6 +94,16 @@ var scanCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("rate") && flagRate <= 0 {
 			return fmt.Errorf("rate must be greater than 0")
+		}
+
+		if flagConnectTimeout != "" {
+			ct, err := time.ParseDuration(flagConnectTimeout)
+			if err != nil {
+				return fmt.Errorf("invalid connect-timeout: %w", err)
+			}
+			if ct < 0 {
+				return fmt.Errorf("connect-timeout cannot be negative")
+			}
 		}
 
 		for _, h := range flagIncludeHeaders {
@@ -161,17 +172,23 @@ var scanCmd = &cobra.Command{
 			delay, _ = time.ParseDuration(flagDelay)
 		}
 
+		var connectTimeout time.Duration
+		if flagConnectTimeout != "" {
+			connectTimeout, _ = time.ParseDuration(flagConnectTimeout)
+		}
+
 		cfg := config.Config{
-			URLs:      resolvedTargets,
-			Wordlist:  flagWordlist,
-			Threads:   flagThreads,
-			Timeout:   flagTimeout,
-			Delay:     delay,
-			Rate:      flagRate,
-			Recursive: flagRecursive,
-			MaxDepth:  flagMaxDepth,
-			Strategy:  strat,
-			RecurseOn: recurseFilters,
+			URLs:           resolvedTargets,
+			Wordlist:       flagWordlist,
+			Threads:        flagThreads,
+			Timeout:        flagTimeout,
+			Delay:          delay,
+			Rate:           flagRate,
+			ConnectTimeout: connectTimeout,
+			Recursive:      flagRecursive,
+			MaxDepth:       flagMaxDepth,
+			Strategy:       strat,
+			RecurseOn:      recurseFilters,
 			Paths: config.PathConfig{
 				NormalizePaths:  flagNormalizePaths,
 				CollapseSlashes: flagCollapseSlashes,
@@ -444,6 +461,13 @@ func init() {
 		"rate",
 		0,
 		"maximum requests per second across all workers",
+	)
+
+	scanCmd.Flags().StringVar(
+		&flagConnectTimeout,
+		"connect-timeout",
+		"10s",
+		"timeout for establishing new TCP connections",
 	)
 }
 
