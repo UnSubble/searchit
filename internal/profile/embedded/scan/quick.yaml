@@ -6,6 +6,3 @@ description: Fast lightweight scan with high concurrency
 config:
   threads: 64
   timeout: 5
-  recursive: false
-  max_depth: 3
-  exclude_status: "404"

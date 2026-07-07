@@ -20,29 +20,7 @@ import (
 func runIntegrationCommand(args []string) (string, error) {
 	rootCmd.SetContext(nil)
 	scanCmd.SetContext(nil)
-	// Reset all flag variables to default
-	flagURL = ""
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagNormalizePaths = false
-	flagCollapseSlashes = false
-	flagOutput = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
-	resolvedTargets = nil
+	resetFlagsForTest()
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

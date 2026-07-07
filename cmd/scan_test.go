@@ -14,6 +14,33 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 )
 
+
+func resetFlagsForTest() {
+	flagURL = ""
+	flagURLFile = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagNormalizePaths = false
+	flagCollapseSlashes = false
+	flagOutput = "text"
+	flagQuiet = false
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+	flagDelay = ""
+	flagRate = 0
+	flagConnectTimeout = "3s"
+	flagProfiles = nil
+	resolvedTargets = nil
+}
+
 func TestCLI_Validation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -206,25 +233,7 @@ func TestCLI_Validation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rootCmd.SetContext(nil)
 			scanCmd.SetContext(nil)
-			flagURL = ""
-			flagURLFile = ""
-			flagWordlist = ""
-			flagThreads = 32
-			flagTimeout = 10
-			flagRecursive = false
-			flagMaxDepth = 3
-			flagStrategy = "bfs"
-			flagExcludeStatus = "404"
-			flagRecurseOn = "200,301,302,403"
-			flagOutput = "text"
-			flagQuiet = false
-			flagIncludeSize = ""
-			flagExcludeSize = ""
-			flagIncludeHeaders = nil
-			flagExcludeHeaders = nil
-			flagDelay = ""
-			flagRate = 0
-			flagConnectTimeout = "3s"
+			resetFlagsForTest()
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -288,25 +297,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rootCmd.SetContext(nil)
 			scanCmd.SetContext(nil)
-			flagURL = ""
-			flagURLFile = ""
-			flagWordlist = ""
-			flagThreads = 32
-			flagTimeout = 10
-			flagRecursive = false
-			flagMaxDepth = 3
-			flagStrategy = "bfs"
-			flagExcludeStatus = "404"
-			flagRecurseOn = "200,301,302,403"
-			flagOutput = "text"
-			flagQuiet = false
-			flagIncludeSize = ""
-			flagExcludeSize = ""
-			flagIncludeHeaders = nil
-			flagExcludeHeaders = nil
-			flagDelay = ""
-			flagRate = 0
-			flagConnectTimeout = "3s"
+			resetFlagsForTest()
 
 			cmd := rootCmd
 			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -356,27 +347,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 func TestCLI_PathFlags(t *testing.T) {
 	rootCmd.SetContext(nil)
 	scanCmd.SetContext(nil)
-	flagURL = ""
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagNormalizePaths = false
-	flagCollapseSlashes = false
-	flagOutput = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
+	resetFlagsForTest()
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -403,25 +374,7 @@ func TestCLI_PathFlags(t *testing.T) {
 func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	rootCmd.SetContext(nil)
 	scanCmd.SetContext(nil)
-	flagURL = ""
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagOutput = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
+	resetFlagsForTest()
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -481,25 +434,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	rootCmd.SetContext(nil)
 	scanCmd.SetContext(nil)
-	flagURL = ""
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagOutput = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
+	resetFlagsForTest()
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -543,25 +478,7 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 
 	rootCmd.SetContext(nil)
 	scanCmd.SetContext(nil)
-	flagURL = ""
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagOutput = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
+	resetFlagsForTest()
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

@@ -1,0 +1,218 @@
+package cmd
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/spf13/pflag"
+	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/recursion"
+)
+
+func runScanProfileTest(args []string, hook func(config.Config)) error {
+	// Reset all flag variables
+	flagURL = "http://localhost" // Set a default to satisfy validation
+	flagURLFile = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagNormalizePaths = false
+	flagCollapseSlashes = false
+	flagOutput = "text"
+	flagQuiet = false
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+	flagDelay = ""
+	flagRate = 0
+	flagConnectTimeout = "3s"
+	flagProfiles = nil
+	resolvedTargets = nil
+
+	// Set test hook
+	testHookConfigApplied = hook
+	defer func() { testHookConfigApplied = nil }()
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	cmd.SetArgs(args)
+
+	return cmd.ExecuteContext(context.Background())
+}
+
+func TestScanProfile_Defaults(t *testing.T) {
+	var captured config.Config
+	err := runScanProfileTest([]string{"scan"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+
+	if captured.Threads != 32 {
+		t.Errorf("expected default threads 32, got %d", captured.Threads)
+	}
+	if captured.Timeout != 10 {
+		t.Errorf("expected default timeout 10, got %d", captured.Timeout)
+	}
+}
+
+func TestScanProfile_SingleProfile(t *testing.T) {
+	var captured config.Config
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+
+	if captured.Threads != 64 {
+		t.Errorf("expected threads 64 from scan/quick, got %d", captured.Threads)
+	}
+	if captured.Timeout != 5 {
+		t.Errorf("expected timeout 5 from scan/quick, got %d", captured.Timeout)
+	}
+	// Verify that strategy remains default (BFS)
+	if captured.Strategy != recursion.BFS {
+		t.Errorf("expected default strategy BFS, got %v", captured.Strategy)
+	}
+}
+
+func TestScanProfile_MultipleProfiles(t *testing.T) {
+	var captured config.Config
+	// scan/quick sets threads: 64, timeout: 5
+	// scan/deep sets threads: 16, timeout: 30, recursive: true, max-depth: 5
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick", "--profile", "scan/deep"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+
+	// scan/deep should win on threads and timeout, but quick's other defaults/profiles are applied
+	if captured.Threads != 16 {
+		t.Errorf("expected threads 16 (from deep overriding quick), got %d", captured.Threads)
+	}
+	if captured.Timeout != 30 {
+		t.Errorf("expected timeout 30 (from deep overriding quick), got %d", captured.Timeout)
+	}
+	if !captured.Recursive {
+		t.Errorf("expected recursive true from deep")
+	}
+}
+
+func TestScanProfile_OverlayOrdering(t *testing.T) {
+	var captured config.Config
+	// Reverse order of deep and quick
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/deep", "--profile", "scan/quick"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+
+	// scan/quick should win on threads and timeout
+	if captured.Threads != 64 {
+		t.Errorf("expected threads 64 (from quick overriding deep), got %d", captured.Threads)
+	}
+	if captured.Timeout != 5 {
+		t.Errorf("expected timeout 5 (from quick overriding deep), got %d", captured.Timeout)
+	}
+	// But scan/deep's recursive setting (since scan/quick doesn't define it) should still be true!
+	if !captured.Recursive {
+		t.Errorf("expected recursive true (retained from deep because quick is an overlay and does not define it)")
+	}
+}
+
+func TestScanProfile_CLIOverrides(t *testing.T) {
+	var captured config.Config
+	// CLI threads=8 should override scan/quick's threads=64
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick", "--threads", "8"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+
+	if captured.Threads != 8 {
+		t.Errorf("expected threads 8 (CLI override), got %d", captured.Threads)
+	}
+	// Timeout should still be 5 from the profile
+	if captured.Timeout != 5 {
+		t.Errorf("expected timeout 5 (from profile), got %d", captured.Timeout)
+	}
+}
+
+func TestScanProfile_UserProfile(t *testing.T) {
+	// Create a temp directory for user profiles
+	tmpDir := t.TempDir()
+	scanDir := filepath.Join(tmpDir, "scan")
+	if err := os.MkdirAll(scanDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	overrideYAML := `version: 1
+name: scan/custom
+tool: scan
+description: Custom user scan profile
+config:
+  threads: 99
+  timeout: 45
+`
+	if err := os.WriteFile(filepath.Join(scanDir, "custom.yaml"), []byte(overrideYAML), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// We must temporarily override the home/user dir location or mock the store.
+	// Since NewStore uses ~/.config/searchit/profiles by default, we can set Home directory env var
+	// or override the default UserDir in loader.go.
+	// Let's check how loader.go resolves UserDir:
+	// func (s *DefaultStore) userDir() string {
+	//     if s.UserDir != "" { return s.UserDir }
+	//     home, _ := os.UserHomeDir()
+	//     return filepath.Join(home, ".config", "searchit", "profiles")
+	// }
+	// In loader.go, s.UserDir can be set or it defaults to os.UserHomeDir().
+	// In cmd/scan.go, it uses:
+	// store := profile.NewStore()
+	// which returns a DefaultStore. If we mock/override the environment variable HOME,
+	// os.UserHomeDir() will return our temp dir!
+	// Let's set HOME / USERPROFILE env var.
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Since on some OS it's USERPROFILE or we want to construct the exact structure:
+	// ~/.config/searchit/profiles/scan/custom.yaml
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userConfigDir, "custom.yaml"), []byte(overrideYAML), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var captured config.Config
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/custom"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+
+	if captured.Threads != 99 {
+		t.Errorf("expected threads 99 (from user custom profile), got %d", captured.Threads)
+	}
+	if captured.Timeout != 45 {
+		t.Errorf("expected timeout 45 (from user custom profile), got %d", captured.Timeout)
+	}
+}

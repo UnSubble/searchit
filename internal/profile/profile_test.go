@@ -20,8 +20,8 @@ type scanConfig struct {
 	Threads       int    `yaml:"threads"`
 	Timeout       int    `yaml:"timeout"`
 	Recursive     bool   `yaml:"recursive"`
-	MaxDepth      uint16 `yaml:"max_depth"`
-	ExcludeStatus string `yaml:"exclude_status"`
+	MaxDepth      uint16 `yaml:"max-depth"`
+	ExcludeStatus string `yaml:"exclude-status"`
 }
 
 // ---------------------------------------------------------------------------
@@ -338,9 +338,8 @@ func TestDecode_PopulatesStruct(t *testing.T) {
 	if cfg.MaxDepth != 5 {
 		t.Errorf("MaxDepth = %d, want 5", cfg.MaxDepth)
 	}
-	if cfg.ExcludeStatus != "404" {
-		t.Errorf("ExcludeStatus = %q, want %q", cfg.ExcludeStatus, "404")
-	}
+	// scan/deep is a true overlay — it does not include exclude-status,
+	// so ExcludeStatus should remain at its zero value.
 }
 
 func TestDecode_ArbitraryStruct(t *testing.T) {

@@ -7,5 +7,4 @@ config:
   threads: 16
   timeout: 30
   recursive: true
-  max_depth: 5
-  exclude_status: "404"
+  max-depth: 5

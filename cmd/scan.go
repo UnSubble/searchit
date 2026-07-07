@@ -12,6 +12,8 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/profile"
+	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -42,8 +44,11 @@ var (
 	flagDelay           string
 	flagRate            float64
 	flagConnectTimeout  string
+	flagProfiles        []string
 
 	resolvedTargets []string
+
+	testHookConfigApplied func(config.Config)
 )
 
 var scanCmd = &cobra.Command{
@@ -140,68 +145,31 @@ var scanCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		excludeFilters, err := status.Parse(flagExcludeStatus)
-		if err != nil {
-			return fmt.Errorf("invalid exclude-status: %w", err)
+		// 1. Start from defaults.
+		cfg := config.Default()
+
+		// 2. Apply profiles (left → right).
+		if len(flagProfiles) > 0 {
+			store := profile.NewStore()
+			for _, name := range flagProfiles {
+				p, err := store.Load(name)
+				if err != nil {
+					return fmt.Errorf("load profile %q: %w", name, err)
+				}
+				var overlay scanProfile.Overlay
+				if err := p.Decode(&overlay); err != nil {
+					return fmt.Errorf("decode profile %q: %w", name, err)
+				}
+				scanProfile.Apply(&cfg, overlay)
+			}
 		}
 
-		strat, err := recursion.ParseStrategy(flagStrategy)
-		if err != nil {
-			return err
-		}
+		// 3. Apply CLI flags (highest priority — only if explicitly changed).
+		applyCLIOverrides(cmd, &cfg)
 
-		recurseFilters, err := status.Parse(flagRecurseOn)
-		if err != nil {
-			return fmt.Errorf("invalid recurse-on: %w", err)
-		}
-
-		incSize, err := size.Parse(flagIncludeSize)
-		if err != nil {
-			return err
-		}
-		excSize, err := size.Parse(flagExcludeSize)
-		if err != nil {
-			return err
-		}
-
-		incHeaders := parseHeaderFlags(flagIncludeHeaders)
-		excHeaders := parseHeaderFlags(flagExcludeHeaders)
-
-		var delay time.Duration
-		if flagDelay != "" {
-			delay, _ = time.ParseDuration(flagDelay)
-		}
-
-		var connectTimeout time.Duration
-		if flagConnectTimeout != "" {
-			connectTimeout, _ = time.ParseDuration(flagConnectTimeout)
-		}
-
-		cfg := config.Config{
-			URLs:           resolvedTargets,
-			Wordlist:       flagWordlist,
-			Threads:        flagThreads,
-			Timeout:        flagTimeout,
-			Delay:          delay,
-			Rate:           flagRate,
-			ConnectTimeout: connectTimeout,
-			Recursive:      flagRecursive,
-			MaxDepth:       flagMaxDepth,
-			Strategy:       strat,
-			RecurseOn:      recurseFilters,
-			Paths: config.PathConfig{
-				NormalizePaths:  flagNormalizePaths,
-				CollapseSlashes: flagCollapseSlashes,
-			},
-			Output:         flagOutput,
-			Quiet:          flagQuiet,
-			IncludeSize:    incSize,
-			ExcludeSize:    excSize,
-			IncludeHeaders: incHeaders,
-			ExcludeHeaders: excHeaders,
-			Status: config.StatusConfig{
-				Exclude: excludeFilters,
-			},
+		if testHookConfigApplied != nil {
+			testHookConfigApplied(cfg)
+			return nil
 		}
 
 		ctx := cmd.Context()
@@ -243,7 +211,7 @@ var scanCmd = &cobra.Command{
 					fmt.Println("[*] Recursive scan enabled")
 					fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
 					fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
-					fmt.Printf("[*] Recurse on: %s\n", flagRecurseOn)
+					fmt.Printf("[*] Recurse on: %s\n", formatRecurseOn(cfg))
 					if !cfg.RecurseOn.Match(404) {
 						fmt.Println("[*] 404 responses are ignored by default.")
 					}
@@ -308,6 +276,94 @@ var scanCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// applyCLIOverrides applies CLI flag values to cfg, but only for flags
+// that the user explicitly provided. This ensures that profile values
+// are not overridden by default flag values.
+func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
+	cfg.URLs = resolvedTargets
+
+	if cmd.Flags().Changed("wordlist") {
+		cfg.Wordlist = flagWordlist
+	}
+	if cmd.Flags().Changed("threads") {
+		cfg.Threads = flagThreads
+	}
+	if cmd.Flags().Changed("timeout") {
+		cfg.Timeout = flagTimeout
+	}
+	if cmd.Flags().Changed("delay") {
+		if d, err := time.ParseDuration(flagDelay); err == nil {
+			cfg.Delay = d
+		}
+	}
+	if cmd.Flags().Changed("rate") {
+		cfg.Rate = flagRate
+	}
+	if cmd.Flags().Changed("connect-timeout") {
+		if d, err := time.ParseDuration(flagConnectTimeout); err == nil {
+			cfg.ConnectTimeout = d
+		}
+	}
+	if cmd.Flags().Changed("recursive") {
+		cfg.Recursive = flagRecursive
+	}
+	if cmd.Flags().Changed("max-depth") {
+		cfg.MaxDepth = flagMaxDepth
+	}
+	if cmd.Flags().Changed("strategy") {
+		if s, err := recursion.ParseStrategy(flagStrategy); err == nil {
+			cfg.Strategy = s
+		}
+	}
+	if cmd.Flags().Changed("exclude-status") {
+		if f, err := status.Parse(flagExcludeStatus); err == nil {
+			cfg.Status.Exclude = f
+		}
+	}
+	if cmd.Flags().Changed("recurse-on") {
+		if f, err := status.Parse(flagRecurseOn); err == nil {
+			cfg.RecurseOn = f
+		}
+	}
+	if cmd.Flags().Changed("normalize-paths") {
+		cfg.Paths.NormalizePaths = flagNormalizePaths
+	}
+	if cmd.Flags().Changed("collapse-slashes") {
+		cfg.Paths.CollapseSlashes = flagCollapseSlashes
+	}
+	if cmd.Flags().Changed("output") {
+		cfg.Output = flagOutput
+	}
+	if cmd.Flags().Changed("quiet") {
+		cfg.Quiet = flagQuiet
+	}
+	if cmd.Flags().Changed("include-size") {
+		if f, err := size.Parse(flagIncludeSize); err == nil {
+			cfg.IncludeSize = f
+		}
+	}
+	if cmd.Flags().Changed("exclude-size") {
+		if f, err := size.Parse(flagExcludeSize); err == nil {
+			cfg.ExcludeSize = f
+		}
+	}
+	if cmd.Flags().Changed("include-header") {
+		cfg.IncludeHeaders = parseHeaderFlags(flagIncludeHeaders)
+	}
+	if cmd.Flags().Changed("exclude-header") {
+		cfg.ExcludeHeaders = parseHeaderFlags(flagExcludeHeaders)
+	}
+}
+
+// formatRecurseOn returns a human-readable string for the recurse-on filters.
+// Prefers the CLI flag value if set, otherwise falls back to the default.
+func formatRecurseOn(cfg config.Config) string {
+	if flagRecurseOn != "" {
+		return flagRecurseOn
+	}
+	return "200,301,302,403"
 }
 
 func init() {
@@ -468,6 +524,13 @@ func init() {
 		"connect-timeout",
 		"3s",
 		"timeout for establishing new TCP connections",
+	)
+
+	scanCmd.Flags().StringSliceVar(
+		&flagProfiles,
+		"profile",
+		nil,
+		"profile(s) to apply (e.g. scan/quick); may be specified multiple times",
 	)
 }
 
