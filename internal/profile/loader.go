@@ -226,4 +226,3 @@ func (s *DefaultStore) Create(profile Profile) error {
 
 	return nil
 }
-

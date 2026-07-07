@@ -555,21 +555,21 @@ func TestCreateProfile_InvalidNames(t *testing.T) {
 	configNode.Kind = yaml.MappingNode
 
 	invalidNames := []string{
-		"",               // empty name
-		"scan",           // missing namespace
-		"scan/",          // trailing slash
-		"/scan/test",     // leading slash
-		"scan//test",     // consecutive slashes
-		"scan/.",         // dot
-		"scan/..",        // dot dot
-		"scan/a\\b",      // backslash
-		"scan/a:b",       // colon
-		"scan/a*b",       // asterisk
-		"scan/a?b",       // question mark
-		"scan/a\"b",      // quote
-		"scan/a<b",       // angle bracket
-		"scan/a>b",       // angle bracket
-		"scan/a|b",       // pipe
+		"",           // empty name
+		"scan",       // missing namespace
+		"scan/",      // trailing slash
+		"/scan/test", // leading slash
+		"scan//test", // consecutive slashes
+		"scan/.",     // dot
+		"scan/..",    // dot dot
+		"scan/a\\b",  // backslash
+		"scan/a:b",   // colon
+		"scan/a*b",   // asterisk
+		"scan/a?b",   // question mark
+		"scan/a\"b",  // quote
+		"scan/a<b",   // angle bracket
+		"scan/a>b",   // angle bracket
+		"scan/a|b",   // pipe
 	}
 
 	for _, name := range invalidNames {
@@ -629,4 +629,3 @@ func TestCreateProfile_YAMLSerialization(t *testing.T) {
 		}
 	}
 }
-
