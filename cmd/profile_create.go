@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/profile"
@@ -28,12 +27,12 @@ func init() {
 func runProfileCreate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	// 1. Validate namespace count
-	parts := strings.Split(name, "/")
-	if len(parts) < 2 || parts[0] == "" {
-		return fmt.Errorf("profile name must include a namespace/tool (e.g. scan/myprofile)")
+	// 1. Parse and validate name
+	parsedName, err := profile.ParseName(name)
+	if err != nil {
+		return err
 	}
-	tool := parts[0]
+	tool := parsedName.Tool
 
 	// 2. Initialize empty config mapping node: {}
 	var configNode yaml.Node

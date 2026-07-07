@@ -149,3 +149,88 @@ func TestProfileCreate_InvalidName(t *testing.T) {
 		t.Fatal("expected invalid name to fail, but got no error")
 	}
 }
+
+func TestProfileValidate_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Create a valid user profile
+	_, err := runProfileCommand([]string{"profile", "create", "scan/myval"})
+	if err != nil {
+		t.Fatalf("profile create failed: %v", err)
+	}
+
+	// Validate it
+	out, err := runProfileCommand([]string{"profile", "validate", "scan/myval"})
+	if err != nil {
+		t.Fatalf("profile validate failed: %v", err)
+	}
+
+	if !strings.Contains(out, "Valid profile:") {
+		t.Errorf("expected output to contain 'Valid profile:', got:\n%s", out)
+	}
+	if !strings.Contains(out, "scan/myval") {
+		t.Errorf("expected output to contain profile name, got:\n%s", out)
+	}
+}
+
+func TestProfileValidate_Failure_MissingFile(t *testing.T) {
+	_, err := runProfileCommand([]string{"profile", "validate", "scan/missing"})
+	if err == nil {
+		t.Fatal("expected validation to fail for missing file, got nil")
+	}
+}
+
+func TestProfileValidate_Failure_InvalidContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Write an invalid profile (e.g. invalid strategy)
+	scanDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	_ = os.MkdirAll(scanDir, 0o755)
+	invalidYAML := `version: 1
+name: scan/invalidval
+tool: scan
+config:
+  strategy: invalid
+`
+	_ = os.WriteFile(filepath.Join(scanDir, "invalidval.yaml"), []byte(invalidYAML), 0o644)
+
+	out, err := runProfileCommand([]string{"profile", "validate", "scan/invalidval"})
+	if err == nil {
+		t.Fatal("expected validation to fail for invalid strategy, got nil")
+	}
+
+	if !strings.Contains(out, "Validation failed:") {
+		t.Errorf("expected output to contain 'Validation failed:', got:\n%s", out)
+	}
+	if !strings.Contains(out, "invalid strategy") {
+		t.Errorf("expected output to contain 'invalid strategy' error, got:\n%s", out)
+	}
+}
+
+func TestProfileValidate_Failure_MalformedYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	scanDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	_ = os.MkdirAll(scanDir, 0o755)
+	malformedYAML := `version: 1
+name: scan/malformed
+tool: scan
+config:
+  threads: : invalid
+`
+	_ = os.WriteFile(filepath.Join(scanDir, "malformed.yaml"), []byte(malformedYAML), 0o644)
+
+	_, err := runProfileCommand([]string{"profile", "validate", "scan/malformed"})
+	if err == nil {
+		t.Fatal("expected validation to fail for malformed YAML, got nil")
+	}
+}

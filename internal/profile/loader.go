@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -146,41 +145,12 @@ func (s *DefaultStore) List() ([]ProfileInfo, error) {
 	return result, nil
 }
 
-// ValidateName checks if a profile name/namespace is valid.
-func ValidateName(name string) error {
-	if name == "" {
-		return fmt.Errorf("profile name cannot be empty")
-	}
-	if strings.Contains(name, "//") {
-		return fmt.Errorf("profile name cannot contain consecutive slashes")
-	}
-	if strings.HasPrefix(name, "/") {
-		return fmt.Errorf("profile name cannot start with a slash")
-	}
-	if strings.HasSuffix(name, "/") {
-		return fmt.Errorf("profile name cannot end with a slash")
-	}
-	parts := strings.Split(name, "/")
-	if len(parts) < 2 {
-		return fmt.Errorf("profile name must include a namespace/tool (e.g. scan/myprofile)")
-	}
-	for _, p := range parts {
-		if p == "" || p == "." || p == ".." {
-			return fmt.Errorf("invalid segment %q in profile name", p)
-		}
-		if strings.ContainsAny(p, "\\:*?\"<>|") {
-			return fmt.Errorf("segment %q contains invalid characters", p)
-		}
-	}
-	return nil
-}
-
 // Create persists a new profile to the user config directory.
 // Returns an error if the profile name is invalid, if the profile already exists,
 // or if writing to the filesystem fails.
 func (s *DefaultStore) Create(profile Profile) error {
 	name := profile.Name
-	if err := ValidateName(name); err != nil {
+	if _, err := ParseName(name); err != nil {
 		return err
 	}
 

@@ -629,3 +629,121 @@ func TestCreateProfile_YAMLSerialization(t *testing.T) {
 		}
 	}
 }
+
+func TestParseName(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    profile.Name
+		wantErr bool
+	}{
+		{"scan/base", profile.Name{Tool: "scan", Name: "scan/base"}, false},
+		{"fuzz/json-api", profile.Name{Tool: "fuzz", Name: "fuzz/json-api"}, false},
+		{"subdomain/default", profile.Name{Tool: "subdomain", Name: "subdomain/default"}, false},
+		{"", profile.Name{}, true},
+		{"scan", profile.Name{}, true},
+		{"/scan/test", profile.Name{}, true},
+		{"scan/", profile.Name{}, true},
+		{"scan//test", profile.Name{}, true},
+		{"scan/.", profile.Name{}, true},
+		{"scan/..", profile.Name{}, true},
+		{"scan/a\\b", profile.Name{}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := profile.ParseName(tc.input)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("ParseName(%q) error = %v, wantErr %v", tc.input, err, tc.wantErr)
+			}
+			if !tc.wantErr && got != tc.want {
+				t.Errorf("ParseName(%q) = %+v, want %+v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidate_GenericValidation(t *testing.T) {
+	// Valid profile helper
+	validProfile := func() profile.Profile {
+		var node yaml.Node
+		node.Kind = yaml.MappingNode
+		return profile.Profile{
+			Version:     1,
+			Name:        "scan/myprofile",
+			Tool:        "scan",
+			Description: "desc",
+			Config:      node,
+		}
+	}
+
+	t.Run("valid profile", func(t *testing.T) {
+		p := validProfile()
+		if err := profile.Validate(&p); err != nil {
+			t.Fatalf("expected valid profile, got error: %v", err)
+		}
+	})
+
+	t.Run("missing version", func(t *testing.T) {
+		p := validProfile()
+		p.Version = 0
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for missing version, got nil")
+		}
+	})
+
+	t.Run("unsupported version", func(t *testing.T) {
+		p := validProfile()
+		p.Version = 2
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for unsupported version, got nil")
+		}
+	})
+
+	t.Run("missing tool", func(t *testing.T) {
+		p := validProfile()
+		p.Tool = ""
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for missing tool, got nil")
+		}
+	})
+
+	t.Run("missing name", func(t *testing.T) {
+		p := validProfile()
+		p.Name = ""
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for missing name, got nil")
+		}
+	})
+
+	t.Run("invalid namespace", func(t *testing.T) {
+		p := validProfile()
+		p.Name = "invalidname"
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for invalid name, got nil")
+		}
+	})
+
+	t.Run("tool namespace mismatch", func(t *testing.T) {
+		p := validProfile()
+		p.Name = "fuzz/profile" // Tool is scan, name namespace is fuzz
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for namespace mismatch, got nil")
+		}
+	})
+
+	t.Run("missing config node", func(t *testing.T) {
+		p := validProfile()
+		p.Config = yaml.Node{} // kind = 0
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for missing config, got nil")
+		}
+	})
+
+	t.Run("invalid config node type (not mapping)", func(t *testing.T) {
+		p := validProfile()
+		p.Config.Kind = yaml.ScalarNode // scalar
+		if err := profile.Validate(&p); err == nil {
+			t.Fatal("expected error for non-mapping config, got nil")
+		}
+	})
+}

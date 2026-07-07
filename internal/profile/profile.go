@@ -11,6 +11,7 @@ package profile
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,4 +53,42 @@ type ProfileInfo struct {
 	Tool        string
 	Description string
 	Builtin     bool
+}
+
+// Name represents a parsed and validated profile name.
+type Name struct {
+	Tool string
+	Name string
+}
+
+// ParseName parses and validates a profile name.
+func ParseName(s string) (Name, error) {
+	if s == "" {
+		return Name{}, fmt.Errorf("profile name cannot be empty")
+	}
+	if strings.Contains(s, "//") {
+		return Name{}, fmt.Errorf("profile name cannot contain consecutive slashes")
+	}
+	if strings.HasPrefix(s, "/") {
+		return Name{}, fmt.Errorf("profile name cannot start with a slash")
+	}
+	if strings.HasSuffix(s, "/") {
+		return Name{}, fmt.Errorf("profile name cannot end with a slash")
+	}
+	parts := strings.Split(s, "/")
+	if len(parts) < 2 {
+		return Name{}, fmt.Errorf("profile name must include a namespace/tool (e.g. scan/myprofile)")
+	}
+	for _, p := range parts {
+		if p == "" || p == "." || p == ".." {
+			return Name{}, fmt.Errorf("invalid segment %q in profile name", p)
+		}
+		if strings.ContainsAny(p, "\\:*?\"<>|") {
+			return Name{}, fmt.Errorf("segment %q contains invalid characters", p)
+		}
+	}
+	return Name{
+		Tool: parts[0],
+		Name: s,
+	}, nil
 }
