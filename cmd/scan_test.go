@@ -14,7 +14,6 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 )
 
-
 func resetFlagsForTest() {
 	flagURL = ""
 	flagURLFile = ""
