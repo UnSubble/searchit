@@ -157,6 +157,47 @@ searchit scan \
     --delay 100ms
 ```
 
+## Profile Management (v0.3.0)
+
+Profiles are global Searchit resources. They are **not** tied to any specific tool — future tools such as fuzz, subdomain, workflow, and report will all consume the same profile system.
+
+A profile wraps configuration with metadata (name, tool, description) and is identified by a namespaced name (e.g. `scan/base`, `fuzz/json`).
+
+### Discovery Order
+
+Profiles are resolved in this order:
+
+1. **User profiles** — `~/.config/searchit/profiles/`
+2. **Built-in profiles** — embedded in the binary
+
+User profiles override built-in profiles if names collide.
+
+### Built-in Profiles
+
+| Name | Description |
+|---|---|
+| `scan/base` | Balanced default scan profile |
+| `scan/quick` | Fast lightweight scan with high concurrency |
+| `scan/deep` | Thorough recursive scan with extended timeout |
+
+### Commands
+
+List all available profiles:
+
+```bash
+searchit profile list
+```
+
+Show the full YAML contents of a profile:
+
+```bash
+searchit profile show scan/quick
+```
+
+### Future Milestones
+
+Profile creation, editing, merging, inheritance, and import/export will arrive in future milestones. The next milestone will introduce `searchit scan --profile scan/quick`.
+
 ## Development Principles
 
 - Keep abstractions minimal.

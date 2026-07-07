@@ -1,43 +1,20 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
 var profileCmd = &cobra.Command{
 	Use:   "profile",
-	Short: "Manage profiles",
-}
+	Short: "Manage Searchit profiles",
+	Long: `Manage Searchit profiles.
 
-var profileListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List available profiles",
-	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Remove dummy profiles.
-		fmt.Println("default")
-		fmt.Println("pentest")
-		fmt.Println("wordpress")
-		fmt.Println("bugbounty")
-	},
-}
+Profiles are global Searchit resources that bundle configuration
+for any tool (scan, fuzz, subdomain, workflow, etc.).
 
-var profileCreateCmd = &cobra.Command{
-	Use:   "create [name]",
-	Short: "Create a new profile",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Creating profile: %s\n", args[0])
-
-		// TODO:
-		// profiles.Create(...)
-	},
+Use subcommands to list and inspect available profiles.`,
 }
 
 func init() {
 	rootCmd.AddCommand(profileCmd)
-
-	profileCmd.AddCommand(profileListCmd)
-	profileCmd.AddCommand(profileCreateCmd)
 }

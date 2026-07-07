@@ -1,0 +1,11 @@
+version: 1
+name: scan/base
+tool: scan
+description: Balanced default scan profile
+
+config:
+  threads: 32
+  timeout: 10
+  recursive: false
+  max_depth: 3
+  exclude_status: "404"
