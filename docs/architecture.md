@@ -135,3 +135,26 @@ When starting a scan, the configuration layer is resolved progressively (left-to
 3. **Config file** (future)
 4. **CLI Flags** (explicitly specified by the user, highest priority)
 
+---
+
+## Creating Profiles
+
+The `profile create` subcommand establishes a new user profile skeleton:
+
+```bash
+searchit profile create scan/myprofile
+```
+
+### Storage Locations
+
+User-created profiles are stored on the filesystem under the user's home configuration directory:
+- **Linux/macOS**: `~/.config/searchit/profiles/`
+- **Windows**: `%AppData%/searchit/profiles/`
+
+The namespace (first segment of the name, e.g. `scan/` or `fuzz/`) is mandatory and determines the tool this profile applies to. A subdirectory is automatically created under the profiles directory to store the new profile (e.g. `~/.config/searchit/profiles/scan/myprofile.yaml`).
+
+### Next Steps
+
+Profile editing, merging, validation, and advanced fields will be introduced in subsequent milestones.
+
+
