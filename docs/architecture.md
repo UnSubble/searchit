@@ -155,6 +155,26 @@ The namespace (first segment of the name, e.g. `scan/` or `fuzz/`) is mandatory 
 
 ### Next Steps
 
-Profile editing, merging, validation, and advanced fields will be introduced in subsequent milestones.
+Profile editing, merging, and advanced fields will be introduced in subsequent milestones.
+
+---
+
+## Profile Validation
+
+Searchit profiles are validated using a modular, two-stage validation model:
+
+1. **Generic Validation**: Checks the global shape and metadata of the profile document, verifying version schema, name consistency, tool configuration namespaces, and syntax.
+2. **Tool-specific Validation**: Verifies configuration values unique to each tool (e.g. `scan` limits like threads or strategy choice) by decoding configuration elements via the `profile.Decode()` interface.
+
+### Modular Extensibility
+
+Future tools (like `fuzz`, `subdomain`, or `workflow`) register their own validators inside the registry of the generic `profile` package using:
+
+```go
+profile.RegisterValidator("tool_name", validatorInstance)
+```
+
+This keeps the profile registry completely decoupled and extensible.
+
 
 
