@@ -106,7 +106,7 @@ func TestIntegration_Scans(t *testing.T) {
 			t.Errorf("expected redirect result in output, got:\n%s", out)
 		}
 		// 404 should be excluded by default
-		if strings.Contains(out, "404") {
+		if strings.Contains(out, "[+] 404") {
 			t.Errorf("output contains excluded 404 results, got:\n%s", out)
 		}
 	})

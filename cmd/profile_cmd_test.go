@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,11 +91,61 @@ func TestProfileShowAllEmbedded(t *testing.T) {
 	}
 }
 
-func TestProfileNoCreateCommand(t *testing.T) {
-	// Verify that the old "profile create" command is not a registered subcommand.
-	for _, sub := range profileCmd.Commands() {
-		if sub.Name() == "create" {
-			t.Fatal("profile create subcommand should not be registered")
-		}
+func TestProfileCreateOutput(t *testing.T) {
+	// Set user config directory using tmpDir via HOME env override
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	out, err := runProfileCommand([]string{"profile", "create", "scan/mytest"})
+	if err != nil {
+		t.Fatalf("profile create scan/mytest failed: %v", err)
+	}
+
+	if !strings.Contains(out, "Created profile:") {
+		t.Errorf("expected output to contain 'Created profile:', got:\n%s", out)
+	}
+	if !strings.Contains(out, "scan/mytest") {
+		t.Errorf("expected output to contain profile name, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Path:") {
+		t.Errorf("expected output to contain Path:, got:\n%s", out)
+	}
+
+	// Verify file actually exists
+	expectedPath := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan", "mytest.yaml")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("profile file not created at expected path: %v", err)
+	}
+}
+
+func TestProfileCreate_Duplicate(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	_, err := runProfileCommand([]string{"profile", "create", "scan/dup"})
+	if err != nil {
+		t.Fatalf("first creation failed: %v", err)
+	}
+
+	// second creation should fail
+	_, err = runProfileCommand([]string{"profile", "create", "scan/dup"})
+	if err == nil {
+		t.Fatal("expected duplicate creation to fail, but got no error")
+	}
+}
+
+func TestProfileCreate_InvalidName(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	_, err := runProfileCommand([]string{"profile", "create", "invalidname"})
+	if err == nil {
+		t.Fatal("expected invalid name to fail, but got no error")
 	}
 }

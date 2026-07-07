@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/unsubble/searchit/internal/profile"
+	"gopkg.in/yaml.v3"
 )
 
 // scanConfig is a test-local struct that mirrors the fields used in
@@ -450,3 +451,182 @@ func TestNoConfigImport(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateProfile_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	store := &profile.DefaultStore{UserDir: tmpDir}
+
+	var configNode yaml.Node
+	configNode.Kind = yaml.MappingNode
+
+	p := profile.Profile{
+		Version:     1,
+		Name:        "scan/newprofile",
+		Tool:        "scan",
+		Description: "A brand new profile",
+		Config:      configNode,
+	}
+
+	err := store.Create(p)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Verify file was created
+	filePath := filepath.Join(tmpDir, "scan", "newprofile.yaml")
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("profile file not found on disk: %v", err)
+	}
+
+	// Verify content by loading it back
+	loaded, err := store.Load("scan/newprofile")
+	if err != nil {
+		t.Fatalf("failed to load newly created profile: %v", err)
+	}
+
+	if loaded.Name != "scan/newprofile" {
+		t.Errorf("Name = %q, want 'scan/newprofile'", loaded.Name)
+	}
+	if loaded.Tool != "scan" {
+		t.Errorf("Tool = %q, want 'scan'", loaded.Tool)
+	}
+	if loaded.Description != "A brand new profile" {
+		t.Errorf("Description = %q, want 'A brand new profile'", loaded.Description)
+	}
+}
+
+func TestCreateProfile_DuplicateUserProfile(t *testing.T) {
+	tmpDir := t.TempDir()
+	store := &profile.DefaultStore{UserDir: tmpDir}
+
+	var configNode yaml.Node
+	configNode.Kind = yaml.MappingNode
+
+	p := profile.Profile{
+		Version: 1,
+		Name:    "scan/dup",
+		Tool:    "scan",
+		Config:  configNode,
+	}
+
+	if err := store.Create(p); err != nil {
+		t.Fatalf("first creation failed: %v", err)
+	}
+
+	// Attempt duplicate creation
+	err := store.Create(p)
+	if err == nil {
+		t.Fatal("expected duplicate creation to fail, but got no error")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("expected error to contain 'already exists', got %q", err.Error())
+	}
+}
+
+func TestCreateProfile_DuplicateEmbeddedProfile(t *testing.T) {
+	tmpDir := t.TempDir()
+	store := &profile.DefaultStore{UserDir: tmpDir}
+
+	var configNode yaml.Node
+	configNode.Kind = yaml.MappingNode
+
+	// 'scan/quick' is built-in
+	p := profile.Profile{
+		Version: 1,
+		Name:    "scan/quick",
+		Tool:    "scan",
+		Config:  configNode,
+	}
+
+	err := store.Create(p)
+	if err == nil {
+		t.Fatal("expected duplicate of built-in to fail, but got no error")
+	}
+	if !strings.Contains(err.Error(), "already exists as a built-in profile") {
+		t.Errorf("expected error to contain 'already exists as a built-in profile', got %q", err.Error())
+	}
+}
+
+func TestCreateProfile_InvalidNames(t *testing.T) {
+	tmpDir := t.TempDir()
+	store := &profile.DefaultStore{UserDir: tmpDir}
+
+	var configNode yaml.Node
+	configNode.Kind = yaml.MappingNode
+
+	invalidNames := []string{
+		"",               // empty name
+		"scan",           // missing namespace
+		"scan/",          // trailing slash
+		"/scan/test",     // leading slash
+		"scan//test",     // consecutive slashes
+		"scan/.",         // dot
+		"scan/..",        // dot dot
+		"scan/a\\b",      // backslash
+		"scan/a:b",       // colon
+		"scan/a*b",       // asterisk
+		"scan/a?b",       // question mark
+		"scan/a\"b",      // quote
+		"scan/a<b",       // angle bracket
+		"scan/a>b",       // angle bracket
+		"scan/a|b",       // pipe
+	}
+
+	for _, name := range invalidNames {
+		t.Run(name, func(t *testing.T) {
+			p := profile.Profile{
+				Version: 1,
+				Name:    name,
+				Tool:    "scan",
+				Config:  configNode,
+			}
+			err := store.Create(p)
+			if err == nil {
+				t.Errorf("expected validation failure for name %q, but got nil", name)
+			}
+		})
+	}
+}
+
+func TestCreateProfile_YAMLSerialization(t *testing.T) {
+	tmpDir := t.TempDir()
+	store := &profile.DefaultStore{UserDir: tmpDir}
+
+	var configNode yaml.Node
+	configNode.Kind = yaml.MappingNode
+
+	p := profile.Profile{
+		Version:     1,
+		Name:        "scan/testyaml",
+		Tool:        "scan",
+		Description: "testing YAML",
+		Config:      configNode,
+	}
+
+	if err := store.Create(p); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	filePath := filepath.Join(tmpDir, "scan", "testyaml.yaml")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read created file: %v", err)
+	}
+
+	// Verify exact YAML structure
+	expectedLines := []string{
+		"version: 1",
+		"name: scan/testyaml",
+		"tool: scan",
+		"description: testing YAML",
+		"config: {}",
+	}
+
+	content := string(data)
+	for _, line := range expectedLines {
+		if !strings.Contains(content, line) {
+			t.Errorf("expected YAML to contain %q, but got:\n%s", line, content)
+		}
+	}
+}
+

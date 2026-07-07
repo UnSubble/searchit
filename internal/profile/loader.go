@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +22,9 @@ type Store interface {
 
 	// LoadRaw returns the raw YAML bytes for the profile with the given name.
 	LoadRaw(name string) ([]byte, error)
+
+	// Create persists a new profile to the user config directory.
+	Create(profile Profile) error
 }
 
 // DefaultStore resolves profiles from the user config directory and
@@ -141,3 +145,85 @@ func (s *DefaultStore) List() ([]ProfileInfo, error) {
 
 	return result, nil
 }
+
+// ValidateName checks if a profile name/namespace is valid.
+func ValidateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("profile name cannot be empty")
+	}
+	if strings.Contains(name, "//") {
+		return fmt.Errorf("profile name cannot contain consecutive slashes")
+	}
+	if strings.HasPrefix(name, "/") {
+		return fmt.Errorf("profile name cannot start with a slash")
+	}
+	if strings.HasSuffix(name, "/") {
+		return fmt.Errorf("profile name cannot end with a slash")
+	}
+	parts := strings.Split(name, "/")
+	if len(parts) < 2 {
+		return fmt.Errorf("profile name must include a namespace/tool (e.g. scan/myprofile)")
+	}
+	for _, p := range parts {
+		if p == "" || p == "." || p == ".." {
+			return fmt.Errorf("invalid segment %q in profile name", p)
+		}
+		if strings.ContainsAny(p, "\\:*?\"<>|") {
+			return fmt.Errorf("segment %q contains invalid characters", p)
+		}
+	}
+	return nil
+}
+
+// Create persists a new profile to the user config directory.
+// Returns an error if the profile name is invalid, if the profile already exists,
+// or if writing to the filesystem fails.
+func (s *DefaultStore) Create(profile Profile) error {
+	name := profile.Name
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+
+	// 1. Check if it already exists as embedded
+	embedded, err := readEmbeddedProfiles()
+	if err != nil {
+		return fmt.Errorf("read embedded profiles: %w", err)
+	}
+	if _, ok := embedded[name]; ok {
+		return fmt.Errorf("profile %q already exists as a built-in profile", name)
+	}
+
+	userDir := s.userDir()
+	if userDir == "" {
+		return fmt.Errorf("could not resolve user profile directory")
+	}
+
+	// 2. Check if it already exists in the user profile directory
+	filePathYAML := filepath.Join(userDir, name+".yaml")
+	filePathYML := filepath.Join(userDir, name+".yml")
+	if _, err := os.Stat(filePathYAML); err == nil {
+		return fmt.Errorf("profile %q already exists", name)
+	}
+	if _, err := os.Stat(filePathYML); err == nil {
+		return fmt.Errorf("profile %q already exists", name)
+	}
+
+	// 3. Create target directory
+	dir := filepath.Dir(filePathYAML)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create profile directory: %w", err)
+	}
+
+	// 4. Marshal and write profile
+	data, err := yaml.Marshal(profile)
+	if err != nil {
+		return fmt.Errorf("marshal profile: %w", err)
+	}
+
+	if err := os.WriteFile(filePathYAML, data, 0o644); err != nil {
+		return fmt.Errorf("write profile file: %w", err)
+	}
+
+	return nil
+}
+
