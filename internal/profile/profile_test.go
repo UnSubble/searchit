@@ -1,6 +1,8 @@
 package profile_test
 
 import (
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,6 +11,22 @@ import (
 
 	"github.com/unsubble/searchit/internal/profile"
 )
+
+// scanConfig is a test-local struct that mirrors the fields used in
+// embedded scan profiles. This proves that Decode works with any
+// caller-supplied struct — the profile package itself does not need
+// to know about this type.
+type scanConfig struct {
+	Threads       int    `yaml:"threads"`
+	Timeout       int    `yaml:"timeout"`
+	Recursive     bool   `yaml:"recursive"`
+	MaxDepth      uint16 `yaml:"max_depth"`
+	ExcludeStatus string `yaml:"exclude_status"`
+}
+
+// ---------------------------------------------------------------------------
+// Embedded profile loading
+// ---------------------------------------------------------------------------
 
 func TestLoadEmbeddedProfile_Base(t *testing.T) {
 	store := profile.NewStore()
@@ -25,8 +43,13 @@ func TestLoadEmbeddedProfile_Base(t *testing.T) {
 	if p.Version != 1 {
 		t.Errorf("Version = %d, want 1", p.Version)
 	}
-	if p.Config.Threads != 32 {
-		t.Errorf("Config.Threads = %d, want 32", p.Config.Threads)
+
+	var cfg scanConfig
+	if err := p.Decode(&cfg); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if cfg.Threads != 32 {
+		t.Errorf("Threads = %d, want 32", cfg.Threads)
 	}
 }
 
@@ -39,11 +62,16 @@ func TestLoadEmbeddedProfile_Quick(t *testing.T) {
 	if p.Name != "scan/quick" {
 		t.Errorf("Name = %q, want %q", p.Name, "scan/quick")
 	}
-	if p.Config.Threads != 64 {
-		t.Errorf("Config.Threads = %d, want 64", p.Config.Threads)
+
+	var cfg scanConfig
+	if err := p.Decode(&cfg); err != nil {
+		t.Fatalf("Decode: %v", err)
 	}
-	if p.Config.Timeout != 5 {
-		t.Errorf("Config.Timeout = %d, want 5", p.Config.Timeout)
+	if cfg.Threads != 64 {
+		t.Errorf("Threads = %d, want 64", cfg.Threads)
+	}
+	if cfg.Timeout != 5 {
+		t.Errorf("Timeout = %d, want 5", cfg.Timeout)
 	}
 }
 
@@ -56,19 +84,28 @@ func TestLoadEmbeddedProfile_Deep(t *testing.T) {
 	if p.Name != "scan/deep" {
 		t.Errorf("Name = %q, want %q", p.Name, "scan/deep")
 	}
-	if p.Config.Threads != 16 {
-		t.Errorf("Config.Threads = %d, want 16", p.Config.Threads)
+
+	var cfg scanConfig
+	if err := p.Decode(&cfg); err != nil {
+		t.Fatalf("Decode: %v", err)
 	}
-	if p.Config.Timeout != 30 {
-		t.Errorf("Config.Timeout = %d, want 30", p.Config.Timeout)
+	if cfg.Threads != 16 {
+		t.Errorf("Threads = %d, want 16", cfg.Threads)
 	}
-	if !p.Config.Recursive {
-		t.Error("Config.Recursive = false, want true")
+	if cfg.Timeout != 30 {
+		t.Errorf("Timeout = %d, want 30", cfg.Timeout)
 	}
-	if p.Config.MaxDepth != 5 {
-		t.Errorf("Config.MaxDepth = %d, want 5", p.Config.MaxDepth)
+	if !cfg.Recursive {
+		t.Error("Recursive = false, want true")
+	}
+	if cfg.MaxDepth != 5 {
+		t.Errorf("MaxDepth = %d, want 5", cfg.MaxDepth)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Missing profile
+// ---------------------------------------------------------------------------
 
 func TestLoadMissingProfile(t *testing.T) {
 	store := profile.NewStore()
@@ -81,6 +118,10 @@ func TestLoadMissingProfile(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Listing
+// ---------------------------------------------------------------------------
+
 func TestListProfiles(t *testing.T) {
 	store := profile.NewStore()
 	profiles, err := store.List()
@@ -88,7 +129,6 @@ func TestListProfiles(t *testing.T) {
 		t.Fatalf("List(): %v", err)
 	}
 
-	// We expect at least the 3 embedded profiles.
 	if len(profiles) < 3 {
 		t.Fatalf("List() returned %d profiles, want at least 3", len(profiles))
 	}
@@ -142,6 +182,10 @@ func TestListProfiles_Sorted(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Namespace handling
+// ---------------------------------------------------------------------------
+
 func TestNamespaceHandling(t *testing.T) {
 	store := profile.NewStore()
 	profiles, err := store.List()
@@ -156,8 +200,11 @@ func TestNamespaceHandling(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// User override
+// ---------------------------------------------------------------------------
+
 func TestUserOverrideEmbedded(t *testing.T) {
-	// Create a temporary user profile directory with a scan/base.yaml override.
 	tmpDir := t.TempDir()
 	scanDir := filepath.Join(tmpDir, "scan")
 	if err := os.MkdirAll(scanDir, 0o755); err != nil {
@@ -183,15 +230,19 @@ config:
 		t.Fatalf("Load(scan/base): %v", err)
 	}
 
-	// User override should win.
 	if p.Description != "User-overridden base profile" {
 		t.Errorf("Description = %q, want %q", p.Description, "User-overridden base profile")
 	}
-	if p.Config.Threads != 128 {
-		t.Errorf("Config.Threads = %d, want 128", p.Config.Threads)
+
+	var cfg scanConfig
+	if err := p.Decode(&cfg); err != nil {
+		t.Fatalf("Decode: %v", err)
 	}
-	if p.Config.Timeout != 60 {
-		t.Errorf("Config.Timeout = %d, want 60", p.Config.Timeout)
+	if cfg.Threads != 128 {
+		t.Errorf("Threads = %d, want 128", cfg.Threads)
+	}
+	if cfg.Timeout != 60 {
+		t.Errorf("Timeout = %d, want 60", cfg.Timeout)
 	}
 }
 
@@ -232,6 +283,10 @@ config:
 	t.Error("scan/base not found in List() results")
 }
 
+// ---------------------------------------------------------------------------
+// LoadRaw
+// ---------------------------------------------------------------------------
+
 func TestLoadRaw(t *testing.T) {
 	store := profile.NewStore()
 	raw, err := store.LoadRaw("scan/quick")
@@ -255,13 +310,90 @@ func TestLoadRaw_MissingProfile(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Decode
+// ---------------------------------------------------------------------------
+
+func TestDecode_PopulatesStruct(t *testing.T) {
+	store := profile.NewStore()
+	p, err := store.Load("scan/deep")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	var cfg scanConfig
+	if err := p.Decode(&cfg); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	if cfg.Threads != 16 {
+		t.Errorf("Threads = %d, want 16", cfg.Threads)
+	}
+	if cfg.Timeout != 30 {
+		t.Errorf("Timeout = %d, want 30", cfg.Timeout)
+	}
+	if !cfg.Recursive {
+		t.Error("Recursive = false, want true")
+	}
+	if cfg.MaxDepth != 5 {
+		t.Errorf("MaxDepth = %d, want 5", cfg.MaxDepth)
+	}
+	if cfg.ExcludeStatus != "404" {
+		t.Errorf("ExcludeStatus = %q, want %q", cfg.ExcludeStatus, "404")
+	}
+}
+
+func TestDecode_ArbitraryStruct(t *testing.T) {
+	// Decode into a partial struct — only take fields you care about.
+	store := profile.NewStore()
+	p, err := store.Load("scan/quick")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	type partial struct {
+		Threads int `yaml:"threads"`
+	}
+	var cfg partial
+	if err := p.Decode(&cfg); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if cfg.Threads != 64 {
+		t.Errorf("Threads = %d, want 64", cfg.Threads)
+	}
+}
+
+func TestDecode_IntoMap(t *testing.T) {
+	store := profile.NewStore()
+	p, err := store.Load("scan/base")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	var m map[string]any
+	if err := p.Decode(&m); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	threads, ok := m["threads"]
+	if !ok {
+		t.Fatal("map missing 'threads' key")
+	}
+	if threads != 32 {
+		t.Errorf("threads = %v, want 32", threads)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Edge cases
+// ---------------------------------------------------------------------------
+
 func TestUserDir_NonExistent(t *testing.T) {
 	store := &profile.DefaultStore{UserDir: "/tmp/searchit-nonexistent-profile-dir-test"}
 	profiles, err := store.List()
 	if err != nil {
 		t.Fatalf("List(): %v", err)
 	}
-	// Should still return embedded profiles.
 	if len(profiles) < 3 {
 		t.Errorf("List() returned %d profiles, want at least 3 embedded", len(profiles))
 	}
@@ -289,6 +421,33 @@ func TestEmbeddedProfiles_DescriptionField(t *testing.T) {
 	for _, p := range profiles {
 		if p.Description == "" {
 			t.Errorf("profile %q: Description is empty", p.Name)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Architectural constraint: no internal/config dependency
+// ---------------------------------------------------------------------------
+
+func TestNoConfigImport(t *testing.T) {
+	// Parse all Go source files in the profile package (excluding tests)
+	// and verify that none import internal/config.
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse profile package: %v", err)
+	}
+
+	for _, pkg := range pkgs {
+		for filename, file := range pkg.Files {
+			for _, imp := range file.Imports {
+				path := strings.Trim(imp.Path.Value, `"`)
+				if strings.Contains(path, "internal/config") {
+					t.Errorf("%s imports %q — profile package must not depend on internal/config", filename, path)
+				}
+			}
 		}
 	}
 }
