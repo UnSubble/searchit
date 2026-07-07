@@ -88,3 +88,50 @@ Consumer
 - **Pool** — manages the worker goroutine lifecycle; closes results when all workers exit.
 
 Context cancellation propagates from `Scanner.Scan` → `Start` → `Worker` → `http.NewRequestWithContext`, stopping in-flight requests without goroutine leaks.
+
+---
+
+## Profile Overlay Architecture
+
+Profiles in Searchit are generic, tool-agnostic resources designed to be shared across future tools (scan, fuzz, subdomain, workflow, report, etc.).
+
+### Generic Core
+
+The `internal/profile` package acts as a generic loader and registry. It is responsible for:
+- Profile metadata unmarshaling (name, tool, description)
+- Storage resolution and lookup (embedded profiles and user overrides)
+- Namespace structure verification (e.g. `scan/quick`)
+
+To prevent circular dependencies and maintain decoupling, the profile package does not import or know about any tool-specific configuration packages (like `internal/config`). Instead, it loads the profile's tool configuration section as a raw `yaml.Node` and exposes a `Decode(v any)` method.
+
+### Tool-Specific Overlays
+
+Each tool defines its own overlay configuration schema where all fields are pointers (e.g. `internal/profile/scan/overlay.go`). Using pointers allows fields to be optional (`nil` represents a field that is not present in the profile overlay).
+
+The tool-specific package decodes the generic profile config section and merges it onto the tool's runtime configuration using an explicit `Apply` function (e.g. `internal/profile/scan/apply.go`):
+
+```
++-------------------+
+|  profile package  | loads generic metadata & raw yaml.Node config
++---------+---------+
+          | Decode(any)
+          v
++-------------------+
+|   scan package    | interprets raw yaml.Node config into scan.Overlay
++---------+---------+
+          | Apply(config, overlay)
+          v
++-------------------+
+|   config package  | updates config.Config with non-nil overlay fields
++-------------------+
+```
+
+### Precedence Order
+
+When starting a scan, the configuration layer is resolved progressively (left-to-right), where the last layer always wins:
+
+1. **Default Configuration** (built-in defaults)
+2. **Profiles** (applied left-to-right if multiple profiles are defined via `--profile`)
+3. **Config file** (future)
+4. **CLI Flags** (explicitly specified by the user, highest priority)
+
