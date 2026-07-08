@@ -3,18 +3,24 @@ package scan
 import (
 	"fmt"
 
-	"github.com/unsubble/searchit/internal/profile"
+	"github.com/unsubble/searchit/internal/profile/types"
 )
 
 // ScanValidator implements profile.Validator for the scan tool.
 type ScanValidator struct{}
 
-func init() {
-	profile.RegisterValidator("scan", &ScanValidator{})
+// NewValidator returns a new instance of ScanValidator.
+func NewValidator() *ScanValidator {
+	return &ScanValidator{}
+}
+
+// Tool returns the tool name this validator handles.
+func (v *ScanValidator) Tool() string {
+	return "scan"
 }
 
 // Validate verifies that the profile configuration matches scan overlays.
-func (v *ScanValidator) Validate(p *profile.Profile) error {
+func (v *ScanValidator) Validate(p *types.Profile) error {
 	var o Overlay
 	if err := p.Decode(&o); err != nil {
 		return fmt.Errorf("decode config: %w", err)

@@ -6,12 +6,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/spf13/pflag"
+	"github.com/unsubble/searchit/internal/profile"
 )
 
+var bootstrapOnce sync.Once
+
 func runProfileCommand(args []string) (string, error) {
+	bootstrapOnce.Do(func() {
+		_ = profile.RegisterBuiltinValidators()
+	})
+
 	rootCmd.SetContext(nil)
 	profileCmd.SetContext(nil)
 	profileListCmd.SetContext(nil)

@@ -747,3 +747,75 @@ func TestValidate_GenericValidation(t *testing.T) {
 		}
 	})
 }
+
+type mockValidator struct {
+	tool string
+}
+
+func (m *mockValidator) Tool() string {
+	return m.tool
+}
+
+func (m *mockValidator) Validate(p *profile.Profile) error {
+	return nil
+}
+
+func TestValidatorRegistry(t *testing.T) {
+	t.Run("successful registration and lookup", func(t *testing.T) {
+		mv := &mockValidator{tool: "mocktool"}
+		err := profile.Register(mv)
+		if err != nil {
+			t.Fatalf("Register failed: %v", err)
+		}
+
+		lookup := profile.GetValidator("mocktool")
+		if lookup == nil {
+			t.Fatal("GetValidator returned nil, expected mockValidator")
+		}
+		if lookup.Tool() != "mocktool" {
+			t.Errorf("expected tool name 'mocktool', got %q", lookup.Tool())
+		}
+	})
+
+	t.Run("duplicate registration fails", func(t *testing.T) {
+		mv1 := &mockValidator{tool: "dup"}
+		mv2 := &mockValidator{tool: "dup"}
+
+		err := profile.Register(mv1)
+		if err != nil {
+			t.Fatalf("first registration failed: %v", err)
+		}
+
+		err = profile.Register(mv2)
+		if err == nil {
+			t.Fatal("expected duplicate registration to fail, but got nil")
+		}
+		if !strings.Contains(err.Error(), "already registered") {
+			t.Errorf("expected error to mention 'already registered', got %q", err.Error())
+		}
+	})
+
+	t.Run("missing validator returns nil", func(t *testing.T) {
+		lookup := profile.GetValidator("nonexistent")
+		if lookup != nil {
+			t.Errorf("expected nil for nonexistent validator, got %v", lookup)
+		}
+	})
+
+	t.Run("bootstrap registration", func(t *testing.T) {
+		err := profile.RegisterBuiltinValidators()
+		if err != nil {
+			if !strings.Contains(err.Error(), "already registered") {
+				t.Fatalf("RegisterBuiltinValidators failed unexpectedly: %v", err)
+			}
+		}
+
+		scanVal := profile.GetValidator("scan")
+		if scanVal == nil {
+			t.Fatal("expected 'scan' validator to be registered after bootstrap")
+		}
+		if scanVal.Tool() != "scan" {
+			t.Errorf("expected tool 'scan', got %q", scanVal.Tool())
+		}
+	})
+}

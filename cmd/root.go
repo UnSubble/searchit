@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/version"
 
 	"github.com/spf13/cobra"
@@ -25,6 +26,11 @@ profiles, technology-aware mutations and smart enumeration.`,
 }
 
 func Execute() {
+	if err := profile.RegisterBuiltinValidators(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to bootstrap validators: %v\n", err)
+		os.Exit(1)
+	}
+
 	rootCmd.SetVersionTemplate("searchit v" + version.Version + "\n")
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

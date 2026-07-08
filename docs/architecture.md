@@ -171,10 +171,39 @@ Searchit profiles are validated using a modular, two-stage validation model:
 Future tools (like `fuzz`, `subdomain`, or `workflow`) register their own validators inside the registry of the generic `profile` package using:
 
 ```go
-profile.RegisterValidator("tool_name", validatorInstance)
+profile.Register(validatorInstance)
 ```
 
 This keeps the profile registry completely decoupled and extensible.
+
+---
+
+## Explicit Validator Registration
+
+Searchit registers validators explicitly during the application bootstrap phase, removing all implicit `init()`-based registration side effects.
+
+### Advantages
+
+- **Deterministic Startup**: Validator registration is fully controlled and occurs at a predictable point in the application lifecycle.
+- **Simpler Testing**: Tests can easily register mock validators, register builtin validators, or assert duplicate registration errors programmatically.
+- **Plugin-Friendly**: External packages and future plugins can register custom validators dynamically at runtime without relying on import side-effects.
+- **Explicit Dependency Graph**: Eliminates circular imports and makes package dependencies clear.
+
+### Registration Flow
+
+1. During application initialization, the CLI package invokes `profile.RegisterBuiltinValidators()`.
+2. The bootstrap package maps each validator by calling its `Tool() string` method:
+   ```go
+   // internal/profile/bootstrap.go
+   func RegisterBuiltinValidators() error {
+       if err := Register(scan.NewValidator()); err != nil {
+           return err
+       }
+       return nil
+   }
+   ```
+3. The registry validates that no duplicate validator is registered for the same tool namespace, throwing an error if a conflict occurs.
+
 
 
 

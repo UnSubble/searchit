@@ -9,6 +9,7 @@ import (
 
 // Validator is the interface that tool-specific validators must implement.
 type Validator interface {
+	Tool() string
 	Validate(p *Profile) error
 }
 
@@ -17,11 +18,17 @@ var (
 	validators   = make(map[string]Validator)
 )
 
-// RegisterValidator registers a validator for a specific tool.
-func RegisterValidator(tool string, v Validator) {
+// Register registers a validator for a specific tool.
+// Returns an error if a validator for the same tool is already registered.
+func Register(v Validator) error {
 	validatorsMu.Lock()
 	defer validatorsMu.Unlock()
+	tool := v.Tool()
+	if _, ok := validators[tool]; ok {
+		return fmt.Errorf("validator for tool %q is already registered", tool)
+	}
 	validators[tool] = v
+	return nil
 }
 
 // GetValidator returns the registered validator for the tool, or nil if none.
