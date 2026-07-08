@@ -1,4 +1,4 @@
-version: 1
+schema: 1
 name: scan/base
 tool: scan
 description: Balanced default scan profile

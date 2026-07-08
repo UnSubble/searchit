@@ -204,6 +204,56 @@ Searchit registers validators explicitly during the application bootstrap phase,
    ```
 3. The registry validates that no duplicate validator is registered for the same tool namespace, throwing an error if a conflict occurs.
 
+---
+
+## Profile Schema Versioning
+
+### Searchit Version vs. Profile Schema Version
+
+Searchit distinguishes clearly between **Searchit Version** (the binary/release version of the CLI application, e.g., `v0.3.0-beta`) and **Profile Schema Version** (the version indicating the YAML format of the profile document itself, e.g., `schema: 1`).
+
+Profile schemas evolve independently of Searchit releases. This separation ensures that a future Searchit release (e.g. `v2.x`) remains backward-compatible and capable of reading older profile schemas (e.g. `schema: 1`) without breaking.
+
+### Decoder Registry
+
+To support multiple schema versions dynamically and maintain a decoupled design, Searchit uses a **Decoder Registry**. The core `profile` package is agnostic to specific schema rules. It delegates decoding to registered `Decoder` implementations matching the schema version found in the YAML document header.
+
+```go
+type Decoder interface {
+    Schema() int
+    Decode([]byte) (*Profile, error)
+}
+```
+
+### Decoding Flow
+
+When a profile is loaded from disk or embedded storage, it goes through the following stages:
+
+```
+    YAML Document Data
+           ↓
+   [Header Detection] (Decodes only the "schema" field)
+           ↓
+   [Decoder Registry] (Looks up registered schema decoder)
+           ↓
+    [Schema Decoder]  (Translates YAML to Runtime Profile representation)
+           ↓
+    Runtime Profile   (Single, version-agnostic struct)
+           ↓
+      [Validation]    (Generic validation followed by Tool validation)
+```
+
+### Future Migrations
+
+While not implemented in this milestone, future releases of Searchit may introduce a migration command:
+
+```bash
+searchit profile migrate <name> --to <schema_version>
+```
+
+This utility will allow users to upgrade custom profiles between schema versions programmatically.
+
+
 
 
 

@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 //go:embed embedded
@@ -36,8 +34,8 @@ func readEmbeddedProfiles() (map[string]*Profile, error) {
 			return fmt.Errorf("read embedded profile %s: %w", path, err)
 		}
 
-		var p Profile
-		if err := yaml.Unmarshal(data, &p); err != nil {
+		p, err := DecodeProfile(data)
+		if err != nil {
 			return fmt.Errorf("parse embedded profile %s: %w", path, err)
 		}
 
@@ -57,7 +55,7 @@ func readEmbeddedProfiles() (map[string]*Profile, error) {
 			return fmt.Errorf("duplicate embedded profile name: %s", p.Name)
 		}
 
-		profiles[p.Name] = &p
+		profiles[p.Name] = p
 		return nil
 	})
 	if err != nil {
@@ -99,8 +97,8 @@ func readUserProfiles(dir string) (map[string]*Profile, error) {
 			return fmt.Errorf("read user profile %s: %w", path, err)
 		}
 
-		var p Profile
-		if err := yaml.Unmarshal(data, &p); err != nil {
+		p, err := DecodeProfile(data)
+		if err != nil {
 			return fmt.Errorf("parse user profile %s: %w", path, err)
 		}
 
@@ -123,7 +121,7 @@ func readUserProfiles(dir string) (map[string]*Profile, error) {
 			return fmt.Errorf("duplicate user profile name: %s", p.Name)
 		}
 
-		profiles[p.Name] = &p
+		profiles[p.Name] = p
 		return nil
 	})
 	if err != nil {

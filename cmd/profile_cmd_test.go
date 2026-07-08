@@ -18,6 +18,7 @@ var bootstrapOnce sync.Once
 func runProfileCommand(args []string) (string, error) {
 	bootstrapOnce.Do(func() {
 		_ = profile.RegisterBuiltinValidators()
+		_ = profile.RegisterBuiltinDecoders()
 	})
 
 	rootCmd.SetContext(nil)
@@ -200,7 +201,7 @@ func TestProfileValidate_Failure_InvalidContent(t *testing.T) {
 	// Write an invalid profile (e.g. invalid strategy)
 	scanDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	_ = os.MkdirAll(scanDir, 0o755)
-	invalidYAML := `version: 1
+	invalidYAML := `schema: 1
 name: scan/invalidval
 tool: scan
 config:
@@ -229,7 +230,7 @@ func TestProfileValidate_Failure_MalformedYAML(t *testing.T) {
 
 	scanDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	_ = os.MkdirAll(scanDir, 0o755)
-	malformedYAML := `version: 1
+	malformedYAML := `schema: 1
 name: scan/malformed
 tool: scan
 config:

@@ -40,13 +40,13 @@ func GetValidator(tool string) Validator {
 
 // Validate performs generic (tool-agnostic) validation on a profile.
 func Validate(p *Profile) error {
-	// - version exists
-	if p.Version == 0 {
-		return fmt.Errorf("profile version is missing or 0")
+	// - schema exists
+	if p.Schema == 0 {
+		return fmt.Errorf("profile schema version is missing or 0")
 	}
-	// - version supported
-	if p.Version != 1 {
-		return fmt.Errorf("unsupported profile version: %d (only version 1 is supported)", p.Version)
+	// - schema supported
+	if p.Schema != 1 {
+		return fmt.Errorf("unsupported profile schema version: %d (only schema version 1 is supported)", p.Schema)
 	}
 	// - tool exists
 	if p.Tool == "" {

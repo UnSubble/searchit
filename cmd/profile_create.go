@@ -39,7 +39,7 @@ func runProfileCreate(cmd *cobra.Command, args []string) error {
 	configNode.Kind = yaml.MappingNode
 
 	p := profile.Profile{
-		Version:     1,
+		Schema:      1,
 		Name:        name,
 		Tool:        tool,
 		Description: "",

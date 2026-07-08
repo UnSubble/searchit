@@ -30,6 +30,10 @@ func Execute() {
 		fmt.Fprintf(os.Stderr, "failed to bootstrap validators: %v\n", err)
 		os.Exit(1)
 	}
+	if err := profile.RegisterBuiltinDecoders(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to bootstrap decoders: %v\n", err)
+		os.Exit(1)
+	}
 
 	rootCmd.SetVersionTemplate("searchit v" + version.Version + "\n")
 	if err := rootCmd.Execute(); err != nil {

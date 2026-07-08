@@ -12,7 +12,7 @@ import (
 // completely agnostic to tool-specific configuration schemas. Each
 // tool decodes Config into its own struct via [Profile.Decode].
 type Profile struct {
-	Version     int       `yaml:"version"`
+	Schema      int       `yaml:"schema"`
 	Name        string    `yaml:"name"`
 	Tool        string    `yaml:"tool"`
 	Description string    `yaml:"description"`
@@ -30,4 +30,10 @@ func (p *Profile) Decode(v any) error {
 		return fmt.Errorf("decode profile %s config: %w", p.Name, err)
 	}
 	return nil
+}
+
+// Decoder defines the interface for schema-specific profile decoders.
+type Decoder interface {
+	Schema() int
+	Decode(data []byte) (*Profile, error)
 }

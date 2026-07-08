@@ -10,8 +10,14 @@ import (
 	"testing"
 
 	"github.com/unsubble/searchit/internal/profile"
+	v1 "github.com/unsubble/searchit/internal/profile/schema/v1"
 	"gopkg.in/yaml.v3"
 )
+
+func init() {
+	_ = profile.RegisterBuiltinValidators()
+	_ = profile.RegisterBuiltinDecoders()
+}
 
 // scanConfig is a test-local struct that mirrors the fields used in
 // embedded scan profiles. This proves that Decode works with any
@@ -41,8 +47,8 @@ func TestLoadEmbeddedProfile_Base(t *testing.T) {
 	if p.Tool != "scan" {
 		t.Errorf("Tool = %q, want %q", p.Tool, "scan")
 	}
-	if p.Version != 1 {
-		t.Errorf("Version = %d, want 1", p.Version)
+	if p.Schema != 1 {
+		t.Errorf("Schema = %d, want 1", p.Schema)
 	}
 
 	var cfg scanConfig
@@ -212,7 +218,7 @@ func TestUserOverrideEmbedded(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	overrideYAML := `version: 1
+	overrideYAML := `schema: 1
 name: scan/base
 tool: scan
 description: User-overridden base profile
@@ -254,7 +260,7 @@ func TestUserOverride_ListShowsUserNotBuiltin(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	overrideYAML := `version: 1
+	overrideYAML := `schema: 1
 name: scan/base
 tool: scan
 description: User-overridden base profile
@@ -460,7 +466,7 @@ func TestCreateProfile_Success(t *testing.T) {
 	configNode.Kind = yaml.MappingNode
 
 	p := profile.Profile{
-		Version:     1,
+		Schema:      1,
 		Name:        "scan/newprofile",
 		Tool:        "scan",
 		Description: "A brand new profile",
@@ -503,10 +509,10 @@ func TestCreateProfile_DuplicateUserProfile(t *testing.T) {
 	configNode.Kind = yaml.MappingNode
 
 	p := profile.Profile{
-		Version: 1,
-		Name:    "scan/dup",
-		Tool:    "scan",
-		Config:  configNode,
+		Schema: 1,
+		Name:   "scan/dup",
+		Tool:   "scan",
+		Config: configNode,
 	}
 
 	if err := store.Create(p); err != nil {
@@ -532,10 +538,10 @@ func TestCreateProfile_DuplicateEmbeddedProfile(t *testing.T) {
 
 	// 'scan/quick' is built-in
 	p := profile.Profile{
-		Version: 1,
-		Name:    "scan/quick",
-		Tool:    "scan",
-		Config:  configNode,
+		Schema: 1,
+		Name:   "scan/quick",
+		Tool:   "scan",
+		Config: configNode,
 	}
 
 	err := store.Create(p)
@@ -575,10 +581,10 @@ func TestCreateProfile_InvalidNames(t *testing.T) {
 	for _, name := range invalidNames {
 		t.Run(name, func(t *testing.T) {
 			p := profile.Profile{
-				Version: 1,
-				Name:    name,
-				Tool:    "scan",
-				Config:  configNode,
+				Schema: 1,
+				Name:   name,
+				Tool:   "scan",
+				Config: configNode,
 			}
 			err := store.Create(p)
 			if err == nil {
@@ -596,7 +602,7 @@ func TestCreateProfile_YAMLSerialization(t *testing.T) {
 	configNode.Kind = yaml.MappingNode
 
 	p := profile.Profile{
-		Version:     1,
+		Schema:      1,
 		Name:        "scan/testyaml",
 		Tool:        "scan",
 		Description: "testing YAML",
@@ -615,7 +621,7 @@ func TestCreateProfile_YAMLSerialization(t *testing.T) {
 
 	// Verify exact YAML structure
 	expectedLines := []string{
-		"version: 1",
+		"schema: 1",
 		"name: scan/testyaml",
 		"tool: scan",
 		"description: testing YAML",
@@ -668,7 +674,7 @@ func TestValidate_GenericValidation(t *testing.T) {
 		var node yaml.Node
 		node.Kind = yaml.MappingNode
 		return profile.Profile{
-			Version:     1,
+			Schema:      1,
 			Name:        "scan/myprofile",
 			Tool:        "scan",
 			Description: "desc",
@@ -683,19 +689,19 @@ func TestValidate_GenericValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("missing version", func(t *testing.T) {
+	t.Run("missing schema version", func(t *testing.T) {
 		p := validProfile()
-		p.Version = 0
+		p.Schema = 0
 		if err := profile.Validate(&p); err == nil {
-			t.Fatal("expected error for missing version, got nil")
+			t.Fatal("expected error for missing schema version, got nil")
 		}
 	})
 
-	t.Run("unsupported version", func(t *testing.T) {
+	t.Run("unsupported schema version", func(t *testing.T) {
 		p := validProfile()
-		p.Version = 2
+		p.Schema = 2
 		if err := profile.Validate(&p); err == nil {
-			t.Fatal("expected error for unsupported version, got nil")
+			t.Fatal("expected error for unsupported schema version, got nil")
 		}
 	})
 
@@ -816,6 +822,127 @@ func TestValidatorRegistry(t *testing.T) {
 		}
 		if scanVal.Tool() != "scan" {
 			t.Errorf("expected tool 'scan', got %q", scanVal.Tool())
+		}
+	})
+}
+
+func TestSchemaVersioning(t *testing.T) {
+	t.Run("schema header detection", func(t *testing.T) {
+		data := []byte(`schema: 1
+name: test
+tool: scan
+`)
+		var header profile.Header
+		err := yaml.Unmarshal(data, &header)
+		if err != nil {
+			t.Fatalf("unmarshal header failed: %v", err)
+		}
+		if header.Schema != 1 {
+			t.Errorf("expected schema 1, got %d", header.Schema)
+		}
+	})
+
+	t.Run("decoder lookup", func(t *testing.T) {
+		d, err := profile.GetDecoder(1)
+		if err != nil {
+			t.Fatalf("GetDecoder(1) failed: %v", err)
+		}
+		if d.Schema() != 1 {
+			t.Errorf("expected decoder schema 1, got %d", d.Schema())
+		}
+	})
+
+	t.Run("duplicate decoder registration", func(t *testing.T) {
+		d1 := v1.New()
+		err := profile.RegisterDecoder(d1)
+		if err == nil {
+			t.Fatal("expected duplicate decoder registration to fail, got nil")
+		}
+		if !strings.Contains(err.Error(), "already registered") {
+			t.Errorf("expected duplicate error, got %v", err)
+		}
+	})
+
+	t.Run("unsupported schema", func(t *testing.T) {
+		_, err := profile.GetDecoder(999)
+		if err == nil {
+			t.Fatal("expected error for unsupported schema version 999, got nil")
+		}
+		if !strings.Contains(err.Error(), "unsupported profile schema version") {
+			t.Errorf("expected unsupported error, got %v", err)
+		}
+	})
+
+	t.Run("successful v1 decoding", func(t *testing.T) {
+		data := []byte(`schema: 1
+name: scan/wordpress
+tool: scan
+description: Wordpress profile
+config:
+  threads: 10
+`)
+		p, err := profile.DecodeProfile(data)
+		if err != nil {
+			t.Fatalf("DecodeProfile failed: %v", err)
+		}
+		if p.Schema != 1 {
+			t.Errorf("expected schema 1, got %d", p.Schema)
+		}
+		if p.Name != "scan/wordpress" {
+			t.Errorf("expected name 'scan/wordpress', got %q", p.Name)
+		}
+		if p.Tool != "scan" {
+			t.Errorf("expected tool 'scan', got %q", p.Tool)
+		}
+		if p.Description != "Wordpress profile" {
+			t.Errorf("expected description, got %q", p.Description)
+		}
+	})
+
+	t.Run("malformed header", func(t *testing.T) {
+		data := []byte(`schema: : invalid`)
+		_, err := profile.DecodeProfile(data)
+		if err == nil {
+			t.Fatal("expected malformed header to fail decoding, got nil")
+		}
+	})
+
+	t.Run("runtime representation correctness", func(t *testing.T) {
+		d, err := profile.GetDecoder(1)
+		if err != nil {
+			t.Fatalf("expected decoder v1 to exist: %v", err)
+		}
+		data := []byte(`schema: 1
+name: scan/rt
+tool: scan
+description: rt desc
+config:
+  threads: 5
+`)
+		p, err := d.Decode(data)
+		if err != nil {
+			t.Fatalf("decode failed: %v", err)
+		}
+		if p.Schema != 1 {
+			t.Errorf("expected schema 1, got %d", p.Schema)
+		}
+		if p.Name != "scan/rt" {
+			t.Errorf("expected name, got %q", p.Name)
+		}
+		if p.Tool != "scan" {
+			t.Errorf("expected tool, got %q", p.Tool)
+		}
+		if p.Description != "rt desc" {
+			t.Errorf("expected description, got %q", p.Description)
+		}
+	})
+
+	t.Run("bootstrap registration", func(t *testing.T) {
+		err := profile.RegisterBuiltinDecoders()
+		if err != nil {
+			if !strings.Contains(err.Error(), "already registered") {
+				t.Fatalf("expected RegisterBuiltinDecoders to succeed or return already registered, got: %v", err)
+			}
 		}
 	})
 }

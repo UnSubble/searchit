@@ -160,7 +160,7 @@ func TestScanProfile_UserProfile(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	overrideYAML := `version: 1
+	overrideYAML := `schema: 1
 name: scan/custom
 tool: scan
 description: Custom user scan profile
