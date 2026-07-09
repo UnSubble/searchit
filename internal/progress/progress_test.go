@@ -3,6 +3,8 @@ package progress_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -99,5 +101,81 @@ func TestTextRenderer_SnapshotRendering(t *testing.T) {
 		if !bytes.Contains(buf.Bytes(), []byte(s)) {
 			t.Errorf("expected output to contain %q, but got:\n%s", s, out)
 		}
+	}
+}
+
+func TestANSIRenderer_LifecycleAndCursor(t *testing.T) {
+	var buf bytes.Buffer
+	r := progress.NewANSIRenderer(&buf, "https://target.local")
+
+	out := buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("\033[?25l")) {
+		t.Errorf("expected cursor to be hidden on creation, got: %q", out)
+	}
+
+	buf.Reset()
+	err := r.Close()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out = buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("\033[?25h")) {
+		t.Errorf("expected cursor to be shown on Close, got: %q", out)
+	}
+}
+
+func TestANSIRenderer_RecentResultBuffer(t *testing.T) {
+	var buf bytes.Buffer
+	r := progress.NewANSIRenderer(&buf, "https://target.local")
+
+	for i := 1; i <= 12; i++ {
+		r.AddResult(200, fmt.Sprintf("https://target.local/path%d", i))
+	}
+
+	c := stats.NewCollector()
+	err := r.Render(c.Snapshot())
+	if err != nil {
+		t.Fatalf("unexpected rendering error: %v", err)
+	}
+
+	if bytes.Contains(buf.Bytes(), []byte("  /path1\n")) {
+		t.Errorf("expected /path1 to be evicted, but it was found in output")
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("  /path12\n")) {
+		t.Errorf("expected /path12 to be in output, but it was missing")
+	}
+}
+
+func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
+	var buf bytes.Buffer
+	r := progress.NewANSIRenderer(&buf, "https://target.local")
+
+	c := stats.NewCollector()
+
+	err := r.Render(c.Snapshot())
+	if err != nil {
+		t.Fatalf("unexpected rendering error: %v", err)
+	}
+
+	out1 := buf.String()
+	// Should contain line clears \033[K but not cursor up movement (which starts with \033[ and ends with A)
+	if strings.Contains(out1, "A") && strings.Contains(out1, "\033[") {
+		// Verify it's not a false positive on path strings
+		if strings.Contains(out1, "\033[25A") {
+			t.Errorf("first render should not contain cursor movement up, got %q", out1)
+		}
+	}
+
+	buf.Reset()
+
+	err = r.Render(c.Snapshot())
+	if err != nil {
+		t.Fatalf("unexpected rendering error: %v", err)
+	}
+
+	out2 := buf.String()
+	if !strings.Contains(out2, "\033[") {
+		t.Errorf("expected second render to contain cursor movement escape code, got %q", out2)
 	}
 }

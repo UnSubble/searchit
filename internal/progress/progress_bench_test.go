@@ -27,6 +27,27 @@ func BenchmarkTextRenderer_Render(b *testing.B) {
 	}
 }
 
+func BenchmarkANSIRenderer_Render(b *testing.B) {
+	c := stats.NewCollector()
+	c.RecordRequestSent()
+	c.RecordResponseReceived(200, 1024)
+	c.SetActiveWorkers(10)
+	c.SetQueuedJobs(50)
+	c.RecordDiscovered()
+
+	snap := c.Snapshot()
+	r := progress.NewANSIRenderer(io.Discard, "https://target.local")
+	// Pre-populate some discoveries
+	for i := 0; i < 10; i++ {
+		r.AddResult(200, "https://target.local/path")
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = r.Render(snap)
+	}
+}
+
 func BenchmarkManager_Tick(b *testing.B) {
 	c := stats.NewCollector()
 	r := &FakeRenderer{}

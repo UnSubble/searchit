@@ -37,6 +37,7 @@ func resetFlagsForTest() {
 	flagRate = 0
 	flagConnectTimeout = "3s"
 	flagProfiles = nil
+	flagProgress = false
 	resolvedTargets = nil
 }
 
@@ -496,5 +497,33 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	wantTargets := []string{"http://a.com", "http://b.com", "http://c.com"}
 	if !reflect.DeepEqual(resolvedTargets, wantTargets) {
 		t.Errorf("resolvedTargets = %v, want %v", resolvedTargets, wantTargets)
+	}
+}
+
+func TestCLI_ProgressFlags(t *testing.T) {
+	rootCmd.SetContext(nil)
+	scanCmd.SetContext(nil)
+	resetFlagsForTest()
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"scan", "--help"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("help execute failed: %v", err)
+	}
+
+	helpOut := buf.String()
+	if !strings.Contains(helpOut, "--progress") {
+		t.Errorf("expected help output to contain --progress flag, but got:\n%s", helpOut)
+	}
+	if !strings.Contains(helpOut, "quiet") || !strings.Contains(helpOut, "json") {
+		t.Errorf("expected help output to mention quiet mode or json output disabling conditions, but got:\n%s", helpOut)
 	}
 }

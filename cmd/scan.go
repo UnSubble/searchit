@@ -211,10 +211,13 @@ var scanCmd = &cobra.Command{
 
 			progCtx, progCancel := context.WithCancel(ctx)
 			collector := stats.NewCollector()
-			if flagProgress {
-				renderer := progress.NewTextRenderer(os.Stdout, targetURL)
-				mgr := progress.NewManager(collector, renderer, 1*time.Second)
-				go mgr.Start(progCtx)
+			var progMgr *progress.Manager
+			var renderer *progress.ANSIRenderer
+			if flagProgress && !flagQuiet && cfg.Output != "json" && cfg.Output != "ndjson" {
+				renderer = progress.NewANSIRenderer(os.Stdout, targetURL)
+				progMgr = progress.NewManager(collector, renderer, 1*time.Second)
+				go progMgr.Start(progCtx)
+				defer renderer.Close()
 			}
 
 			if cfg.Recursive {
@@ -250,6 +253,9 @@ var scanCmd = &cobra.Command{
 				for r := range results {
 					if r.Accepted {
 						_ = fmttr.Print(r)
+						if progMgr != nil {
+							progMgr.RecordResult(r.StatusCode, r.URL)
+						}
 					}
 				}
 			} else {
@@ -282,6 +288,9 @@ var scanCmd = &cobra.Command{
 				for r := range results {
 					if r.Accepted {
 						_ = fmttr.Print(r)
+						if progMgr != nil {
+							progMgr.RecordResult(r.StatusCode, r.URL)
+						}
 					}
 				}
 			}

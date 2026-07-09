@@ -382,6 +382,28 @@ Rendering is completely decoupled from the scan engine for the following reasons
 2. **Performance Isolation**: The engine performs lock-free metric updates. If a renderer blocks (e.g., due to a slow terminal flush or standard output redirection), it only blocks the background progress manager thread, never the HTTP workers.
 3. **Future Extension**: Because the `Renderer` is a simple stateless interface receiving an immutable snapshot, adding future presentation layers (such as full interactive terminal TUIs, JSON serialization endpoints, status widgets, or distributed dashboards) requires zero changes to the underlying statistics engine or scanner.
 
+---
+
+## Live Progress Rendering
+
+Searchit utilizes an active ANSI-based live progress renderer to redraw status blocks in-place on the terminal.
+
+### In-Place Redrawing
+
+Instead of printing static text blocks that scroll and grow the terminal history indefinitely, the `ANSIRenderer` performs dynamic cursor repositioning:
+- **ANSI Escape Sequences**: On each tick, the renderer moves the cursor up by the exact count of lines printed during the previous render frame using the `\033[<N>A` (cursor up) sequence.
+- **Line Clearing**: Every line output is prefixed with the `\033[K` (clear from cursor to end of line) sequence. This clears any trailing residues from previous longer outputs, completely preventing screen tearing.
+- **Constant Block Height**: The renderer uses a fixed-size slot allocations scheme for printing recent discoveries. When fewer than 10 items are logged, empty space is cleared and printed, maintaining a steady, jitter-free height.
+
+### Terminal Compatibility
+
+By using only basic ANSI X3.64 control codes (cursor movement, line clearing, and cursor show/hide visibility), Searchit remains highly compatible with standard terminal emulators across Linux, macOS, and Windows (via Virtual Terminal Processing support). It avoids full-screen alternate buffer configurations, meaning standard output history preceding the scan remains preserved and scrollable.
+
+### Cursor Lifecycle
+
+To provide a premium visual experience, the cursor is hidden (`\033[?25l`) while the periodic rendering loop is active. Upon scan completion (or cancellation/exit via context cancellation), a final snapshot is rendered and the cursor is restored (`\033[?25h`) cleanly via a deferred lifecycle invocation.
+
+
 
 
 

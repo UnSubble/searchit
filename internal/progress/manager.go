@@ -42,3 +42,10 @@ func (m *Manager) Start(ctx context.Context) {
 		}
 	}
 }
+
+// RecordResult feeds a discovered url into the renderer if it supports results registration.
+func (m *Manager) RecordResult(statusCode int, urlStr string) {
+	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
+		tr.AddResult(statusCode, urlStr)
+	}
+}
