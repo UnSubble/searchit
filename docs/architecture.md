@@ -346,6 +346,43 @@ The collector captures the following primary metrics at the engine level:
 
 Additionally, the collector is designed to naturally support future metrics (e.g., `RequestsPerSecond`, `AverageLatency`, `Retries`, `Redirects`, and `BodyInspected`) using dedicated atomic hooks.
 
+---
+
+## Progress Renderer
+
+Searchit implements a modular progress rendering layer designed to periodically display scan state metrics on the terminal.
+
+### Architecture Topology
+
+The rendering architecture operates on a strict uni-directional data pipeline:
+
+```
+    [ Workers & Manager ] (Engine Execution Units)
+             │
+             ▼ (Write-Only updates)
+       [ stats.Collector ] (Concurrency-safe Metrics DB)
+             │
+             ▼ (Snapshot() pull)
+       [ stats.Snapshot ]  (Consistent Value Copy)
+             │
+             ▼ (Read-Only consume)
+       [ progress.Manager ] (Periodic Refresher Loop)
+             │
+             ▼ (Call Render())
+      [ progress.Renderer ] (Stateless Formatter Interface)
+             │
+             ▼ (Print)
+        Stdout / TUI
+```
+
+### Complete Decoupling of Rendering
+
+Rendering is completely decoupled from the scan engine for the following reasons:
+1. **Separation of Concerns**: The execution pipeline (HTTP client, filters, and wordlist processing) should never care about formatting, ANSI codes, or frame-rate ticks. Decoupling ensures core engine modules remain highly testable and free of terminal-specific logic.
+2. **Performance Isolation**: The engine performs lock-free metric updates. If a renderer blocks (e.g., due to a slow terminal flush or standard output redirection), it only blocks the background progress manager thread, never the HTTP workers.
+3. **Future Extension**: Because the `Renderer` is a simple stateless interface receiving an immutable snapshot, adding future presentation layers (such as full interactive terminal TUIs, JSON serialization endpoints, status widgets, or distributed dashboards) requires zero changes to the underlying statistics engine or scanner.
+
+
 
 
 

@@ -14,6 +14,7 @@ import (
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/profile"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
+	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
@@ -46,6 +47,7 @@ var (
 	flagRate            float64
 	flagConnectTimeout  string
 	flagProfiles        []string
+	flagProgress        bool
 
 	resolvedTargets []string
 
@@ -207,6 +209,14 @@ var scanCmd = &cobra.Command{
 				fmt.Printf("[*] Target: %s\n", targetURL)
 			}
 
+			progCtx, progCancel := context.WithCancel(ctx)
+			collector := stats.NewCollector()
+			if flagProgress {
+				renderer := progress.NewTextRenderer(os.Stdout, targetURL)
+				mgr := progress.NewManager(collector, renderer, 1*time.Second)
+				go mgr.Start(progCtx)
+			}
+
 			if cfg.Recursive {
 				if cfg.Output == "text" {
 					fmt.Println("[*] Recursive scan enabled")
@@ -235,7 +245,6 @@ var scanCmd = &cobra.Command{
 					cfg.Delay,
 					limiter,
 				)
-				collector := stats.NewCollector()
 				manager.SetStats(collector)
 				results := manager.Run(ctx, seeds, cfg.Threads)
 				for r := range results {
@@ -245,7 +254,6 @@ var scanCmd = &cobra.Command{
 				}
 			} else {
 				jobs := make(chan engine.Job, cfg.Threads)
-				collector := stats.NewCollector()
 				results := engine.Start(
 					ctx,
 					appState.HTTPClient,
@@ -277,6 +285,7 @@ var scanCmd = &cobra.Command{
 					}
 				}
 			}
+			progCancel()
 		}
 
 		return nil
@@ -536,6 +545,13 @@ func init() {
 		"profile",
 		nil,
 		"profile(s) to apply (e.g. scan/quick); may be specified multiple times",
+	)
+
+	scanCmd.Flags().BoolVar(
+		&flagProgress,
+		"progress",
+		false,
+		"enable periodic progress rendering",
 	)
 }
 
