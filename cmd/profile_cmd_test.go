@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/profile"
+	"github.com/unsubble/searchit/internal/profile/editor"
 )
 
 var bootstrapOnce sync.Once
@@ -241,5 +243,140 @@ config:
 	_, err := runProfileCommand([]string{"profile", "validate", "scan/malformed"})
 	if err == nil {
 		t.Fatal("expected validation to fail for malformed YAML, got nil")
+	}
+}
+
+func TestHelperProcessCmd(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+	args := os.Args
+	tempFile := args[len(args)-1]
+
+	content := os.Getenv("MOCK_EDITOR_CONTENT")
+	_ = os.WriteFile(tempFile, []byte(content), 0o644)
+	os.Exit(0)
+}
+
+func makeMockExecCommand(t *testing.T, mockContent string) func(name string, args ...string) *exec.Cmd {
+	return func(name string, args ...string) *exec.Cmd {
+		tempFile := args[len(args)-1]
+		cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcessCmd", "--", tempFile)
+		cmd.Env = append(os.Environ(),
+			"GO_WANT_HELPER_PROCESS=1",
+			"MOCK_EDITOR_CONTENT="+mockContent,
+		)
+		return cmd
+	}
+}
+
+func TestProfileEdit_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Create user profile
+	_, err := runProfileCommand([]string{"profile", "create", "scan/myedit"})
+	if err != nil {
+		t.Fatalf("profile create failed: %v", err)
+	}
+
+	// Mock editor
+	editor.DefaultExecCommand = makeMockExecCommand(t, `schema: 1
+name: scan/myedit
+tool: scan
+config:
+  threads: 42
+`)
+	defer func() {
+		editor.DefaultExecCommand = exec.Command
+	}()
+
+	out, err := runProfileCommand([]string{"profile", "edit", "scan/myedit"})
+	if err != nil {
+		t.Fatalf("profile edit failed: %v", err)
+	}
+
+	if !strings.Contains(out, "Successfully edited profile: scan/myedit") {
+		t.Errorf("expected success message, got %q", out)
+	}
+
+	// Verify content was updated via show command
+	showOut, err := runProfileCommand([]string{"profile", "show", "scan/myedit"})
+	if err != nil {
+		t.Fatalf("profile show failed: %v", err)
+	}
+	if !strings.Contains(showOut, "threads: 42") {
+		t.Errorf("expected updated threads config, got %q", showOut)
+	}
+}
+
+func TestProfileEdit_ValidationFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Create user profile
+	_, err := runProfileCommand([]string{"profile", "create", "scan/myeditval"})
+	if err != nil {
+		t.Fatalf("profile create failed: %v", err)
+	}
+
+	// Mock editor returning invalid overlay value (threads: 0)
+	editor.DefaultExecCommand = makeMockExecCommand(t, `schema: 1
+name: scan/myeditval
+tool: scan
+config:
+  threads: 0
+`)
+	defer func() {
+		editor.DefaultExecCommand = exec.Command
+	}()
+
+	out, err := runProfileCommand([]string{"profile", "edit", "scan/myeditval"})
+	if err == nil {
+		t.Fatal("expected profile edit to fail validation, but it succeeded")
+	}
+
+	if !strings.Contains(out, "Validation failed.") {
+		t.Errorf("expected output to contain 'Validation failed.', got %q", out)
+	}
+	if !strings.Contains(out, "threads must be at least 1") {
+		t.Errorf("expected validation message, got %q", out)
+	}
+	if !strings.Contains(out, "Temporary file:") {
+		t.Errorf("expected temporary file path in output, got %q", out)
+	}
+}
+
+func TestProfileEdit_Embedded(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Mock editor
+	editor.DefaultExecCommand = makeMockExecCommand(t, `schema: 1
+name: scan/quick
+tool: scan
+config:
+  threads: 1000
+`)
+	defer func() {
+		editor.DefaultExecCommand = exec.Command
+	}()
+
+	// Edit built-in 'scan/quick'
+	_, err := runProfileCommand([]string{"profile", "edit", "scan/quick"})
+	if err != nil {
+		t.Fatalf("profile edit failed: %v", err)
+	}
+
+	// Verify user override created in user dir
+	expectedPath := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan", "quick.yaml")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("expected user override file to be created: %v", err)
 	}
 }

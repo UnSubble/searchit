@@ -253,6 +253,60 @@ searchit profile migrate <name> --to <schema_version>
 
 This utility will allow users to upgrade custom profiles between schema versions programmatically.
 
+---
+
+## Editing Profiles
+
+Searchit implements safe profile editing using the `searchit profile edit` command.
+
+### Immutability of Embedded Profiles
+
+Embedded/built-in profiles are completely read-only and embedded directly inside the Searchit binary. If a user attempts to edit a built-in profile (e.g. `scan/base` or `scan/quick`), Searchit will:
+1. Load the embedded profile's configuration.
+2. Initialize a local, writable copy inside the user's config directory (e.g., `~/.config/searchit/profiles/scan/base.yaml`).
+3. Open the copy for editing.
+
+Subsequent loads of that profile name will resolve to the user's custom override rather than the original embedded default.
+
+### Safe Editing Workflow
+
+To guarantee that broken profiles are never saved or overwrite valid configurations, editing uses an out-of-band validation loop:
+
+```
+                  Load Original Profile
+                            ↓
+               Write Temporary YAML File (*.yaml)
+                            ↓
+                 Launch Configured Editor
+                            ↓
+               [ User Edits and Saves File ]
+                            ↓
+                    Read Temporary File
+                            ↓
+               Run Complete Validation Loop
+               (Generic validation & Tool validation)
+                            ↓
+           Is Valid? ───────────────────────── Is Invalid?
+               ↓                                   ↓
+      Replace Destination                    Keep Temporary File
+    Atomically via os.Rename()            Print Validation Errors
+               ↓                                   ↓
+        [Session Done]                     User Can Resume Editing
+```
+
+### Editor Discovery
+
+When launching the editor, Searchit checks the following sources in order:
+
+1. **`VISUAL`** environment variable (e.g., `VISUAL="code --wait"`).
+2. **`EDITOR`** environment variable (e.g., `EDITOR="vim"`).
+3. **Platform Default**:
+   - **Linux/macOS**: `nano` (looks up in system PATH).
+   - **Windows**: `notepad.exe` (looks up in system PATH).
+
+If no editor is configured and default tools are missing from the system path, editing will fail with a descriptive error.
+
+
 
 
 
