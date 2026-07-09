@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/pflag"
@@ -214,5 +217,183 @@ config:
 	}
 	if captured.Timeout != 45 {
 		t.Errorf("expected timeout 45 (from user custom profile), got %d", captured.Timeout)
+	}
+}
+
+func TestScanProfile_MissingProfile(t *testing.T) {
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/nonexistent"}, nil)
+	if err == nil {
+		t.Fatal("expected error for nonexistent profile, got nil")
+	}
+	if !strings.Contains(err.Error(), "load failed") {
+		t.Errorf("expected error message to indicate load failed, got: %v", err)
+	}
+}
+
+func TestScanProfile_InvalidProfile(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	_ = os.MkdirAll(userConfigDir, 0o755)
+
+	// Malformed YAML
+	malformed := `schema: 1
+name: scan/malformed
+tool: scan
+config:
+  threads: : invalid
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "malformed.yaml"), []byte(malformed), 0o644)
+
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/malformed"}, nil)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML profile, got nil")
+	}
+}
+
+func TestScanProfile_ValidationFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	_ = os.MkdirAll(userConfigDir, 0o755)
+
+	// Validation failure: threads must be at least 1
+	invalidVal := `schema: 1
+name: scan/invalidval
+tool: scan
+config:
+  threads: 0
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "invalidval.yaml"), []byte(invalidVal), 0o644)
+
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/invalidval"}, nil)
+	if err == nil {
+		t.Fatal("expected error for invalid validation, got nil")
+	}
+}
+
+func TestScanProfile_DuplicateProfileLoading(t *testing.T) {
+	var captured config.Config
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick", "--profile", "scan/quick"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan command failed: %v", err)
+	}
+	if captured.Threads != 64 {
+		t.Errorf("expected threads 64, got %d", captured.Threads)
+	}
+}
+
+func TestScanProfile_OutputText(t *testing.T) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	flagURL = "http://localhost"
+	flagURLFile = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagNormalizePaths = false
+	flagCollapseSlashes = false
+	flagOutput = "text"
+	flagQuiet = false
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+	flagDelay = ""
+	flagRate = 0
+	flagConnectTimeout = "3s"
+	flagProfiles = []string{"scan/quick"}
+	resolvedTargets = []string{"http://localhost"}
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+
+	cmd.SetArgs([]string{"scan", "--profile", "scan/quick", "-u", "http://localhost"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = cmd.ExecuteContext(ctx)
+	w.Close()
+
+	var stdoutBuf bytes.Buffer
+	_, _ = io.Copy(&stdoutBuf, r)
+	out := stdoutBuf.String()
+
+	if !strings.Contains(out, "[*] Profiles:") {
+		t.Errorf("expected output to contain profiles header, got %q", out)
+	}
+	if !strings.Contains(out, "    scan/quick") {
+		t.Errorf("expected output to list the profile name, got %q", out)
+	}
+}
+
+func TestScanProfile_OutputJSON(t *testing.T) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	flagURL = "http://localhost"
+	flagURLFile = ""
+	flagWordlist = ""
+	flagThreads = 32
+	flagTimeout = 10
+	flagRecursive = false
+	flagMaxDepth = 3
+	flagStrategy = "bfs"
+	flagExcludeStatus = "404"
+	flagRecurseOn = "200,301,302,403"
+	flagNormalizePaths = false
+	flagCollapseSlashes = false
+	flagOutput = "json"
+	flagQuiet = false
+	flagIncludeSize = ""
+	flagExcludeSize = ""
+	flagIncludeHeaders = nil
+	flagExcludeHeaders = nil
+	flagDelay = ""
+	flagRate = 0
+	flagConnectTimeout = "3s"
+	flagProfiles = []string{"scan/quick"}
+	resolvedTargets = []string{"http://localhost"}
+
+	cmd := rootCmd
+	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+
+	cmd.SetArgs([]string{"scan", "--profile", "scan/quick", "-u", "http://localhost", "--output", "json"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = cmd.ExecuteContext(ctx)
+	w.Close()
+
+	var stdoutBuf bytes.Buffer
+	_, _ = io.Copy(&stdoutBuf, r)
+	out := stdoutBuf.String()
+
+	if strings.Contains(out, "[*] Profiles:") {
+		t.Errorf("expected json output to NOT contain profiles header, got %q", out)
 	}
 }

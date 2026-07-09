@@ -157,18 +157,53 @@ var scanCmd = &cobra.Command{
 			for _, name := range flagProfiles {
 				p, err := store.Load(name)
 				if err != nil {
-					return fmt.Errorf("load profile %q: %w", name, err)
+					cmd.SilenceErrors = true
+					cmd.SilenceUsage = true
+					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+					return fmt.Errorf("load failed")
 				}
+
+				// Validate (generic)
+				if err := profile.Validate(p); err != nil {
+					cmd.SilenceErrors = true
+					cmd.SilenceUsage = true
+					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+					return fmt.Errorf("validation failed")
+				}
+
+				// Validate (tool-specific)
+				if v := profile.GetValidator(p.Tool); v != nil {
+					if err := v.Validate(p); err != nil {
+						cmd.SilenceErrors = true
+						cmd.SilenceUsage = true
+						fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+						return fmt.Errorf("validation failed")
+					}
+				}
+
+				// Decode into scan.Overlay
 				var overlay scanProfile.Overlay
 				if err := p.Decode(&overlay); err != nil {
-					return fmt.Errorf("decode profile %q: %w", name, err)
+					cmd.SilenceErrors = true
+					cmd.SilenceUsage = true
+					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+					return fmt.Errorf("decode failed")
 				}
+
+				// Apply
 				scanProfile.Apply(&cfg, overlay)
 			}
 		}
 
 		// 3. Apply CLI flags (highest priority — only if explicitly changed).
 		applyCLIOverrides(cmd, &cfg)
+
+		if cfg.Output == "text" && !cfg.Quiet && len(flagProfiles) > 0 {
+			fmt.Println("[*] Profiles:")
+			for _, name := range flagProfiles {
+				fmt.Printf("    %s\n", name)
+			}
+		}
 
 		if testHookConfigApplied != nil {
 			testHookConfigApplied(cfg)

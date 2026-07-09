@@ -403,6 +403,57 @@ By using only basic ANSI X3.64 control codes (cursor movement, line clearing, an
 
 To provide a premium visual experience, the cursor is hidden (`\033[?25l`) while the periodic rendering loop is active. Upon scan completion (or cancellation/exit via context cancellation), a final snapshot is rendered and the cursor is restored (`\033[?25h`) cleanly via a deferred lifecycle invocation.
 
+---
+
+## Profile-based Scanning
+
+Searchit supports composite runtime configuration overrides through the `--profile` flag.
+
+### Merge Order & Precedence
+
+Scan configurations are built progressively layers by layer, ordered from lowest priority (least specific) to highest priority (most specific):
+
+```
+     1. Hardcoded Default Configuration (config.Default())
+                            ↓
+     2. Profile Overlays (Applied left-to-right, e.g. base -> php -> bugbounty)
+                            ↓
+     3. Explicit CLI Flags (Highest priority override, e.g. --threads 8)
+```
+
+CLI flags always win over all profiles. Conflicts between profiles are resolved in favor of the rightmost profile (last-write-wins).
+
+### Overlay Pipeline Lifecycle
+
+For each specified profile, the configuration manager performs the following operations in a strict, isolated transactional sequence:
+
+1. **Load**: Look up and read the profile YAML file from the user profile directory (`~/.config/searchit/profiles/`) or embedded defaults.
+2. **Decode**: Parse the header to determine the schema version and decode the raw document into a generic `Profile` representation.
+3. **Validate**:
+   - Run generic validation rules (e.g. valid namespace structure and schema format).
+   - Dispatch to tool-specific validator implementations (e.g. scan validator ensuring threads $\ge$ 1).
+4. **Decode into Overlay**: Map the runtime `Profile` contents to a tool-specific configuration representation (`scan.Overlay`).
+5. **Apply**: Merge the overlay fields onto the active runner's configuration.
+
+If any stage of this sequence fails for any profile, the CLI aborts execution immediately with a non-zero exit status, printing the failure reason to `stderr`.
+
+### Practical Examples
+
+Applying multiple profiles sequentially overlays custom rules over standard baselines:
+
+```bash
+# Basic quick scan
+searchit scan -u https://example.com --profile quick
+
+# Multi-layered overlay:
+# 1. Base applies general rules (e.g. threads: 32)
+# 2. PHP overlays PHP-specific filters (e.g. exclude-status: 404,500)
+# 3. Bugbounty overlays extra-aggressive thresholds (e.g. threads: 128)
+# 4. CLI --threads 8 overrides all profile configurations
+searchit scan -u https://example.com --profile base --profile php --profile bugbounty --threads 8
+```
+
+
 
 
 
