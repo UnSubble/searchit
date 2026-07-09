@@ -453,6 +453,24 @@ searchit scan -u https://example.com --profile quick
 searchit scan -u https://example.com --profile base --profile php --profile bugbounty --threads 8
 ```
 
+---
+
+## Profile Metadata
+
+Searchit profiles support rich metadata fields to enhance discovery and prepare for future smart profile selections:
+
+| Field | Type | Description |
+|---|---|---|
+| `author` | `string` | The developer or organization that created the profile. |
+| `tags` | `[]string` | Searchable categorization tags (e.g., `wordpress`, `php`, `cms`). |
+| `homepage` | `string` | Canonical website URL or GitHub repository containing the profile. |
+| `license` | `string` | Software license descriptor (e.g. `MIT`, `GPL-3.0`). |
+| `created` | `string` | ISO-8601 calendar date or timestamp when the profile was initialized. |
+| `updated` | `string` | ISO-8601 calendar date or timestamp of the latest modifications. |
+| `inherits` | `[]string` | Names of parent profiles from which configuration fields are overlaid. *Note: Reserved for future schema inheritance models.* |
+| `experimental` | `bool` | Flags unstable or draft configurations (defaults to `false`). |
+
+
 
 
 

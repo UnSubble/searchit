@@ -946,3 +946,92 @@ config:
 		}
 	})
 }
+
+func TestProfile_Metadata(t *testing.T) {
+	t.Run("metadata decoding", func(t *testing.T) {
+		data := []byte(`schema: 1
+name: scan/meta
+tool: scan
+description: Meta desc
+author: UnSubble
+tags:
+  - wordpress
+  - php
+homepage: https://github.com
+license: MIT
+created: "2026-07-07"
+updated: "2026-07-09"
+inherits:
+  - scan/base
+experimental: true
+config:
+  threads: 5
+`)
+		p, err := profile.DecodeProfile(data)
+		if err != nil {
+			t.Fatalf("decode failed: %v", err)
+		}
+		if p.Author != "UnSubble" {
+			t.Errorf("expected author UnSubble, got %q", p.Author)
+		}
+		if len(p.Tags) != 2 || p.Tags[0] != "wordpress" || p.Tags[1] != "php" {
+			t.Errorf("expected tags [wordpress, php], got %v", p.Tags)
+		}
+		if p.Homepage != "https://github.com" {
+			t.Errorf("expected homepage, got %q", p.Homepage)
+		}
+		if p.License != "MIT" {
+			t.Errorf("expected license, got %q", p.License)
+		}
+		if p.Created != "2026-07-07" {
+			t.Errorf("expected created, got %q", p.Created)
+		}
+		if p.Updated != "2026-07-09" {
+			t.Errorf("expected updated, got %q", p.Updated)
+		}
+		if len(p.Inherits) != 1 || p.Inherits[0] != "scan/base" {
+			t.Errorf("expected inherits [scan/base], got %v", p.Inherits)
+		}
+		if !p.Experimental {
+			t.Errorf("expected experimental true, got false")
+		}
+	})
+
+	t.Run("empty metadata", func(t *testing.T) {
+		data := []byte(`schema: 1
+name: scan/empty
+tool: scan
+description: Empty desc
+config:
+  threads: 5
+`)
+		p, err := profile.DecodeProfile(data)
+		if err != nil {
+			t.Fatalf("decode failed: %v", err)
+		}
+		if p.Author != "" {
+			t.Errorf("expected empty author, got %q", p.Author)
+		}
+		if len(p.Tags) != 0 {
+			t.Errorf("expected empty tags, got %v", p.Tags)
+		}
+		if p.Homepage != "" {
+			t.Errorf("expected empty homepage, got %q", p.Homepage)
+		}
+		if p.License != "" {
+			t.Errorf("expected empty license, got %q", p.License)
+		}
+		if p.Created != "" {
+			t.Errorf("expected empty created, got %q", p.Created)
+		}
+		if p.Updated != "" {
+			t.Errorf("expected empty updated, got %q", p.Updated)
+		}
+		if len(p.Inherits) != 0 {
+			t.Errorf("expected empty inherits, got %v", p.Inherits)
+		}
+		if p.Experimental {
+			t.Errorf("expected experimental false, got true")
+		}
+	})
+}

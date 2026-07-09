@@ -116,6 +116,7 @@ func (s *DefaultStore) List() ([]ProfileInfo, error) {
 				Tool:        p.Tool,
 				Description: p.Description,
 				Builtin:     true,
+				Tags:        p.Tags,
 			},
 			builtin: true,
 		}
@@ -128,6 +129,7 @@ func (s *DefaultStore) List() ([]ProfileInfo, error) {
 				Tool:        p.Tool,
 				Description: p.Description,
 				Builtin:     false,
+				Tags:        p.Tags,
 			},
 			builtin: false,
 		}

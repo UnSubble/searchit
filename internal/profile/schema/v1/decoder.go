@@ -28,10 +28,18 @@ func (d *Decoder) Decode(data []byte) (*types.Profile, error) {
 	}
 
 	return &types.Profile{
-		Schema:      doc.Schema,
-		Name:        doc.Name,
-		Tool:        doc.Tool,
-		Description: doc.Description,
-		Config:      doc.Config,
+		Schema:       doc.Schema,
+		Name:         doc.Name,
+		Tool:         doc.Tool,
+		Description:  doc.Description,
+		Author:       doc.Author,
+		Tags:         doc.Tags,
+		Homepage:     doc.Homepage,
+		License:      doc.License,
+		Created:      doc.Created,
+		Updated:      doc.Updated,
+		Inherits:     doc.Inherits,
+		Experimental: doc.Experimental,
+		Config:       doc.Config,
 	}, nil
 }

@@ -380,3 +380,64 @@ config:
 		t.Fatalf("expected user override file to be created: %v", err)
 	}
 }
+
+func TestProfileCmd_MetadataShowAndList(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	_ = os.MkdirAll(userConfigDir, 0o755)
+
+	profileYAML := `schema: 1
+name: scan/wordpress
+tool: scan
+description: Wordpress scan
+author: UnSubble
+tags:
+  - wordpress
+  - php
+homepage: https://github.com/unsubble/searchit
+license: MIT
+created: "2026-07-07"
+updated: "2026-07-09"
+inherits:
+  - base
+experimental: false
+config:
+  threads: 32
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "wordpress.yaml"), []byte(profileYAML), 0o644)
+
+	outList, err := runProfileCommand([]string{"profile", "list"})
+	if err != nil {
+		t.Fatalf("profile list failed: %v", err)
+	}
+	if !strings.Contains(outList, "scan/wordpress (tags: wordpress, php)") {
+		t.Errorf("expected list output to show tags, got:\n%s", outList)
+	}
+
+	outShow, err := runProfileCommand([]string{"profile", "show", "scan/wordpress"})
+	if err != nil {
+		t.Fatalf("profile show failed: %v", err)
+	}
+	expectedMetadataLines := []string{
+		"author: UnSubble",
+		"homepage: https://github.com/unsubble/searchit",
+		"license: MIT",
+		"created: \"2026-07-07\"",
+		"updated: \"2026-07-09\"",
+		"experimental: false",
+	}
+	for _, expected := range expectedMetadataLines {
+		normExpected := strings.ReplaceAll(expected, `"`, "")
+		normOutShow := strings.ReplaceAll(outShow, `"`, "")
+		if !strings.Contains(normOutShow, normExpected) {
+			t.Errorf("expected show output to contain metadata field %q, got:\n%s", expected, outShow)
+		}
+	}
+	if !strings.Contains(outShow, "inherits:") || !strings.Contains(outShow, "base") {
+		t.Errorf("expected show output to contain inherits list, got:\n%s", outShow)
+	}
+}

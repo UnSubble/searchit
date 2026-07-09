@@ -12,11 +12,19 @@ import (
 // completely agnostic to tool-specific configuration schemas. Each
 // tool decodes Config into its own struct via [Profile.Decode].
 type Profile struct {
-	Schema      int       `yaml:"schema"`
-	Name        string    `yaml:"name"`
-	Tool        string    `yaml:"tool"`
-	Description string    `yaml:"description"`
-	Config      yaml.Node `yaml:"config"`
+	Schema       int       `yaml:"schema"`
+	Name         string    `yaml:"name"`
+	Tool         string    `yaml:"tool"`
+	Description  string    `yaml:"description"`
+	Author       string    `yaml:"author"`
+	Tags         []string  `yaml:"tags"`
+	Homepage     string    `yaml:"homepage"`
+	License      string    `yaml:"license"`
+	Created      string    `yaml:"created"`
+	Updated      string    `yaml:"updated"`
+	Inherits     []string  `yaml:"inherits"`
+	Experimental bool      `yaml:"experimental"`
+	Config       yaml.Node `yaml:"config"`
 }
 
 // Decode decodes the profile's Config section into the value pointed

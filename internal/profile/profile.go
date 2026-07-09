@@ -29,6 +29,7 @@ type ProfileInfo struct {
 	Tool        string
 	Description string
 	Builtin     bool
+	Tags        []string
 }
 
 // Name represents a parsed and validated profile name.

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/profile"
@@ -10,7 +11,7 @@ import (
 var profileListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available profiles",
-	Long:  `List all discoverable profiles grouped by source (BUILTIN / USER).`,
+	Long:  `List all discoverable profiles grouped by source (BUILTIN / USER) and show tags.`,
 	RunE:  runProfileList,
 }
 
@@ -39,7 +40,11 @@ func runProfileList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), "BUILTIN")
 		fmt.Fprintln(cmd.OutOrStdout())
 		for _, p := range builtins {
-			fmt.Fprintln(cmd.OutOrStdout(), p.Name)
+			if len(p.Tags) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s (tags: %s)\n", p.Name, strings.Join(p.Tags, ", "))
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), p.Name)
+			}
 		}
 	}
 
@@ -50,7 +55,11 @@ func runProfileList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), "USER")
 		fmt.Fprintln(cmd.OutOrStdout())
 		for _, p := range user {
-			fmt.Fprintln(cmd.OutOrStdout(), p.Name)
+			if len(p.Tags) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s (tags: %s)\n", p.Name, strings.Join(p.Tags, ", "))
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), p.Name)
+			}
 		}
 	}
 
