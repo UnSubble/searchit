@@ -16,6 +16,7 @@ import (
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/targets"
 	"github.com/unsubble/searchit/internal/wordlist"
@@ -234,6 +235,8 @@ var scanCmd = &cobra.Command{
 					cfg.Delay,
 					limiter,
 				)
+				collector := stats.NewCollector()
+				manager.SetStats(collector)
 				results := manager.Run(ctx, seeds, cfg.Threads)
 				for r := range results {
 					if r.Accepted {
@@ -242,6 +245,7 @@ var scanCmd = &cobra.Command{
 				}
 			} else {
 				jobs := make(chan engine.Job, cfg.Threads)
+				collector := stats.NewCollector()
 				results := engine.Start(
 					ctx,
 					appState.HTTPClient,
@@ -254,6 +258,7 @@ var scanCmd = &cobra.Command{
 					cfg.Delay,
 					limiter,
 					jobs,
+					collector,
 				)
 
 				go func() {

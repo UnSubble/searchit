@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
@@ -22,6 +23,7 @@ type Scanner struct {
 	errors     chan error
 	delay      time.Duration
 	limiter    *rate.Limiter
+	stats      *stats.Collector
 }
 
 func NewScanner(
@@ -45,12 +47,17 @@ func NewScanner(
 	}
 }
 
+// SetStats sets the statistics collector for the scanner.
+func (s *Scanner) SetStats(c *stats.Collector) {
+	s.stats = c
+}
+
 // Scan starts the producer and a worker pool, returning a results channel that
 // is closed when the scan completes.
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.client, s.exclude, s.incSize, s.excSize, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, jobs)
+	results := Start(ctx, s.client, s.exclude, s.incSize, s.excSize, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, jobs, s.stats)
 	out := make(chan Result, workers)
 
 	go func() {

@@ -306,6 +306,47 @@ When launching the editor, Searchit checks the following sources in order:
 
 If no editor is configured and default tools are missing from the system path, editing will fail with a descriptive error.
 
+---
+
+## Statistics Engine
+
+Searchit includes a decoupled runtime statistics collection system designed to gather performance and operational metrics during scans.
+
+### UI-Agnostic Design
+
+The statistics engine resides under the `internal/stats` package. It is strictly separated from presentation logic:
+- It has **zero dependencies** on terminal rendering, Cobra, or command execution contexts.
+- Its sole responsibility is the collection, aggregation, and snapshotting of raw runtime performance metrics.
+- Future UI components, progress bars, or dashboards will consume these static snapshots to render updates to the terminal or other outputs.
+
+### Concurrency and Performance
+
+To avoid degrading scan performance, the statistics package is optimized for lock-free updates:
+- **No Mutexes for Counters**: Simple metrics like requests sent, filtered, or bytes received are updated concurrently using lock-free `sync/atomic` operations.
+- **Lock-free Status Counters**: Instead of using maps with mutexes or read-write locks, response status codes (e.g. `200`, `301`, `403`) are tracked using a pre-allocated fixed-size array of 1000 counters (covering codes `0-999`). Updates are performed using atomic additions to the respective array index, eliminating all lock contention and memory allocations during scans.
+- **Immutable Snapshots**: The `Collector` exposes a `Snapshot()` function that generates an immutable `Snapshot` struct. Callers can inspect metrics consistently without risk of viewing partially-updated statistics or mutating the collector's internal state.
+
+### Collector Metrics
+
+The collector captures the following primary metrics at the engine level:
+
+| Metric | Description |
+|---|---|
+| `RequestsSent` | Total number of HTTP requests issued by workers |
+| `ResponsesReceived` | Total number of HTTP responses received from target servers |
+| `RequestsFiltered` | Number of responses filtered out by size, status, or headers |
+| `RequestsFailed` | Number of requests that failed due to network errors, timeouts, etc. |
+| `RequestsSucceeded` | Number of requests that completed successfully and passed all filters |
+| `BytesReceived` | Total volume of data received in response bodies and headers |
+| `ActiveWorkers` | Current number of worker goroutines actively processing jobs |
+| `QueuedJobs` | Total jobs currently waiting in the frontier queue (manager) |
+| `Discovered` | Number of items matching all filters and discovered by the scanner |
+| `StartTime` | Timestamp indicating when the collector was initialized |
+| `StatusCodes` | Frequency map of discovered responses indexed by HTTP status code |
+
+Additionally, the collector is designed to naturally support future metrics (e.g., `RequestsPerSecond`, `AverageLatency`, `Retries`, `Redirects`, and `BodyInspected`) using dedicated atomic hooks.
+
+
 
 
 

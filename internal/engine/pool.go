@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
@@ -24,6 +25,7 @@ func Start(
 	delay time.Duration,
 	limiter *rate.Limiter,
 	jobs <-chan Job,
+	collector *stats.Collector,
 ) <-chan Result {
 	results := make(chan Result, workers)
 
@@ -33,7 +35,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, limiter, jobs, results)
+			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, limiter, jobs, results, collector)
 		}()
 	}
 

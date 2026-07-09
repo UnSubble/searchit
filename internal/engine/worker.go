@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
@@ -33,7 +34,12 @@ func Worker(
 	limiter *rate.Limiter,
 	jobs <-chan Job,
 	results chan<- Result,
+	collector *stats.Collector,
 ) {
+	if collector != nil {
+		collector.IncrementActiveWorkers()
+		defer collector.DecrementActiveWorkers()
+	}
 	for job := range jobs {
 		if limiter != nil {
 			err := limiter.Wait(ctx)
@@ -42,7 +48,7 @@ func Worker(
 			}
 		}
 
-		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results)
+		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results, collector)
 
 		if delay > 0 {
 			select {
@@ -62,9 +68,17 @@ func process(
 	incHeaders, excHeaders []HeaderFilter,
 	job Job,
 	results chan<- Result,
+	collector *stats.Collector,
 ) {
+	if collector != nil {
+		collector.RecordRequestSent()
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.URL, nil)
 	if err != nil {
+		if collector != nil {
+			collector.RecordRequestFailed()
+		}
 		results <- Result{
 			URL:      job.URL,
 			Depth:    job.Depth,
@@ -74,8 +88,12 @@ func process(
 		return
 	}
 
+	startTime := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
+		if collector != nil {
+			collector.RecordRequestFailed()
+		}
 		results <- Result{
 			URL:      job.URL,
 			Depth:    job.Depth,
@@ -83,11 +101,19 @@ func process(
 			Err:      err,
 		}
 		return
+	}
+
+	if collector != nil {
+		collector.RecordLatency(time.Since(startTime))
 	}
 
 	// Stage 1: Status
 	if exclude.Match(resp.StatusCode) {
 		resp.Body.Close()
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, 0)
+			collector.RecordRequestFiltered()
+		}
 		results <- Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
@@ -100,6 +126,10 @@ func process(
 	// Stage 2: Headers
 	if !AcceptHeaders(resp, incHeaders, excHeaders) {
 		resp.Body.Close()
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, 0)
+			collector.RecordRequestFiltered()
+		}
 		results <- Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
@@ -113,6 +143,10 @@ func process(
 	length := httpclient.ContentLength(resp)
 	if !AcceptContentLength(length, incSize, excSize) {
 		resp.Body.Close()
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordRequestFiltered()
+		}
 		results <- Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
@@ -130,6 +164,11 @@ func process(
 		// Body read errors after passing all filters do not discard the result;
 		// the status and headers were already validated. Close and continue.
 		resp.Body.Close()
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordRequestSucceeded()
+			collector.RecordDiscovered()
+		}
 		results <- Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
@@ -141,6 +180,12 @@ func process(
 		return
 	}
 	resp.Body.Close()
+
+	if collector != nil {
+		collector.RecordResponseReceived(resp.StatusCode, length)
+		collector.RecordRequestSucceeded()
+		collector.RecordDiscovered()
+	}
 
 	results <- Result{
 		URL:        job.URL,

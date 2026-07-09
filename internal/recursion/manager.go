@@ -8,6 +8,7 @@ import (
 
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
@@ -31,6 +32,7 @@ type Manager struct {
 	excludeHeaders  []engine.HeaderFilter
 	delay           time.Duration
 	limiter         *rate.Limiter
+	stats           *stats.Collector
 }
 
 func NewManager(
@@ -67,6 +69,11 @@ func NewManager(
 	}
 }
 
+// SetStats sets the statistics collector for the manager.
+func (m *Manager) SetStats(c *stats.Collector) {
+	m.stats = c
+}
+
 // Run performs a recursive scan starting from the given seed URLs.
 // It feeds the worker pool, consumes results, and expands the frontier
 // for any result that satisfies ShouldRecurse and has not been visited.
@@ -90,6 +97,10 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			}
 		}
 
+		if m.stats != nil {
+			m.stats.SetQueuedJobs(int64(frontier.Len()))
+		}
+
 		jobs := make(chan engine.Job, workers)
 		results := engine.Start(
 			ctx,
@@ -103,6 +114,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			m.delay,
 			m.limiter,
 			jobs,
+			m.stats,
 		)
 
 		// pending counts jobs dispatched to workers but not yet returned.
@@ -110,6 +122,10 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		pending := 0
 
 		for frontier.Len() > 0 || pending > 0 {
+			if m.stats != nil {
+				m.stats.SetQueuedJobs(int64(frontier.Len()))
+			}
+
 			if frontier.Len() > 0 {
 				next, _ := frontier.Peek()
 
@@ -154,6 +170,9 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		}
 
 		close(jobs)
+		if m.stats != nil {
+			m.stats.SetQueuedJobs(0)
+		}
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			m.handleResult(ctx, result, frontier, visited, out)
