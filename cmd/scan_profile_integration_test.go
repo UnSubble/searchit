@@ -397,3 +397,68 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 		t.Errorf("expected json output to NOT contain profiles header, got %q", out)
 	}
 }
+
+func TestScanProfile_DependencyResolutionIntegration(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	profileA := `schema: 1
+name: scan/a
+tool: scan
+depends:
+  - b
+config:
+  threads: 10
+`
+	profileB := `schema: 1
+name: scan/b
+tool: scan
+depends:
+  - c
+config:
+  threads: 20
+  timeout: 5
+`
+	profileC := `schema: 1
+name: scan/c
+tool: scan
+config:
+  threads: 30
+  timeout: 15
+  recursive: true
+`
+	if err := os.WriteFile(filepath.Join(userConfigDir, "a.yaml"), []byte(profileA), 0o644); err != nil {
+		t.Fatalf("write a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userConfigDir, "b.yaml"), []byte(profileB), 0o644); err != nil {
+		t.Fatalf("write b: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userConfigDir, "c.yaml"), []byte(profileC), 0o644); err != nil {
+		t.Fatalf("write c: %v", err)
+	}
+
+	var captured config.Config
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/a"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if captured.Threads != 10 {
+		t.Errorf("expected threads 10, got %d", captured.Threads)
+	}
+	if captured.Timeout != 5 {
+		t.Errorf("expected timeout 5, got %d", captured.Timeout)
+	}
+	if !captured.Recursive {
+		t.Errorf("expected recursive true")
+	}
+}

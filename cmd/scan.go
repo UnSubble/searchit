@@ -13,6 +13,7 @@ import (
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/profile"
+	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/recursion"
@@ -152,16 +153,20 @@ var scanCmd = &cobra.Command{
 		cfg := config.Default()
 
 		// 2. Apply profiles (left → right).
+		var appliedProfiles []string
 		if len(flagProfiles) > 0 {
 			store := profile.NewStore()
-			for _, name := range flagProfiles {
-				p, err := store.Load(name)
-				if err != nil {
-					cmd.SilenceErrors = true
-					cmd.SilenceUsage = true
-					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
-					return fmt.Errorf("load failed")
-				}
+			res := resolver.New(store)
+			resolved, err := res.Resolve(flagProfiles)
+			if err != nil {
+				cmd.SilenceErrors = true
+				cmd.SilenceUsage = true
+				fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+				return fmt.Errorf("load failed")
+			}
+
+			for _, p := range resolved {
+				appliedProfiles = append(appliedProfiles, p.Name)
 
 				// Validate (generic)
 				if err := profile.Validate(p); err != nil {
@@ -198,9 +203,9 @@ var scanCmd = &cobra.Command{
 		// 3. Apply CLI flags (highest priority — only if explicitly changed).
 		applyCLIOverrides(cmd, &cfg)
 
-		if cfg.Output == "text" && !cfg.Quiet && len(flagProfiles) > 0 {
+		if cfg.Output == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {
 			fmt.Println("[*] Profiles:")
-			for _, name := range flagProfiles {
+			for _, name := range appliedProfiles {
 				fmt.Printf("    %s\n", name)
 			}
 		}

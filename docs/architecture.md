@@ -467,8 +467,30 @@ Searchit profiles support rich metadata fields to enhance discovery and prepare 
 | `license` | `string` | Software license descriptor (e.g. `MIT`, `GPL-3.0`). |
 | `created` | `string` | ISO-8601 calendar date or timestamp when the profile was initialized. |
 | `updated` | `string` | ISO-8601 calendar date or timestamp of the latest modifications. |
-| `inherits` | `[]string` | Names of parent profiles from which configuration fields are overlaid. *Note: Reserved for future schema inheritance models.* |
+| `depends` | `[]string` | Names of parent profiles from which configuration fields are overlaid. *Note: Reserved for future schema inheritance models.* |
 | `experimental` | `bool` | Flags unstable or draft configurations (defaults to `false`). |
+
+---
+
+## Profile Dependency Resolution
+
+Searchit profiles support declaring dependencies on other profiles using the `depends` metadata field.
+
+### Dependency Resolution Graph & Sorting
+
+When loading profiles, Searchit constructs a directed dependency graph and resolves it using a topological sorting algorithm (via Depth-First Search with visited node tracking):
+- **Dependencies First, Profile Last**: The resolver determines the exact application order where all dependencies are resolved and queued before the target profile.
+- **Duplicate Elimination**: If multiple profiles in the graph depend on the same underlying profile (e.g. both `wordpress` and `cms` depend on `php`), that dependency is resolved and applied exactly once in the order.
+- **Cycle Detection**: The resolver tracks visiting states to detect cyclic dependencies (e.g. profile A depends on B, B depends on C, and C depends on A). If a cycle is detected, the resolver immediately aborts and returns a detailed `cyclic profile dependency detected` error containing the full chain of circular dependencies.
+
+### Tool Namespace Inheriting
+
+Dependencies are specified as namespaces:
+- If a dependency name contains a slash (e.g. `scan/base`), it is resolved as is.
+- If a dependency name does not contain a slash (e.g. `base`), it inherits the parent profile's tool/namespace prefix (e.g. if the parent profile is named `scan/wordpress`, `base` is resolved to `scan/base`).
+
+This decoupled design prepares the profile manager for future smart profile loading where profiles across different tools (`scan`, `fuzz`, `subdomain`) can resolve their configuration pipelines cleanly without tight coupling to the scan engine.
+
 
 
 
