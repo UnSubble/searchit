@@ -491,6 +491,26 @@ Dependencies are specified as namespaces:
 
 This decoupled design prepares the profile manager for future smart profile loading where profiles across different tools (`scan`, `fuzz`, `subdomain`) can resolve their configuration pipelines cleanly without tight coupling to the scan engine.
 
+---
+
+# Interactive Progress Controls
+
+Searchit supports interactive runtime controls during scanning when both standard input (stdin) and standard output (stdout) are connected to a terminal.
+
+### Control Keys
+
+- `p`: Triggers an immediate progress refresh (forces rendering the ANSI status block without waiting for the next update tick).
+- `s`: Prints a static, extended statistics snapshot including the full HTTP status distribution code counters, which is written to the terminal scrollback buffer.
+- `q`: Gracefully stops the scan by cancelling the execution context, allowing current active workers to finish their requests naturally before program exit.
+
+### Automated TTY Detection
+
+Interactive controls are automatically disabled if any of the following conditions are met:
+- Stdin or stdout is not a TTY (e.g. input is piped or redirected).
+- Scan is quiet (`--quiet`).
+- Structured outputs are requested (`--output json` or `--output ndjson`).
+
+
 
 
 

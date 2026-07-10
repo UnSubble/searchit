@@ -59,6 +59,21 @@ func (tr *ANSIRenderer) Close() error {
 	return nil
 }
 
+// Clear erases the previously printed block using ANSI escape sequences.
+func (tr *ANSIRenderer) Clear() {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	if tr.lines > 0 {
+		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lines)
+		for i := 0; i < tr.lines; i++ {
+			fmt.Fprint(tr.Writer, "\033[K\n")
+		}
+		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lines)
+		tr.lines = 0
+	}
+}
+
 // Render overwrites the previously printed block using ANSI escape sequences.
 func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 	tr.mu.Lock()

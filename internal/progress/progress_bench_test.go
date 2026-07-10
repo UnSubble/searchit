@@ -58,7 +58,7 @@ func BenchmarkManager_Tick(b *testing.B) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() {
-			m.Start(ctx)
+			m.Start(ctx, nil)
 			close(done)
 		}()
 		cancel()

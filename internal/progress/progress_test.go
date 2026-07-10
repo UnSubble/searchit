@@ -46,7 +46,7 @@ func TestManager_LifecycleAndCancellation(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.Start(ctx)
+		m.Start(ctx, nil)
 		close(done)
 	}()
 
@@ -177,5 +177,45 @@ func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
 	out2 := buf.String()
 	if !strings.Contains(out2, "\033[") {
 		t.Errorf("expected second render to contain cursor movement escape code, got %q", out2)
+	}
+}
+
+func TestManager_PrintStats(t *testing.T) {
+	c := stats.NewCollector()
+	c.RecordRequestSent()
+	c.RecordResponseReceived(200, 100)
+	c.RecordResponseReceived(404, 50)
+	c.RecordRequestFiltered()
+	c.RecordRequestFailed()
+	c.SetActiveWorkers(5)
+	c.SetQueuedJobs(10)
+
+	var buf bytes.Buffer
+	r := progress.NewTextRenderer(&buf, "http://localhost")
+	m := progress.NewManager(c, r, 1*time.Second)
+
+	m.PrintStats()
+
+	out := buf.String()
+	expectedSubstrings := []string{
+		"--- Extended Statistics ---",
+		"Elapsed:",
+		"Requests:            1",
+		"Responses:           2",
+		"Discovered:          0",
+		"Filtered:            1",
+		"Failed:              1",
+		"Bytes:               150",
+		"Workers:             5",
+		"Queue:               10",
+		"Status distribution:",
+		"  200: 1",
+		"  404: 1",
+	}
+
+	for _, sub := range expectedSubstrings {
+		if !strings.Contains(out, sub) {
+			t.Errorf("expected output to contain %q, but got:\n%s", sub, out)
+		}
 	}
 }

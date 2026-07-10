@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/profile"
@@ -249,15 +250,41 @@ var scanCmd = &cobra.Command{
 				fmt.Printf("[*] Target: %s\n", targetURL)
 			}
 
-			progCtx, progCancel := context.WithCancel(ctx)
+			scanCtx, scanCancel := context.WithCancel(ctx)
 			collector := stats.NewCollector()
 			var progMgr *progress.Manager
 			var renderer *progress.ANSIRenderer
+			var progCmdChan chan console.Command
+
+			interactive := flagProgress && !flagQuiet && cfg.Output != "json" && cfg.Output != "ndjson" &&
+				console.IsTerminal(os.Stdin.Fd()) && console.IsTerminal(os.Stdout.Fd())
+
 			if flagProgress && !flagQuiet && cfg.Output != "json" && cfg.Output != "ndjson" {
 				renderer = progress.NewANSIRenderer(os.Stdout, targetURL)
 				progMgr = progress.NewManager(collector, renderer, 1*time.Second)
-				go progMgr.Start(progCtx)
-				defer renderer.Close()
+
+				if interactive {
+					consoleCtrl := console.NewController(os.Stdin)
+					progCmdChan = make(chan console.Command, 10)
+					go consoleCtrl.Start(scanCtx)
+
+					go func() {
+						for cmd := range consoleCtrl.Commands() {
+							switch cmd {
+							case console.CommandProgress, console.CommandStats:
+								select {
+								case progCmdChan <- cmd:
+								default:
+								}
+							case console.CommandStop:
+								scanCancel()
+							}
+						}
+						close(progCmdChan)
+					}()
+				}
+
+				go progMgr.Start(scanCtx, progCmdChan)
 			}
 
 			if cfg.Recursive {
@@ -289,7 +316,7 @@ var scanCmd = &cobra.Command{
 					limiter,
 				)
 				manager.SetStats(collector)
-				results := manager.Run(ctx, seeds, cfg.Threads)
+				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
 					if r.Accepted {
 						_ = fmttr.Print(r)
@@ -301,7 +328,7 @@ var scanCmd = &cobra.Command{
 			} else {
 				jobs := make(chan engine.Job, cfg.Threads)
 				results := engine.Start(
-					ctx,
+					scanCtx,
 					appState.HTTPClient,
 					appState.Config.Status.Exclude,
 					cfg.IncludeSize,
@@ -322,7 +349,7 @@ var scanCmd = &cobra.Command{
 						NormalizePaths:  cfg.Paths.NormalizePaths,
 						CollapseSlashes: cfg.Paths.CollapseSlashes,
 					}
-					_ = p.Produce(ctx, jobs)
+					_ = p.Produce(scanCtx, jobs)
 				}()
 
 				for r := range results {
@@ -334,7 +361,10 @@ var scanCmd = &cobra.Command{
 					}
 				}
 			}
-			progCancel()
+			scanCancel()
+			if renderer != nil {
+				_ = renderer.Close()
+			}
 		}
 
 		return nil
