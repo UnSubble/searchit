@@ -456,7 +456,7 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 
 // formatRecurseOn returns a human-readable string for the recurse-on filters.
 // Prefers the CLI flag value if set, otherwise falls back to the default.
-func formatRecurseOn(cfg config.Config) string {
+func formatRecurseOn(_ config.Config) string {
 	if flagRecurseOn != "" {
 		return flagRecurseOn
 	}

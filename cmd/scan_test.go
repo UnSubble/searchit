@@ -231,8 +231,8 @@ func TestCLI_Validation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rootCmd.SetContext(nil)
-			scanCmd.SetContext(nil)
+			rootCmd.SetContext(context.Background())
+			scanCmd.SetContext(context.Background())
 			resetFlagsForTest()
 
 			cmd := rootCmd
@@ -295,8 +295,8 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rootCmd.SetContext(nil)
-			scanCmd.SetContext(nil)
+			rootCmd.SetContext(context.Background())
+			scanCmd.SetContext(context.Background())
 			resetFlagsForTest()
 
 			cmd := rootCmd
@@ -345,8 +345,8 @@ func TestCLI_StartupInformation(t *testing.T) {
 }
 
 func TestCLI_PathFlags(t *testing.T) {
-	rootCmd.SetContext(nil)
-	scanCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	scanCmd.SetContext(context.Background())
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -372,8 +372,8 @@ func TestCLI_PathFlags(t *testing.T) {
 }
 
 func TestCLI_ShorthandsValueBinding(t *testing.T) {
-	rootCmd.SetContext(nil)
-	scanCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	scanCmd.SetContext(context.Background())
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -432,8 +432,8 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 }
 
 func TestCLI_QuietMode_StartupPrints(t *testing.T) {
-	rootCmd.SetContext(nil)
-	scanCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	scanCmd.SetContext(context.Background())
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -476,8 +476,8 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	rootCmd.SetContext(nil)
-	scanCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	scanCmd.SetContext(context.Background())
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -501,8 +501,8 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 }
 
 func TestCLI_ProgressFlags(t *testing.T) {
-	rootCmd.SetContext(nil)
-	scanCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	scanCmd.SetContext(context.Background())
 	resetFlagsForTest()
 
 	cmd := rootCmd

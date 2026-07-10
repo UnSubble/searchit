@@ -23,10 +23,10 @@ func runProfileCommand(args []string) (string, error) {
 		_ = profile.RegisterBuiltinDecoders()
 	})
 
-	rootCmd.SetContext(nil)
-	profileCmd.SetContext(nil)
-	profileListCmd.SetContext(nil)
-	profileShowCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	profileCmd.SetContext(context.Background())
+	profileListCmd.SetContext(context.Background())
+	profileShowCmd.SetContext(context.Background())
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -258,7 +258,7 @@ func TestHelperProcessCmd(t *testing.T) {
 	os.Exit(0)
 }
 
-func makeMockExecCommand(t *testing.T, mockContent string) func(name string, args ...string) *exec.Cmd {
+func makeMockExecCommand(_ *testing.T, mockContent string) func(name string, args ...string) *exec.Cmd {
 	return func(name string, args ...string) *exec.Cmd {
 		tempFile := args[len(args)-1]
 		cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcessCmd", "--", tempFile)

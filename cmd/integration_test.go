@@ -18,8 +18,8 @@ import (
 )
 
 func runIntegrationCommand(args []string) (string, error) {
-	rootCmd.SetContext(nil)
-	scanCmd.SetContext(nil)
+	rootCmd.SetContext(context.Background())
+	scanCmd.SetContext(context.Background())
 	resetFlagsForTest()
 
 	cmd := rootCmd
