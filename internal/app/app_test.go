@@ -10,7 +10,8 @@ import (
 )
 
 func TestNew_UsesBackgroundContextWhenNil(t *testing.T) {
-	a := app.New(nil, config.Default())
+	var nilCtx context.Context
+	a := app.New(nilCtx, config.Default())
 	if a.Context == nil {
 		t.Fatal("Context is nil, want context.Background()")
 	}

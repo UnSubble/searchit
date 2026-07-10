@@ -17,7 +17,7 @@ go test ./...
 
 - Follow idiomatic Go conventions.
 - Run `gofmt` before committing.
-- Run `go vet` before opening a PR.
+- Run `staticcheck` before opening a PR.
 - Prefer explicit code over clever abstractions.
 - Do not introduce unnecessary interfaces.
 - Keep packages focused and cohesive.
@@ -25,7 +25,16 @@ go test ./...
 
 ## Pull Requests
 
-- Tests pass (`go test ./...`).
+Every pull request must pass the following checks before being merged:
+
+1. **gofmt** (checks formatting)
+2. **staticcheck** (checks static analysis)
+3. **go test** (runs unit/integration tests)
+4. **go test -race** (verifies concurrency safety)
+5. **go test -cover** (checks test coverage)
+6. **go build** (ensures successful builds)
+
+Additionally:
 - New behavior includes tests.
 - Documentation is updated if necessary.
 - No unrelated refactoring in feature PRs.

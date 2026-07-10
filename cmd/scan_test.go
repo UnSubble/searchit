@@ -231,8 +231,11 @@ func TestCLI_Validation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rootCmd.SetContext(context.Background())
-			scanCmd.SetContext(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			rootCmd.SetContext(ctx)
+			scanCmd.SetContext(ctx)
 			resetFlagsForTest()
 
 			cmd := rootCmd
@@ -243,9 +246,6 @@ func TestCLI_Validation(t *testing.T) {
 			buf := new(bytes.Buffer)
 			cmd.SetOut(buf)
 			cmd.SetErr(buf)
-
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
 
 			err := cmd.ExecuteContext(ctx)
 			if (err != nil) != tc.wantErr {
@@ -295,8 +295,11 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rootCmd.SetContext(context.Background())
-			scanCmd.SetContext(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			rootCmd.SetContext(ctx)
+			scanCmd.SetContext(ctx)
 			resetFlagsForTest()
 
 			cmd := rootCmd
@@ -315,9 +318,6 @@ func TestCLI_StartupInformation(t *testing.T) {
 			}
 			oldStdout := os.Stdout
 			os.Stdout = w
-
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
 
 			_ = cmd.ExecuteContext(ctx)
 
@@ -345,8 +345,11 @@ func TestCLI_StartupInformation(t *testing.T) {
 }
 
 func TestCLI_PathFlags(t *testing.T) {
-	rootCmd.SetContext(context.Background())
-	scanCmd.SetContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rootCmd.SetContext(ctx)
+	scanCmd.SetContext(ctx)
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -357,9 +360,6 @@ func TestCLI_PathFlags(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 
 	_ = cmd.ExecuteContext(ctx)
 
@@ -372,8 +372,11 @@ func TestCLI_PathFlags(t *testing.T) {
 }
 
 func TestCLI_ShorthandsValueBinding(t *testing.T) {
-	rootCmd.SetContext(context.Background())
-	scanCmd.SetContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rootCmd.SetContext(ctx)
+	scanCmd.SetContext(ctx)
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -396,9 +399,6 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 
 	_ = cmd.ExecuteContext(ctx)
 
@@ -432,8 +432,11 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 }
 
 func TestCLI_QuietMode_StartupPrints(t *testing.T) {
-	rootCmd.SetContext(context.Background())
-	scanCmd.SetContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rootCmd.SetContext(ctx)
+	scanCmd.SetContext(ctx)
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -448,9 +451,6 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	}
 	oldStdout := os.Stdout
 	os.Stdout = w
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 
 	_ = cmd.ExecuteContext(ctx)
 
@@ -476,8 +476,11 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	rootCmd.SetContext(context.Background())
-	scanCmd.SetContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rootCmd.SetContext(ctx)
+	scanCmd.SetContext(ctx)
 	resetFlagsForTest()
 
 	cmd := rootCmd
@@ -488,9 +491,6 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 
 	_ = cmd.ExecuteContext(ctx)
 

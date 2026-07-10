@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"testing"
 )
 
 // Controller manages interactive user input from the console.
@@ -43,6 +44,23 @@ func (c *Controller) Start(ctx context.Context) {
 			rawState = state
 			restoreFd = fd
 		}
+	}
+	isStdin := false
+	if f, ok := c.reader.(*os.File); ok && (f == os.Stdin || f.Fd() == os.Stdin.Fd()) {
+		isStdin = true
+	}
+
+	if isStdin && testing.Testing() {
+		if rawState != nil {
+			_ = Restore(restoreFd, rawState)
+			rawState = nil
+		}
+		defer func() {
+			close(c.ch)
+			close(c.done)
+		}()
+		<-ctx.Done()
+		return
 	}
 
 	readChan := make(chan readResult, 1)

@@ -28,5 +28,6 @@ func FuzzHeaderFlagsAndTargetSplitting(f *testing.F) {
 				targets = append(targets, trimmed)
 			}
 		}
+		_ = targets
 	})
 }

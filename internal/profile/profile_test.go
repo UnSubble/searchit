@@ -439,20 +439,25 @@ func TestNoConfigImport(t *testing.T) {
 	// Parse all Go source files in the profile package (excluding tests)
 	// and verify that none import internal/config.
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, parser.ImportsOnly)
+	entries, err := os.ReadDir(".")
 	if err != nil {
-		t.Fatalf("parse profile package: %v", err)
+		t.Fatalf("read directory: %v", err)
 	}
 
-	for _, pkg := range pkgs {
-		for filename, file := range pkg.Files {
-			for _, imp := range file.Imports {
-				path := strings.Trim(imp.Path.Value, `"`)
-				if strings.Contains(path, "internal/config") {
-					t.Errorf("%s imports %q — profile package must not depend on internal/config", filename, path)
-				}
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), "_test.go") || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, entry.Name(), nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse file %s: %v", entry.Name(), err)
+		}
+
+		for _, imp := range file.Imports {
+			path := strings.Trim(imp.Path.Value, `"`)
+			if strings.Contains(path, "internal/config") {
+				t.Errorf("%s imports %q — profile package must not depend on internal/config", entry.Name(), path)
 			}
 		}
 	}
