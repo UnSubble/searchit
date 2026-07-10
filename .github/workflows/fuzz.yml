@@ -1,0 +1,44 @@
+name: Fuzz Testing
+
+on:
+  schedule:
+    # Run nightly at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering with custom duration
+    inputs:
+      fuzztime:
+        description: 'Fuzzing time per target (e.g., 30s, 1m, 5m)'
+        required: true
+        default: '1m'
+
+jobs:
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: 'FuzzHeaderFlagsAndTargetSplitting', pkg: './cmd' }
+          - { name: 'FuzzFormatters', pkg: './internal/output' }
+          - { name: 'FuzzRecursionStrategyAndNormalization', pkg: './internal/recursion' }
+          - { name: 'FuzzParseSizeFilters', pkg: './internal/size' }
+          - { name: 'FuzzParseStatusFilters', pkg: './internal/status' }
+          - { name: 'FuzzReadFile', pkg: './internal/targets' }
+          - { name: 'FuzzCleanWord', pkg: './internal/wordlist' }
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x" # Use the latest stable 1.26 release which includes fuzzing fixes (like Issue #75804 fix in 1.26.5+)
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run Fuzzer
+        run: |
+          FUZZTIME="${{ github.event.inputs.fuzztime || '1m' }}"
+          go test -run=${{ matrix.target.name }} -fuzz=${{ matrix.target.name }} -fuzztime=$FUZZTIME ${{ matrix.target.pkg }}

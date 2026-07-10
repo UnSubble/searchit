@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         go-version:
-          - "1.26.4"
+          - "1.26.x"
 
     steps:
       - uses: actions/checkout@v5
@@ -49,15 +49,6 @@ jobs:
 
       - name: Code Coverage
         run: go test -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Fuzz Status Filters
-        run: go test -fuzz=FuzzParseStatusFilters -fuzztime=5s ./internal/status
-
-      - name: Fuzz Size Filters
-        run: go test -fuzz=FuzzParseSizeFilters -fuzztime=5s ./internal/size
-
-      - name: Fuzz CleanWord
-        run: go test -fuzz=FuzzCleanWord -fuzztime=5s ./internal/wordlist
 
       - name: Build
         run: ./build.sh

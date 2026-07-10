@@ -105,9 +105,23 @@ Binaries for supported platforms (Linux, Windows, macOS) are written to `dist/`.
 
 ## Testing
 
+Run unit and integration tests:
+
 ```bash
 go test ./...
 ```
+
+### Fuzz Testing
+
+Searchit utilizes Go's native fuzzing engine to verify input parsing logic and wordlist filtering under stress.
+
+Fuzz targets are run automatically as unit tests against their seed corpus during normal test cycles. To run the heavy fuzzing coordinator locally:
+
+```bash
+go test -fuzz=FuzzParseStatusFilters -fuzztime=30s ./internal/status
+```
+
+Continuous fuzzing is executed automatically on a nightly schedule via GitHub Actions to ensure comprehensive path coverage without impacting standard pull request check speeds.
 
 ## Quick Start
 
