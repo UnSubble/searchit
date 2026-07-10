@@ -14,7 +14,7 @@ type ProfileDoc struct {
 	License      string    `yaml:"license"`
 	Created      string    `yaml:"created"`
 	Updated      string    `yaml:"updated"`
-	Inherits     []string  `yaml:"inherits"`
+	Depends      []string  `yaml:"depends"`
 	Experimental bool      `yaml:"experimental"`
 	Config       yaml.Node `yaml:"config"`
 }

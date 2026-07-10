@@ -961,7 +961,7 @@ homepage: https://github.com
 license: MIT
 created: "2026-07-07"
 updated: "2026-07-09"
-inherits:
+depends:
   - scan/base
 experimental: true
 config:
@@ -989,8 +989,8 @@ config:
 		if p.Updated != "2026-07-09" {
 			t.Errorf("expected updated, got %q", p.Updated)
 		}
-		if len(p.Inherits) != 1 || p.Inherits[0] != "scan/base" {
-			t.Errorf("expected inherits [scan/base], got %v", p.Inherits)
+		if len(p.Depends) != 1 || p.Depends[0] != "scan/base" {
+			t.Errorf("expected depends [scan/base], got %v", p.Depends)
 		}
 		if !p.Experimental {
 			t.Errorf("expected experimental true, got false")
@@ -1027,8 +1027,8 @@ config:
 		if p.Updated != "" {
 			t.Errorf("expected empty updated, got %q", p.Updated)
 		}
-		if len(p.Inherits) != 0 {
-			t.Errorf("expected empty inherits, got %v", p.Inherits)
+		if len(p.Depends) != 0 {
+			t.Errorf("expected empty depends, got %v", p.Depends)
 		}
 		if p.Experimental {
 			t.Errorf("expected experimental false, got true")

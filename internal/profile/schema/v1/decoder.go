@@ -38,7 +38,7 @@ func (d *Decoder) Decode(data []byte) (*types.Profile, error) {
 		License:      doc.License,
 		Created:      doc.Created,
 		Updated:      doc.Updated,
-		Inherits:     doc.Inherits,
+		Depends:      doc.Depends,
 		Experimental: doc.Experimental,
 		Config:       doc.Config,
 	}, nil

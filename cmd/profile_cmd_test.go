@@ -402,7 +402,7 @@ homepage: https://github.com/unsubble/searchit
 license: MIT
 created: "2026-07-07"
 updated: "2026-07-09"
-inherits:
+depends:
   - base
 experimental: false
 config:
@@ -437,7 +437,7 @@ config:
 			t.Errorf("expected show output to contain metadata field %q, got:\n%s", expected, outShow)
 		}
 	}
-	if !strings.Contains(outShow, "inherits:") || !strings.Contains(outShow, "base") {
-		t.Errorf("expected show output to contain inherits list, got:\n%s", outShow)
+	if !strings.Contains(outShow, "depends:") || !strings.Contains(outShow, "base") {
+		t.Errorf("expected show output to contain depends list, got:\n%s", outShow)
 	}
 }
