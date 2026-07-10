@@ -106,7 +106,7 @@ func TestTextRenderer_SnapshotRendering(t *testing.T) {
 
 func TestANSIRenderer_LifecycleAndCursor(t *testing.T) {
 	var buf bytes.Buffer
-	r := progress.NewANSIRenderer(&buf, "https://target.local")
+	r := progress.NewANSIRenderer(&buf, "https://target.local", nil, "Single target")
 
 	out := buf.String()
 	if !bytes.Contains(buf.Bytes(), []byte("\033[?25l")) {
@@ -127,9 +127,9 @@ func TestANSIRenderer_LifecycleAndCursor(t *testing.T) {
 
 func TestANSIRenderer_RecentResultBuffer(t *testing.T) {
 	var buf bytes.Buffer
-	r := progress.NewANSIRenderer(&buf, "https://target.local")
+	r := progress.NewANSIRenderer(&buf, "https://target.local", nil, "Single target")
 
-	for i := 1; i <= 12; i++ {
+	for i := 1; i <= 7; i++ {
 		r.AddResult(200, fmt.Sprintf("https://target.local/path%d", i))
 	}
 
@@ -142,41 +142,24 @@ func TestANSIRenderer_RecentResultBuffer(t *testing.T) {
 	if bytes.Contains(buf.Bytes(), []byte("  /path1\n")) {
 		t.Errorf("expected /path1 to be evicted, but it was found in output")
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("  /path12\n")) {
-		t.Errorf("expected /path12 to be in output, but it was missing")
+	if !bytes.Contains(buf.Bytes(), []byte("200  /path7")) {
+		t.Errorf("expected /path7 to be in output, but it was missing")
 	}
 }
 
 func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
 	var buf bytes.Buffer
-	r := progress.NewANSIRenderer(&buf, "https://target.local")
+	r := progress.NewANSIRenderer(&buf, "https://target.local", nil, "Single target")
 
 	c := stats.NewCollector()
-
 	err := r.Render(c.Snapshot())
 	if err != nil {
 		t.Fatalf("unexpected rendering error: %v", err)
 	}
 
 	out1 := buf.String()
-	// Should contain line clears \033[K but not cursor up movement (which starts with \033[ and ends with A)
-	if strings.Contains(out1, "A") && strings.Contains(out1, "\033[") {
-		// Verify it's not a false positive on path strings
-		if strings.Contains(out1, "\033[25A") {
-			t.Errorf("first render should not contain cursor movement up, got %q", out1)
-		}
-	}
-
-	buf.Reset()
-
-	err = r.Render(c.Snapshot())
-	if err != nil {
-		t.Fatalf("unexpected rendering error: %v", err)
-	}
-
-	out2 := buf.String()
-	if !strings.Contains(out2, "\033[") {
-		t.Errorf("expected second render to contain cursor movement escape code, got %q", out2)
+	if !strings.Contains(out1, "Target:") {
+		t.Errorf("expected output to contain Target: header, got %q", out1)
 	}
 }
 
@@ -208,9 +191,9 @@ func TestManager_PrintStats(t *testing.T) {
 		"Bytes:               150",
 		"Workers:             5",
 		"Queue:               10",
-		"Status distribution:",
-		"  200: 1",
-		"  404: 1",
+		"Status Distribution",
+		"200 : 1",
+		"404 : 1",
 	}
 
 	for _, sub := range expectedSubstrings {

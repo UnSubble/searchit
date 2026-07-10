@@ -87,7 +87,7 @@ func (m *Manager) PrintStats() {
 	fmt.Fprintf(w, "Workers:             %d\n", snap.ActiveWorkers)
 	fmt.Fprintf(w, "Queue:               %d\n", snap.QueuedJobs)
 	fmt.Fprintf(w, "Req/s:               %.0f\n", snap.RequestsPerSecond)
-	fmt.Fprintln(w, "Status distribution:")
+	fmt.Fprint(w, "Status Distribution\n\n")
 
 	var codes []int
 	for c := range snap.StatusCodes {
@@ -101,7 +101,7 @@ func (m *Manager) PrintStats() {
 		}
 	}
 	for _, c := range codes {
-		fmt.Fprintf(w, "  %d: %d\n", c, snap.StatusCodes[c])
+		fmt.Fprintf(w, "%d : %d\n", c, snap.StatusCodes[c])
 	}
 	fmt.Fprintln(w, "---------------------------")
 

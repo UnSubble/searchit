@@ -8,32 +8,52 @@ import (
 	"sync"
 	"time"
 
+	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
 type ANSIRenderer struct {
-	Writer io.Writer
-	Target string
-	limit  int
+	Writer   io.Writer
+	Target   string
+	Profiles []string
+	Mode     string
+	limit    int
 
 	mu     sync.Mutex
 	recent []string
-	lines  int
+	frozen bool
 }
 
 // NewANSIRenderer creates a new ANSIRenderer writing to the provided Writer.
-// Automatically hides terminal cursor to prevent flickers.
-func NewANSIRenderer(w io.Writer, target string) *ANSIRenderer {
+// Automatically hides terminal cursor and freezes the top scrolling region.
+func NewANSIRenderer(w io.Writer, target string, profiles []string, mode string) *ANSIRenderer {
 	if w == nil {
 		w = os.Stdout
 	}
 	// Hide cursor: \033[?25l
 	fmt.Fprint(w, "\033[?25l")
+
+	frozen := false
+	if f, ok := w.(*os.File); ok && console.IsTerminal(f.Fd()) {
+		// Reserve space for 23 lines
+		for i := 0; i < 23; i++ {
+			fmt.Fprintln(w)
+		}
+		// Set scroll margin to start at line 24
+		fmt.Fprint(w, "\033[24;r")
+		// Move cursor to start of scroll margin
+		fmt.Fprint(w, "\033[24;1H")
+		frozen = true
+	}
+
 	return &ANSIRenderer{
-		Writer: w,
-		Target: target,
-		limit:  10,
+		Writer:   w,
+		Target:   target,
+		Profiles: profiles,
+		Mode:     mode,
+		limit:    5,
+		frozen:   frozen,
 	}
 }
 
@@ -52,36 +72,38 @@ func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string) {
 	}
 }
 
-// Close restores the terminal state by showing the cursor.
+// Close restores the terminal state by resetting margins and showing the cursor.
 func (tr *ANSIRenderer) Close() error {
-	// Show cursor: \033[?25h
-	fmt.Fprint(tr.Writer, "\033[?25h")
+	// Reset margins (\033[r) and show cursor (\033[?25h)
+	fmt.Fprint(tr.Writer, "\033[r\033[?25h")
 	return nil
 }
 
-// Clear erases the previously printed block using ANSI escape sequences.
+// Clear erases the frozen progress block.
 func (tr *ANSIRenderer) Clear() {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
-	if tr.lines > 0 {
-		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lines)
-		for i := 0; i < tr.lines; i++ {
+	if tr.frozen {
+		fmt.Fprint(tr.Writer, "\033[s")
+		fmt.Fprint(tr.Writer, "\033[1;1H")
+		for i := 0; i < 23; i++ {
 			fmt.Fprint(tr.Writer, "\033[K\n")
 		}
-		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lines)
-		tr.lines = 0
+		fmt.Fprint(tr.Writer, "\033[u")
 	}
 }
 
-// Render overwrites the previously printed block using ANSI escape sequences.
+// Render overwrites the frozen top block using ANSI escape sequences.
 func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
-	// Move cursor up by tr.lines
-	if tr.lines > 0 {
-		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lines)
+	if tr.frozen {
+		// Save cursor
+		fmt.Fprint(tr.Writer, "\033[s")
+		// Move to top-left
+		fmt.Fprint(tr.Writer, "\033[1;1H")
 	}
 
 	elapsed := time.Since(snap.StartTime)
@@ -90,29 +112,40 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 	s := int(elapsed.Seconds()) % 60
 	elapsedStr := fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 
-	var printed int
+	etaStr := "-"
+	if snap.RequestsPerSecond > 0 && snap.QueuedJobs > 0 {
+		etaSecs := float64(snap.QueuedJobs) / snap.RequestsPerSecond
+		eh := int(etaSecs / 3600)
+		em := int(etaSecs/60) % 60
+		es := int(etaSecs) % 60
+		etaStr = fmt.Sprintf("%02d:%02d:%02d", eh, em, es)
+	}
+
+	profilesStr := "none"
+	if len(tr.Profiles) > 0 {
+		profilesStr = strings.Join(tr.Profiles, " -> ")
+	}
 
 	linesToPrint := []string{
-		"Scanning:",
-		tr.Target,
+		fmt.Sprintf("Target:        %s", tr.Target),
+		fmt.Sprintf("Profiles:      %s", profilesStr),
+		fmt.Sprintf("Mode:          %s", tr.Mode),
 		"",
 		"Progress",
-		"",
-		fmt.Sprintf("Elapsed      %s", elapsedStr),
-		fmt.Sprintf("Requests     %d", snap.RequestsSent),
-		fmt.Sprintf("Responses    %d", snap.ResponsesReceived),
-		fmt.Sprintf("Discovered   %d", snap.Discovered),
-		fmt.Sprintf("Workers      %d", snap.ActiveWorkers),
-		fmt.Sprintf("Queue        %d", snap.QueuedJobs),
-		fmt.Sprintf("Rate         %.0f req/s", snap.RequestsPerSecond),
+		"──────────────────────────────────────────────",
+		fmt.Sprintf("Elapsed:       %-10s         ETA:           %-10s", elapsedStr, etaStr),
+		fmt.Sprintf("Requests:      %-10d         Responses:     %-10d", snap.RequestsSent, snap.ResponsesReceived),
+		fmt.Sprintf("Req/s:         %-10.0f         Workers:       %-10d", snap.RequestsPerSecond, snap.ActiveWorkers),
+		fmt.Sprintf("Queue:         %-10d         Found:         %-10d", snap.QueuedJobs, snap.Discovered),
+		fmt.Sprintf("Filtered:      %-10d         Failed:        %-10d", snap.RequestsFiltered, snap.RequestsFailed),
+		fmt.Sprintf("Avg Latency:   %-10s         Retries/Redir: %d / %d", formatLatency(snap.AverageLatency), snap.Retries, snap.Redirects),
 		"",
 		"Recent discoveries",
-		"",
+		"──────────────────────────────────────────────",
 	}
 
 	for _, l := range linesToPrint {
 		fmt.Fprintf(tr.Writer, "\033[K%s\n", l)
-		printed++
 	}
 
 	for i := 0; i < tr.limit; i++ {
@@ -121,11 +154,31 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 		} else {
 			fmt.Fprintf(tr.Writer, "\033[K\n")
 		}
-		printed++
 	}
 
-	tr.lines = printed
+	fmt.Fprintf(tr.Writer, "\033[K\n")
+	fmt.Fprintf(tr.Writer, "\033[KControls:\n")
+	fmt.Fprintf(tr.Writer, "\033[K[p] refresh    [s] statistics    [q] graceful stop\n")
+
+	if tr.frozen {
+		// Restore cursor
+		fmt.Fprint(tr.Writer, "\033[u")
+	}
+
 	return nil
+}
+
+func formatLatency(d time.Duration) string {
+	if d <= 0 {
+		return "-"
+	}
+	if d < time.Millisecond {
+		return fmt.Sprintf("%dµs", d.Microseconds())
+	}
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	return fmt.Sprintf("%.2fs", d.Seconds())
 }
 
 func extractPath(target, urlStr string) string {

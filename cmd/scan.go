@@ -260,7 +260,11 @@ var scanCmd = &cobra.Command{
 				console.IsTerminal(os.Stdin.Fd()) && console.IsTerminal(os.Stdout.Fd())
 
 			if flagProgress && !flagQuiet && cfg.Output != "json" && cfg.Output != "ndjson" {
-				renderer = progress.NewANSIRenderer(os.Stdout, targetURL)
+				modeStr := "Single target"
+				if cfg.Recursive {
+					modeStr = fmt.Sprintf("Recursive (%s)", strings.ToUpper(cfg.Strategy.String()))
+				}
+				renderer = progress.NewANSIRenderer(os.Stdout, targetURL, appliedProfiles, modeStr)
 				progMgr = progress.NewManager(collector, renderer, 1*time.Second)
 
 				if interactive {

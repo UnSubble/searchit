@@ -36,7 +36,7 @@ func BenchmarkANSIRenderer_Render(b *testing.B) {
 	c.RecordDiscovered()
 
 	snap := c.Snapshot()
-	r := progress.NewANSIRenderer(io.Discard, "https://target.local")
+	r := progress.NewANSIRenderer(io.Discard, "https://target.local", nil, "Single target")
 	// Pre-populate some discoveries
 	for i := 0; i < 10; i++ {
 		r.AddResult(200, "https://target.local/path")
