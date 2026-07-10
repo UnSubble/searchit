@@ -27,12 +27,14 @@ func runProfileCommand(args []string) (string, error) {
 	profileCmd.SetContext(context.Background())
 	profileListCmd.SetContext(context.Background())
 	profileShowCmd.SetContext(context.Background())
+	profileGraphCmd.SetContext(context.Background())
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	profileCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	profileListCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	profileShowCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	profileGraphCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs(args)
 
 	buf := new(bytes.Buffer)
@@ -439,5 +441,72 @@ config:
 	}
 	if !strings.Contains(outShow, "depends:") || !strings.Contains(outShow, "base") {
 		t.Errorf("expected show output to contain depends list, got:\n%s", outShow)
+	}
+}
+
+func TestProfileGraphCmd(t *testing.T) {
+	tmpDir := t.TempDir()
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	profileYAML := `schema: 1
+name: scan/myprofile
+tool: scan
+depends:
+  - base
+  - php
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "myprofile.yaml"), []byte(profileYAML), 0o644)
+
+	phpYAML := `schema: 1
+name: scan/php
+tool: scan
+depends:
+  - base
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "php.yaml"), []byte(phpYAML), 0o644)
+
+	out, err := runProfileCommand([]string{"profile", "graph", "scan/myprofile"})
+	if err != nil {
+		t.Fatalf("profile graph failed: %v", err)
+	}
+
+	wantOut := "scan/myprofile\n├── scan/base\n└── scan/php\n    └── scan/base\n"
+	if out != wantOut {
+		t.Errorf("expected graph:\n%q\ngot:\n%q", wantOut, out)
+	}
+
+	_, err = runProfileCommand([]string{"profile", "graph", "scan/nonexistent"})
+	if err == nil {
+		t.Fatal("expected missing profile error, got nil")
+	}
+
+	cycle1YAML := `schema: 1
+name: scan/cycle1
+tool: scan
+depends:
+  - cycle2
+`
+	cycle2YAML := `schema: 1
+name: scan/cycle2
+tool: scan
+depends:
+  - cycle1
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "cycle1.yaml"), []byte(cycle1YAML), 0o644)
+	_ = os.WriteFile(filepath.Join(userConfigDir, "cycle2.yaml"), []byte(cycle2YAML), 0o644)
+
+	_, err = runProfileCommand([]string{"profile", "graph", "scan/cycle1"})
+	if err == nil {
+		t.Fatal("expected cycle error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cyclic profile dependency detected") {
+		t.Errorf("expected cycle error, got %v", err)
 	}
 }

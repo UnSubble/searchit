@@ -510,6 +510,39 @@ Interactive controls are automatically disabled if any of the following conditio
 - Scan is quiet (`--quiet`).
 - Structured outputs are requested (`--output json` or `--output ndjson`).
 
+---
+
+# Profile Graph
+
+Searchit supports dependency tree visualization to help developers explain profile composition and aid debugging.
+
+### Dependency Visualization
+When a profile depends on other profiles, it forms a dependency graph. The `searchit profile graph` command resolves the full composition tree recursively and presents it in a glanceable hierarchical output.
+
+### Namespace Inheritance
+Dependencies specified without a namespace inherit the parent's namespace. For example, if `scan/wordpress` has a dependency named `base`, it is resolved to `scan/base`.
+
+### Graph Rendering
+The layout uses Unicode tree characters (`├──`, `└──`, `│`) to format the tree. The root profile is printed first, and children appear in the same order they are declared in the profile's YAML definition without alphabetical sorting.
+
+### Cycle Validation & Missing Profiles
+The graph command reuses the existing topological resolver. If any cycle or missing dependency is detected, it terminates early and prints the exact error message.
+
+### Usage Example
+To visualize the composition of `scan/wordpress`:
+```bash
+searchit profile graph scan/wordpress
+```
+
+Output:
+```
+scan/wordpress
+├── scan/php
+│   └── scan/base
+└── scan/api
+```
+
+
 
 
 
