@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo "v0.3.0-alpha")}"
+VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo "v0.3.0")}"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "dev")}"
 DATE="${DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")}"
 
