@@ -1,0 +1,17 @@
+schema: 1
+name: scan/django
+tool: scan
+description: Django/Python defaults and web application defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - python
+  - django
+  - framework
+depends:
+  - base
+experimental: false
+config:
+  exclude-status: "404,500"
+  collapse-slashes: true

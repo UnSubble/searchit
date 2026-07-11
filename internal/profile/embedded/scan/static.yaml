@@ -1,19 +1,18 @@
 schema: 1
-name: scan/deep
+name: scan/static
 tool: scan
-description: Aggressive recursive discovery with higher depth and strategy tuning
+description: Static website scan optimization with recursive crawling
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
 tags:
-  - aggressive
-  - deep
+  - static
+  - html
 depends:
-  - quick
+  - base
 experimental: false
 config:
-  threads: 16
-  timeout: 30
   recursive: true
-  max-depth: 5
+  max-depth: 3
   strategy: bfs
+  normalize-paths: true

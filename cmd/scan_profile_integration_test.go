@@ -115,24 +115,21 @@ func TestScanProfile_MultipleProfiles(t *testing.T) {
 
 func TestScanProfile_OverlayOrdering(t *testing.T) {
 	var captured config.Config
-	// Reverse order of deep and quick
-	err := runScanProfileTest([]string{"scan", "--profile", "scan/deep", "--profile", "scan/quick"}, func(cfg config.Config) {
+	// Reverse order of spring and node (which are independent targets resolving base first)
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/node", "--profile", "scan/spring"}, func(cfg config.Config) {
 		captured = cfg
 	})
 	if err != nil {
 		t.Fatalf("scan command failed: %v", err)
 	}
 
-	// scan/quick should win on threads and timeout
-	if captured.Threads != 64 {
-		t.Errorf("expected threads 64 (from quick overriding deep), got %d", captured.Threads)
+	// scan/spring should win on timeout
+	if captured.Timeout != 12 {
+		t.Errorf("expected timeout 12 (from spring overriding node), got %d", captured.Timeout)
 	}
-	if captured.Timeout != 5 {
-		t.Errorf("expected timeout 5 (from quick overriding deep), got %d", captured.Timeout)
-	}
-	// But scan/deep's recursive setting (since scan/quick doesn't define it) should still be true!
-	if !captured.Recursive {
-		t.Errorf("expected recursive true (retained from deep because quick is an overlay and does not define it)")
+	// But scan/node's threads setting (since scan/spring doesn't define it) should still be 48!
+	if captured.Threads != 48 {
+		t.Errorf("expected threads 48 (retained from node because spring is an overlay and does not define it), got %d", captured.Threads)
 	}
 }
 

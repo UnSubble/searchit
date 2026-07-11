@@ -1,0 +1,18 @@
+schema: 1
+name: scan/wordpress
+tool: scan
+description: WordPress optimized tuning and directory scan settings
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - php
+  - wordpress
+  - cms
+depends:
+  - php
+experimental: false
+config:
+  threads: 16
+  timeout: 15
+  exclude-status: "404,403,500"

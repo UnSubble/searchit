@@ -1,0 +1,17 @@
+schema: 1
+name: scan/laravel
+tool: scan
+description: Laravel framework defaults and scan optimizations
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - php
+  - laravel
+  - framework
+depends:
+  - php
+experimental: false
+config:
+  exclude-status: "404,403"
+  normalize-paths: true

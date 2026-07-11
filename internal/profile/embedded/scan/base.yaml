@@ -1,9 +1,21 @@
 schema: 1
 name: scan/base
 tool: scan
-description: Balanced default scan profile
-
+description: Balanced default scan profile with general web application defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - general
+  - base
+depends: []
+experimental: false
 config:
   threads: 32
   timeout: 10
+  connect-timeout: 5
+  recursive: false
+  max-depth: 3
+  strategy: bfs
   exclude-status: "404"
+  recurse-on: "200,301,302,403"

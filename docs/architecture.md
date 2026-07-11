@@ -586,6 +586,46 @@ The command renders the merged, final scan configuration. It displays:
 searchit profile explain scan/wordpress
 ```
 
+---
+
+# Built-in Profiles
+
+Searchit includes a curated collection of built-in scan profiles targeting common scan scenarios and technologies.
+
+### `scan/base`
+General web application defaults. Balanced concurrency and timeouts (32 threads, 10s timeouts, exclude 404).
+
+### `scan/quick`
+Lightweight scan that runs fast with lower depth, designed to quickly survey active endpoints.
+
+### `scan/deep`
+Aggressive recursive discovery with a high directory traversal depth limit.
+
+### `scan/api`
+Optimized for REST APIs. Excludes common error status codes and matches successful responses on specific size bounds.
+
+### `scan/php`
+Optimized for standard PHP applications, configuring specific response targets and normalizations.
+
+### `scan/wordpress`
+Tuned for WordPress websites, adjusting concurrency to avoid request rate-limiting on typical hosters.
+
+### `scan/laravel`
+Optimized Laravel framework scan configurations.
+
+### `scan/django`
+Tuned Python/Django application defaults.
+
+### `scan/spring`
+Tuned Spring Boot applications scan configuration.
+
+### `scan/node`
+Scan defaults optimized for Node.js-based web applications.
+
+### `scan/static`
+Optimized for crawling and discovering static html websites recursively.
+
+
 
 
 
