@@ -80,8 +80,9 @@ func (tr *ANSIRenderer) RecentEntries() []discoveryEntry {
 	return copied
 }
 
-// Close restores the terminal state by showing the cursor.
+// Close restores the terminal state by clearing the progress view and showing the cursor.
 func (tr *ANSIRenderer) Close() error {
+	tr.Clear()
 	// Show cursor (\033[?25h)
 	fmt.Fprint(tr.Writer, "\033[?25h")
 	return nil

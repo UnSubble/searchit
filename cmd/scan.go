@@ -260,6 +260,7 @@ var scanCmd = &cobra.Command{
 			// Interactive keyboard controls require stdin to also be a terminal.
 			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
+			var progDone chan struct{}
 			if enableProgress {
 				modeStr := "Single target"
 				if cfg.Recursive {
@@ -291,7 +292,11 @@ var scanCmd = &cobra.Command{
 					}()
 				}
 
-				go progMgr.Start(scanCtx, progCmdChan)
+				progDone = make(chan struct{})
+				go func() {
+					progMgr.Start(scanCtx, progCmdChan)
+					close(progDone)
+				}()
 			}
 
 			if cfg.Recursive {
@@ -371,6 +376,9 @@ var scanCmd = &cobra.Command{
 				}
 			}
 			scanCancel()
+			if progDone != nil {
+				<-progDone
+			}
 			if renderer != nil {
 				_ = renderer.Close()
 			}
