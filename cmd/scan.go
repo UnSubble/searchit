@@ -49,7 +49,7 @@ var (
 	flagRate            float64
 	flagConnectTimeout  string
 	flagProfiles        []string
-	flagProgress        bool
+	flagNoProgress      bool
 
 	resolvedTargets []string
 
@@ -256,10 +256,11 @@ var scanCmd = &cobra.Command{
 			var renderer *progress.ANSIRenderer
 			var progCmdChan chan console.Command
 
-			interactive := flagProgress && !flagQuiet && cfg.Output != "json" && cfg.Output != "ndjson" &&
-				console.IsTerminal(os.Stdin.Fd()) && console.IsTerminal(os.Stdout.Fd())
+			enableProgress := shouldEnableProgress(cfg, flagNoProgress)
+			// Interactive keyboard controls require stdin to also be a terminal.
+			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
-			if flagProgress && !flagQuiet && cfg.Output != "json" && cfg.Output != "ndjson" {
+			if enableProgress {
 				modeStr := "Single target"
 				if cfg.Recursive {
 					modeStr = fmt.Sprintf("Recursive (%s)", strings.ToUpper(cfg.Strategy.String()))
@@ -631,10 +632,10 @@ func init() {
 	)
 
 	scanCmd.Flags().BoolVar(
-		&flagProgress,
-		"progress",
+		&flagNoProgress,
+		"no-progress",
 		false,
-		"enable periodic progress rendering",
+		"disable the live progress display (progress is enabled automatically when stdout is a terminal)",
 	)
 }
 
@@ -667,4 +668,26 @@ func mapHeaders(filters []config.HeaderFilter) []engine.HeaderFilter {
 		}
 	}
 	return out
+}
+
+// shouldEnableProgress returns true when the live progress renderer should be
+// activated automatically. Progress is suppressed when:
+//   - --no-progress was explicitly requested
+//   - --quiet mode is active
+//   - output format is json or ndjson
+//   - stdout is not a terminal (piped, redirected, or CI environment)
+func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
+	if noProgress {
+		return false
+	}
+	if cfg.Quiet {
+		return false
+	}
+	if cfg.Output == "json" || cfg.Output == "ndjson" {
+		return false
+	}
+	if !console.IsTerminal(os.Stdout.Fd()) {
+		return false
+	}
+	return true
 }
