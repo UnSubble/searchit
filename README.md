@@ -4,12 +4,14 @@ Searchit is a concurrent, extensible, and profile-based web content discovery to
 
 Searchit provides a concurrent scanning engine, topological profile dependency resolution, interactive console progress controls, and a structured output system.
 
+![Live interactive ANSI progress dashboard](assets/screenshots/searchit%20scan%20-u%20example.com.png)
+
 ## Core Features
 - **Concurrent scan engine**: Configurable worker pool and connection reuse policy.
 - **Recursive scanning**: BFS and DFS traversal strategies with configurable recursion depth.
 - **Filtering**: Filters responses by status code, body size, and custom headers.
 - **Profiles**: Reusable scan configurations supporting inheritance/dependency resolution, creation, validation, visualization, and interactive editing.
-- **Interactive TUI**: Interactive live progress display and console commands for real-time controls.
+- **Interactive TUI**: Live progress display enabled automatically in interactive terminals. Use `--no-progress` to suppress. Console keyboard controls available during scans.
 - **Output Formats**: Supports text, JSON, and NDJSON output formats, with an optional quiet text mode.
 
 ## Installation
@@ -41,6 +43,11 @@ Scan a target with default settings using the embedded wordlist:
 ```bash
 searchit scan -u https://example.com
 ```
+
+The live progress display is enabled automatically when running in an interactive terminal.
+To suppress it, pass `--no-progress`.
+
+![Default text output of a completed scan](assets/screenshots/searchit%20scan%20-u%20example.com.png)
 
 Scan using a built-in profile:
 ```bash

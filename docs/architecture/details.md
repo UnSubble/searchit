@@ -13,6 +13,10 @@ Searchit utilizes a producer-consumer orchestration model:
 - **Worker Pool**: Spawns $N$ concurrent worker goroutines that pull jobs, perform HTTP client exchanges, filter responses, and emit discoveries.
 - **Consumer**: Receives discoveries and formats them to the target output.
 
+![Worker Pool Pipeline](../../assets/docs/worker-pool-pipeline.png)
+
+![Request Lifecycle](../../assets/docs/request-lifecycle.png)
+
 ## Response Pipeline
 
 Every HTTP response passes through an ordered sequence of filters. The cheapest validation steps run first to save resources:
@@ -27,6 +31,10 @@ Statistics collection is lock-free and pre-allocated:
 - Atomic variables (`sync/atomic`) are used for simple counters.
 - Status code frequency is tracked using a pre-allocated fixed-size array of 1000 counters (indexing codes 0-999). This avoids mutex locks during concurrent increments.
 
+![Statistics Engine — Lock-Free Counters](../../assets/docs/statistics-engine-lock-free-counters.png)
+
 ## Interactive Live Progress Display
 
 The `ANSIRenderer` uses terminal ANSI control codes to redraw progress updates. Alt-screen alternate buffers are bypassed to preserve terminal history. Redraw operations run in a background progress loop, completely decoupled from the scanner workers.
+
+![Progress Renderer Architecture](../../assets/docs/progress-renderer-architecture.png)

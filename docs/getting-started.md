@@ -30,6 +30,8 @@ To verify installation, print the help menu:
 searchit --help
 ```
 
+![Help output](../assets/screenshots/searchit%20--help.png)
+
 To run a basic scan against a target using the built-in embedded wordlist:
 ```bash
 searchit scan -u https://example.com
@@ -40,6 +42,8 @@ To run a scan with recursive directory crawling:
 searchit scan -u https://example.com -r --max-depth 3
 ```
 
+![Recursive scan progress](../assets/screenshots/searchit%20scan%20-u%20example.com%20-r%20--max-depth%203.png)
+
 To scan with a custom wordlist file:
 ```bash
 searchit scan -u https://example.com -w my_wordlist.txt
@@ -49,3 +53,5 @@ To check available configurations and built-in profiles:
 ```bash
 searchit profile list
 ```
+
+![Profile list output](../assets/screenshots/searchit%20profile%20list.png)
