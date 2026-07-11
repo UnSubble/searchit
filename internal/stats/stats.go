@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 )
@@ -20,11 +21,12 @@ type Collector struct {
 	startTime         int64 // Unix nano timestamp
 
 	// Future metrics support
-	retries          int64
-	redirects        int64
-	bodyInspected    int64
-	totalLatencyNano int64
-	latencyCount     int64
+	retries                int64
+	redirects              int64
+	bodyInspected          int64
+	totalLatencyNano       int64
+	latencyCount           int64
+	peakRequestsPerSecBits uint64
 
 	// Fixed-size status code array covering status codes 0-999.
 	// This avoids mutex locks and allocations during updates.
@@ -140,6 +142,19 @@ func (c *Collector) Snapshot() Snapshot {
 		reqPerSec = float64(sent) / elapsed.Seconds()
 	}
 
+	// Update and load Peak Requests Per Second atomically
+	for {
+		currentPeakBits := atomic.LoadUint64(&c.peakRequestsPerSecBits)
+		currentPeak := math.Float64frombits(currentPeakBits)
+		if reqPerSec <= currentPeak {
+			break
+		}
+		if atomic.CompareAndSwapUint64(&c.peakRequestsPerSecBits, currentPeakBits, math.Float64bits(reqPerSec)) {
+			break
+		}
+	}
+	peakReqPerSec := math.Float64frombits(atomic.LoadUint64(&c.peakRequestsPerSecBits))
+
 	var avgLat time.Duration
 	if latCount > 0 {
 		avgLat = time.Duration(totalLat / latCount)
@@ -154,21 +169,22 @@ func (c *Collector) Snapshot() Snapshot {
 	}
 
 	return Snapshot{
-		RequestsSent:      sent,
-		ResponsesReceived: recv,
-		RequestsFiltered:  filt,
-		RequestsFailed:    fail,
-		RequestsSucceeded: succ,
-		BytesReceived:     bytes,
-		ActiveWorkers:     workers,
-		QueuedJobs:        queued,
-		Discovered:        disc,
-		StartTime:         startTime,
-		StatusCodes:       statusCopy,
-		Retries:           retries,
-		Redirects:         redirects,
-		BodyInspected:     inspected,
-		AverageLatency:    avgLat,
-		RequestsPerSecond: reqPerSec,
+		RequestsSent:          sent,
+		ResponsesReceived:     recv,
+		RequestsFiltered:      filt,
+		RequestsFailed:        fail,
+		RequestsSucceeded:     succ,
+		BytesReceived:         bytes,
+		ActiveWorkers:         workers,
+		QueuedJobs:            queued,
+		Discovered:            disc,
+		StartTime:             startTime,
+		StatusCodes:           statusCopy,
+		Retries:               retries,
+		Redirects:             redirects,
+		BodyInspected:         inspected,
+		AverageLatency:        avgLat,
+		RequestsPerSecond:     reqPerSec,
+		PeakRequestsPerSecond: peakReqPerSec,
 	}
 }

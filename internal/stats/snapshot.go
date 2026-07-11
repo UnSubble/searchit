@@ -17,9 +17,10 @@ type Snapshot struct {
 	StatusCodes       map[int]int64
 
 	// Future metrics support
-	Retries           int64
-	Redirects         int64
-	BodyInspected     int64
-	AverageLatency    time.Duration
-	RequestsPerSecond float64
+	Retries               int64
+	Redirects             int64
+	BodyInspected         int64
+	AverageLatency        time.Duration
+	RequestsPerSecond     float64
+	PeakRequestsPerSecond float64
 }
