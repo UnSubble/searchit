@@ -2,8 +2,11 @@
 
 set -euo pipefail
 
-VERSION="0.1.0-alpha"
-LDFLAGS="-s -w -X github.com/unsubble/searchit/internal/version.Version=${VERSION}"
+VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo "v0.3.0-alpha")}"
+COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "dev")}"
+DATE="${DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")}"
+
+LDFLAGS="-s -w -X github.com/unsubble/searchit/internal/version.Version=${VERSION} -X github.com/unsubble/searchit/internal/version.Commit=${COMMIT} -X github.com/unsubble/searchit/internal/version.Date=${DATE}"
 
 mkdir -p dist
 

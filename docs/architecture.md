@@ -542,6 +542,29 @@ scan/wordpress
 └── scan/api
 ```
 
+---
+
+# Project Versioning
+
+Searchit manages its builds and releases using an explicit compilation-injection versioning strategy.
+
+### Development Versions
+During active development cycles, the code defaults to the next planned release milestone (e.g. `v0.3.0-alpha`). This default ensures that unreleased, locally-built copies of the tool are clearly distinguished from older, stable releases.
+
+### Release Versions
+During release workflows (typically run inside CI pipelines), the default version is overridden using the release tag matching the standard semver configuration.
+
+### ldflags Injection
+Binaries are compiled with Go's link-time variable definition flags (`-ldflags`). The build script injects three metadata parameters into the `github.com/unsubble/searchit/internal/version` package:
+- `Version`: The target release version or git tag.
+- `Commit`: The short git commit SHA (`git rev-parse --short HEAD`).
+- `Date`: An RFC3339 UTC build timestamp (`date -u +"%Y-%m-%dT%H:%M:%SZ"`).
+
+### CLI commands
+- `searchit --version` prints a concise single-line version (e.g., `searchit v0.3.0-alpha`).
+- `searchit version` outputs the long format including commit hash and built timestamp.
+
+
 
 
 

@@ -35,7 +35,7 @@ func Execute() {
 		os.Exit(1)
 	}
 
-	rootCmd.SetVersionTemplate("searchit v" + version.Version + "\n")
+	rootCmd.SetVersionTemplate(version.String() + "\n")
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
