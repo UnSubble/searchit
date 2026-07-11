@@ -36,7 +36,7 @@ func TestNew_CreatesHTTPClient(t *testing.T) {
 
 func TestNew_ConfiguresHTTPClientTimeout(t *testing.T) {
 	cfg := config.Default()
-	cfg.Timeout = 30
+	cfg.Timeout = 30 * time.Second
 
 	a := app.New(context.Background(), cfg)
 

@@ -125,6 +125,28 @@ func TestLoadMissingProfile(t *testing.T) {
 	}
 }
 
+func TestLoadProfile_FuzzyBaseName(t *testing.T) {
+	store := profile.NewStore()
+
+	// Should successfully resolve "wordpress" to "scan/wordpress"
+	p, err := store.Load("wordpress")
+	if err != nil {
+		t.Fatalf("Load(wordpress) failed: %v", err)
+	}
+	if p.Name != "scan/wordpress" {
+		t.Errorf("expected loaded profile name to be 'scan/wordpress', got %q", p.Name)
+	}
+
+	// Should fail to load nonexistent fuzzy name
+	_, err = store.Load("nonexistentprofile")
+	if err == nil {
+		t.Fatal("expected error loading nonexistent fuzzy profile, got nil")
+	}
+	if !strings.Contains(err.Error(), "profile not found") {
+		t.Errorf("expected profile not found error, got: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Listing
 // ---------------------------------------------------------------------------

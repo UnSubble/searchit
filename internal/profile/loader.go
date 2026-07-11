@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -72,7 +73,40 @@ func (s *DefaultStore) Load(name string) (*Profile, error) {
 		return p, nil
 	}
 
+	// If name doesn't contain a slash, try to match by base name.
+	if !strings.Contains(name, "/") {
+		var matches []*Profile
+		for _, p := range userProfiles {
+			if getProfileBaseName(p.Name) == name {
+				matches = append(matches, p)
+			}
+		}
+		for _, p := range embedded {
+			if _, overridden := userProfiles[p.Name]; overridden {
+				continue
+			}
+			if getProfileBaseName(p.Name) == name {
+				matches = append(matches, p)
+			}
+		}
+
+		if len(matches) == 1 {
+			return matches[0], nil
+		} else if len(matches) > 1 {
+			var matchNames []string
+			for _, m := range matches {
+				matchNames = append(matchNames, m.Name)
+			}
+			return nil, fmt.Errorf("profile %q is ambiguous, matches: %s", name, strings.Join(matchNames, ", "))
+		}
+	}
+
 	return nil, fmt.Errorf("profile not found: %s", name)
+}
+
+func getProfileBaseName(fullName string) string {
+	parts := strings.Split(fullName, "/")
+	return parts[len(parts)-1]
 }
 
 // LoadRaw returns the raw YAML bytes for the profile with the given name.

@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/recursion"
@@ -14,8 +15,8 @@ func TestDefault_Threads(t *testing.T) {
 }
 
 func TestDefault_Timeout(t *testing.T) {
-	if got := config.Default().Timeout; got != 10 {
-		t.Errorf("Timeout = %d, want 10", got)
+	if got := config.Default().Timeout; got != 10*time.Second {
+		t.Errorf("Timeout = %v, want 10s", got)
 	}
 }
 

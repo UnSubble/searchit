@@ -19,7 +19,7 @@ func Apply(cfg *config.Config, o Overlay) {
 		cfg.Threads = *o.Threads
 	}
 	if o.Timeout != nil {
-		cfg.Timeout = int(o.Timeout.Seconds())
+		cfg.Timeout = *o.Timeout
 	}
 	if o.ConnectTimeout != nil {
 		cfg.ConnectTimeout = *o.ConnectTimeout

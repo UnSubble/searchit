@@ -9,8 +9,8 @@ func resolveDepName(parentName, depName string) string {
 	if strings.Contains(depName, "/") {
 		return depName
 	}
-	parts := strings.SplitN(parentName, "/", 2)
-	if len(parts) > 0 {
+	if strings.Contains(parentName, "/") {
+		parts := strings.SplitN(parentName, "/", 2)
 		return parts[0] + "/" + depName
 	}
 	return depName

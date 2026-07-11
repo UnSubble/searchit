@@ -97,6 +97,21 @@ exclude-headers: ["Server=Apache"]
 			},
 		},
 		{
+			name: "singular header key aliases",
+			yamlData: `
+include-header: ["Server=nginx"]
+exclude-header: ["Server=Apache"]
+`,
+			verify: func(t *testing.T, o scan.Overlay) {
+				if o.IncludeHeaders == nil || len(*o.IncludeHeaders) != 1 || (*o.IncludeHeaders)[0] != "Server=nginx" {
+					t.Errorf("include-header = %v", o.IncludeHeaders)
+				}
+				if o.ExcludeHeaders == nil || len(*o.ExcludeHeaders) != 1 || (*o.ExcludeHeaders)[0] != "Server=Apache" {
+					t.Errorf("exclude-header = %v", o.ExcludeHeaders)
+				}
+			},
+		},
+		{
 			name: "durations as integers",
 			yamlData: `
 timeout: 15
@@ -226,8 +241,8 @@ func TestApply(t *testing.T) {
 	if cfg.Threads != 64 {
 		t.Errorf("Threads = %d", cfg.Threads)
 	}
-	if cfg.Timeout != 20 {
-		t.Errorf("Timeout = %d", cfg.Timeout)
+	if cfg.Timeout != 20*time.Second {
+		t.Errorf("Timeout = %v", cfg.Timeout)
 	}
 	if cfg.ConnectTimeout != 5*time.Second {
 		t.Errorf("ConnectTimeout = %v", cfg.ConnectTimeout)

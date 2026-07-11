@@ -54,7 +54,9 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 		IncludeSize     *string   `yaml:"include-size"`
 		ExcludeSize     *string   `yaml:"exclude-size"`
 		IncludeHeaders  *[]string `yaml:"include-headers"`
+		IncludeHeader   *[]string `yaml:"include-header"`
 		ExcludeHeaders  *[]string `yaml:"exclude-headers"`
+		ExcludeHeader   *[]string `yaml:"exclude-header"`
 	}
 
 	var raw rawOverlay
@@ -76,8 +78,18 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	o.RecurseOn = raw.RecurseOn
 	o.IncludeSize = raw.IncludeSize
 	o.ExcludeSize = raw.ExcludeSize
-	o.IncludeHeaders = raw.IncludeHeaders
-	o.ExcludeHeaders = raw.ExcludeHeaders
+
+	if raw.IncludeHeaders != nil {
+		o.IncludeHeaders = raw.IncludeHeaders
+	} else {
+		o.IncludeHeaders = raw.IncludeHeader
+	}
+
+	if raw.ExcludeHeaders != nil {
+		o.ExcludeHeaders = raw.ExcludeHeaders
+	} else {
+		o.ExcludeHeaders = raw.ExcludeHeader
+	}
 
 	// Parse Timeout
 	if raw.Timeout.Kind != 0 {

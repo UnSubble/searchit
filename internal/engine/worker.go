@@ -215,7 +215,7 @@ func matchHeader(resp *http.Response, name, value string) bool {
 	for k, values := range resp.Header {
 		if strings.EqualFold(k, name) {
 			for _, val := range values {
-				if val == value {
+				if strings.EqualFold(val, value) {
 					return true
 				}
 			}

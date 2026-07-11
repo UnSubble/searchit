@@ -11,28 +11,28 @@ import (
 )
 
 func TestNew_ReturnsClient(t *testing.T) {
-	c := httpclient.New(10, 10*time.Second)
+	c := httpclient.New(10*time.Second, 10*time.Second)
 	if c == nil {
 		t.Fatal("New returned nil")
 	}
 }
 
 func TestNew_TimeoutSet(t *testing.T) {
-	c := httpclient.New(5, 10*time.Second)
+	c := httpclient.New(5*time.Second, 10*time.Second)
 	if c.Timeout != 5*time.Second {
 		t.Errorf("Timeout = %v, want 5s", c.Timeout)
 	}
 }
 
 func TestNew_HasTransport(t *testing.T) {
-	c := httpclient.New(10, 10*time.Second)
+	c := httpclient.New(10*time.Second, 10*time.Second)
 	if c.Transport == nil {
 		t.Fatal("Transport is nil; connection pooling will be disabled")
 	}
 }
 
 func TestNew_TransportSettings(t *testing.T) {
-	c := httpclient.New(10, 10*time.Second)
+	c := httpclient.New(10*time.Second, 10*time.Second)
 	tr, ok := c.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("Transport is not *http.Transport")
@@ -93,7 +93,7 @@ func TestContentLength_Absent(t *testing.T) {
 }
 
 func TestNew_ConnectTimeout(t *testing.T) {
-	c := httpclient.New(10, 50*time.Millisecond)
+	c := httpclient.New(10*time.Second, 50*time.Millisecond)
 
 	// Use an unroutable IP address that will time out during TCP connection establishment
 	start := time.Now()

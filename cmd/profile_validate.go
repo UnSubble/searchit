@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/profile"
 )
 
 var profileValidateCmd = &cobra.Command{
-	Use:   "validate [name]",
+	Use:   "validate [name|path]",
 	Short: "Validate a profile",
 	Long: `Perform a two-stage validation on a profile.
 
@@ -28,12 +29,31 @@ func runProfileValidate(cmd *cobra.Command, args []string) error {
 
 	store := profile.NewStore()
 
-	// Load profile (which validates file existence)
-	p, err := store.Load(name)
-	if err != nil {
-		fmt.Fprintln(cmd.OutOrStderr(), "Validation failed:")
-		fmt.Fprintln(cmd.OutOrStderr(), err.Error())
-		return fmt.Errorf("validation failed")
+	var p *profile.Profile
+	var err error
+
+	// Check if the argument is a local file path
+	if info, statErr := os.Stat(name); statErr == nil && !info.IsDir() {
+		data, readErr := os.ReadFile(name)
+		if readErr != nil {
+			fmt.Fprintln(cmd.OutOrStderr(), "Validation failed:")
+			fmt.Fprintln(cmd.OutOrStderr(), readErr.Error())
+			return fmt.Errorf("validation failed")
+		}
+		p, err = profile.DecodeProfile(data)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStderr(), "Validation failed:")
+			fmt.Fprintln(cmd.OutOrStderr(), err.Error())
+			return fmt.Errorf("validation failed")
+		}
+	} else {
+		// Load profile (which validates file existence)
+		p, err = store.Load(name)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStderr(), "Validation failed:")
+			fmt.Fprintln(cmd.OutOrStderr(), err.Error())
+			return fmt.Errorf("validation failed")
+		}
 	}
 
 	// 1. Generic validation

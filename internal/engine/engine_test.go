@@ -681,6 +681,20 @@ func TestWorker_Filters(t *testing.T) {
 			t.Errorf("expected accepted=true for case-insensitive header name match, got false")
 		}
 	})
+
+	t.Run("case-insensitive header value matching", func(t *testing.T) {
+		inc := []engine.HeaderFilter{{Name: "Server", Value: "NGINX"}}
+		jobs := make(chan engine.Job, 1)
+		results := make(chan engine.Result, 1)
+		jobs <- engine.Job{URL: srv.URL + "/header-nginx"}
+		close(jobs)
+
+		engine.Worker(context.Background(), a.HTTPClient, a.Config.Status.Exclude, nil, nil, inc, nil, 0, nil, jobs, results, nil)
+		r := <-results
+		if !r.Accepted {
+			t.Errorf("expected accepted=true for case-insensitive header value match, got false")
+		}
+	})
 }
 
 func BenchmarkHeaderMatch(b *testing.B) {

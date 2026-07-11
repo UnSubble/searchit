@@ -388,7 +388,7 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 		cfg.Threads = flagThreads
 	}
 	if cmd.Flags().Changed("timeout") {
-		cfg.Timeout = flagTimeout
+		cfg.Timeout = time.Duration(flagTimeout) * time.Second
 	}
 	if cmd.Flags().Changed("delay") {
 		if d, err := time.ParseDuration(flagDelay); err == nil {

@@ -250,6 +250,50 @@ config:
 	}
 }
 
+func TestProfileValidate_LocalFilePath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 1. Valid local profile file
+	validFile := filepath.Join(tmpDir, "valid_profile.yaml")
+	validYAML := `schema: 1
+name: scan/localvalid
+tool: scan
+config:
+  threads: 10
+`
+	if err := os.WriteFile(validFile, []byte(validYAML), 0o644); err != nil {
+		t.Fatalf("write valid file: %v", err)
+	}
+
+	out, err := runProfileCommand([]string{"profile", "validate", validFile})
+	if err != nil {
+		t.Fatalf("expected validation to succeed for local file path, got: %v", err)
+	}
+	if !strings.Contains(out, "Valid profile:") {
+		t.Errorf("expected output to contain 'Valid profile:', got:\n%s", out)
+	}
+	if !strings.Contains(out, "scan/localvalid") {
+		t.Errorf("expected output to contain profile name, got:\n%s", out)
+	}
+
+	// 2. Invalid local profile file (invalid config field)
+	invalidFile := filepath.Join(tmpDir, "invalid_profile.yaml")
+	invalidYAML := `schema: 1
+name: scan/localinvalid
+tool: scan
+config:
+  threads: 0
+`
+	if err := os.WriteFile(invalidFile, []byte(invalidYAML), 0o644); err != nil {
+		t.Fatalf("write invalid file: %v", err)
+	}
+
+	_, err = runProfileCommand([]string{"profile", "validate", invalidFile})
+	if err == nil {
+		t.Fatal("expected validation to fail for local file with threads=0, got nil")
+	}
+}
+
 func TestHelperProcessCmd(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return

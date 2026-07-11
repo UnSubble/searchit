@@ -15,7 +15,7 @@ type Config struct {
 	Wordlist string
 
 	Threads        int
-	Timeout        int // seconds
+	Timeout        time.Duration
 	Delay          time.Duration
 	Rate           float64
 	ConnectTimeout time.Duration

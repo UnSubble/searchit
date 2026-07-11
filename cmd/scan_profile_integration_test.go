@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
@@ -64,8 +65,8 @@ func TestScanProfile_Defaults(t *testing.T) {
 	if captured.Threads != 32 {
 		t.Errorf("expected default threads 32, got %d", captured.Threads)
 	}
-	if captured.Timeout != 10 {
-		t.Errorf("expected default timeout 10, got %d", captured.Timeout)
+	if captured.Timeout != 10*time.Second {
+		t.Errorf("expected default timeout 10, got %v", captured.Timeout)
 	}
 }
 
@@ -81,8 +82,8 @@ func TestScanProfile_SingleProfile(t *testing.T) {
 	if captured.Threads != 64 {
 		t.Errorf("expected threads 64 from scan/quick, got %d", captured.Threads)
 	}
-	if captured.Timeout != 5 {
-		t.Errorf("expected timeout 5 from scan/quick, got %d", captured.Timeout)
+	if captured.Timeout != 5*time.Second {
+		t.Errorf("expected timeout 5 from scan/quick, got %v", captured.Timeout)
 	}
 	// Verify that strategy remains default (BFS)
 	if captured.Strategy != recursion.BFS {
@@ -105,8 +106,8 @@ func TestScanProfile_MultipleProfiles(t *testing.T) {
 	if captured.Threads != 16 {
 		t.Errorf("expected threads 16 (from deep overriding quick), got %d", captured.Threads)
 	}
-	if captured.Timeout != 30 {
-		t.Errorf("expected timeout 30 (from deep overriding quick), got %d", captured.Timeout)
+	if captured.Timeout != 30*time.Second {
+		t.Errorf("expected timeout 30 (from deep overriding quick), got %v", captured.Timeout)
 	}
 	if !captured.Recursive {
 		t.Errorf("expected recursive true from deep")
@@ -124,8 +125,8 @@ func TestScanProfile_OverlayOrdering(t *testing.T) {
 	}
 
 	// scan/spring should win on timeout
-	if captured.Timeout != 12 {
-		t.Errorf("expected timeout 12 (from spring overriding node), got %d", captured.Timeout)
+	if captured.Timeout != 12*time.Second {
+		t.Errorf("expected timeout 12 (from spring overriding node), got %v", captured.Timeout)
 	}
 	// But scan/node's threads setting (since scan/spring doesn't define it) should still be 48!
 	if captured.Threads != 48 {
@@ -147,8 +148,8 @@ func TestScanProfile_CLIOverrides(t *testing.T) {
 		t.Errorf("expected threads 8 (CLI override), got %d", captured.Threads)
 	}
 	// Timeout should still be 5 from the profile
-	if captured.Timeout != 5 {
-		t.Errorf("expected timeout 5 (from profile), got %d", captured.Timeout)
+	if captured.Timeout != 5*time.Second {
+		t.Errorf("expected timeout 5 (from profile), got %v", captured.Timeout)
 	}
 }
 
@@ -212,8 +213,8 @@ config:
 	if captured.Threads != 99 {
 		t.Errorf("expected threads 99 (from user custom profile), got %d", captured.Threads)
 	}
-	if captured.Timeout != 45 {
-		t.Errorf("expected timeout 45 (from user custom profile), got %d", captured.Timeout)
+	if captured.Timeout != 45*time.Second {
+		t.Errorf("expected timeout 45 (from user custom profile), got %v", captured.Timeout)
 	}
 }
 
@@ -452,8 +453,8 @@ config:
 	if captured.Threads != 10 {
 		t.Errorf("expected threads 10, got %d", captured.Threads)
 	}
-	if captured.Timeout != 5 {
-		t.Errorf("expected timeout 5, got %d", captured.Timeout)
+	if captured.Timeout != 5*time.Second {
+		t.Errorf("expected timeout 5, got %v", captured.Timeout)
 	}
 	if !captured.Recursive {
 		t.Errorf("expected recursive true")

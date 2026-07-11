@@ -10,7 +10,7 @@ import (
 // MaxIdleConns and MaxIdleConnsPerHost are set high to avoid connection
 // starvation across many workers. IdleConnTimeout evicts connections before
 // the server can RST them on reuse.
-func New(timeout int, connectTimeout time.Duration) *http.Client {
+func New(timeout time.Duration, connectTimeout time.Duration) *http.Client {
 	tr := &http.Transport{
 		MaxIdleConns:        1000,
 		MaxIdleConnsPerHost: 100,
@@ -24,6 +24,6 @@ func New(timeout int, connectTimeout time.Duration) *http.Client {
 
 	return &http.Client{
 		Transport: tr,
-		Timeout:   time.Duration(timeout) * time.Second,
+		Timeout:   timeout,
 	}
 }
