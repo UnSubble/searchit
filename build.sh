@@ -30,5 +30,23 @@ for t in "${targets[@]}"; do
 		.
 done
 
+# Copy host architecture binary to dist/searchit for local use and quickstart compatibility
+host_goos="$(go env GOOS)"
+host_goarch="$(go env GOARCH)"
+host_filename="searchit-${host_goos}-${host_goarch}"
+if [ "${host_goos}" = "windows" ]; then
+	host_filename="${host_filename}.exe"
+fi
+
+if [ -f "dist/${host_filename}" ]; then
+	echo "Creating local binary dist/searchit -> dist/${host_filename}"
+	if [ "${host_goos}" = "windows" ]; then
+		cp "dist/${host_filename}" "dist/searchit.exe"
+	else
+		cp "dist/${host_filename}" "dist/searchit"
+		chmod +x "dist/searchit"
+	fi
+fi
+
 echo "Build complete. Output directory: dist/"
 ls -lh dist/
