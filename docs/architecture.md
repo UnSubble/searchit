@@ -564,6 +564,29 @@ Binaries are compiled with Go's link-time variable definition flags (`-ldflags`)
 - `searchit --version` prints a concise single-line version (e.g., `searchit v0.3.0-alpha`).
 - `searchit version` outputs the long format including commit hash and built timestamp.
 
+---
+
+# Profile Explain
+
+Searchit supports explaining how a profile behaves after dependency resolution and overlay application using the `searchit profile explain` command.
+
+### Dependency Chain & Overlay Ordering
+The command resolves the target profile's dependency chain topologically and presents the exact linear order in which overlays are merged (from base dependency up to the target profile).
+
+### Override Visualization
+For each modified single-value configuration parameter, the command traces and displays a timeline showing the value declared by each profile in the chain and the final resolved value, helping developers locate where values originate.
+
+### Final Configuration
+The command renders the merged, final scan configuration. It displays:
+- Single-value parameters (aligned key-value list).
+- List-like parameters (indented collections for recurse targets, exclude statuses, and custom headers).
+
+### Usage Example
+```bash
+searchit profile explain scan/wordpress
+```
+
+
 
 
 

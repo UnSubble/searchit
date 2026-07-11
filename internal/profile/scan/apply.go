@@ -1,6 +1,8 @@
 package scan
 
 import (
+	"strings"
+
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
@@ -71,4 +73,24 @@ func Apply(cfg *config.Config, o Overlay) {
 			cfg.ExcludeSize = f
 		}
 	}
+	if o.IncludeHeaders != nil {
+		cfg.IncludeHeaders = parseHeaderFlags(*o.IncludeHeaders)
+	}
+	if o.ExcludeHeaders != nil {
+		cfg.ExcludeHeaders = parseHeaderFlags(*o.ExcludeHeaders)
+	}
+}
+
+func parseHeaderFlags(flags []string) []config.HeaderFilter {
+	res := make([]config.HeaderFilter, 0, len(flags))
+	for _, f := range flags {
+		idx := strings.Index(f, "=")
+		if idx > 0 && idx < len(f)-1 {
+			res = append(res, config.HeaderFilter{
+				Name:  f[:idx],
+				Value: f[idx+1:],
+			})
+		}
+	}
+	return res
 }

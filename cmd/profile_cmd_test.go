@@ -28,6 +28,7 @@ func runProfileCommand(args []string) (string, error) {
 	profileListCmd.SetContext(context.Background())
 	profileShowCmd.SetContext(context.Background())
 	profileGraphCmd.SetContext(context.Background())
+	profileExplainCmd.SetContext(context.Background())
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -35,6 +36,7 @@ func runProfileCommand(args []string) (string, error) {
 	profileListCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	profileShowCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	profileGraphCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	profileExplainCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs(args)
 
 	buf := new(bytes.Buffer)
@@ -508,5 +510,104 @@ depends:
 	}
 	if !strings.Contains(err.Error(), "cyclic profile dependency detected") {
 		t.Errorf("expected cycle error, got %v", err)
+	}
+}
+
+func TestProfileExplainCmd(t *testing.T) {
+	tmpDir := t.TempDir()
+	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
+	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	profileYAML := `schema: 1
+name: scan/wordpress
+tool: scan
+description: Wordpress optimized profile
+author: WordpressTeam
+tags:
+  - wordpress
+depends:
+  - php
+config:
+  threads: 128
+  recursive: true
+  include-headers:
+    - Server=nginx
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "wordpress.yaml"), []byte(profileYAML), 0o644)
+
+	phpYAML := `schema: 1
+name: scan/php
+tool: scan
+depends:
+  - base
+config:
+  threads: 64
+  exclude-headers:
+    - Server=Apache
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "php.yaml"), []byte(phpYAML), 0o644)
+
+	out, err := runProfileCommand([]string{"profile", "explain", "scan/wordpress"})
+	if err != nil {
+		t.Fatalf("profile explain failed: %v", err)
+	}
+
+	// Verify metadata
+	if !strings.Contains(out, "Description\n\n    Wordpress optimized profile") {
+		t.Errorf("expected description, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Author\n\n    WordpressTeam") {
+		t.Errorf("expected author, got:\n%s", out)
+	}
+
+	// Verify dependency chain
+	if !strings.Contains(out, "scan/base\n        \u2193\n    scan/php\n        \u2193\n    scan/wordpress") {
+		t.Errorf("expected dependency chain, got:\n%s", out)
+	}
+
+	// Verify Final Config values
+	if !strings.Contains(out, "Threads:              128") {
+		t.Errorf("expected Final Config Threads 128, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Recursive:            true") {
+		t.Errorf("expected Final Config Recursive true, got:\n%s", out)
+	}
+
+	// Verify List Config headers
+	if !strings.Contains(out, "Include Headers:\n\n    Server=nginx") {
+		t.Errorf("expected Include Headers, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Exclude Headers:\n\n    Server=Apache") {
+		t.Errorf("expected Exclude Headers, got:\n%s", out)
+	}
+
+	// Verify Overrides
+	if !strings.Contains(out, "Threads\n\n    base          32\n\n    php           64\n\n    wordpress     128\n\nFinal\n\n    128") {
+		t.Errorf("expected Threads overrides trace, got:\n%s", out)
+	}
+
+	// Test missing profile error
+	_, err = runProfileCommand([]string{"profile", "explain", "scan/nonexistent"})
+	if err == nil {
+		t.Fatal("expected missing profile error, got nil")
+	}
+
+	// Test validation error propagation (invalid threads)
+	invalidYAML := `schema: 1
+name: scan/invalid
+tool: scan
+config:
+  threads: 0
+`
+	_ = os.WriteFile(filepath.Join(userConfigDir, "invalid.yaml"), []byte(invalidYAML), 0o644)
+	_, err = runProfileCommand([]string{"profile", "explain", "scan/invalid"})
+	if err == nil {
+		t.Fatal("expected validation error for threads < 1, got nil")
 	}
 }
