@@ -72,4 +72,20 @@ rate: 1.5
 			t.Fatal("expected validation to fail for rate <= 0, got nil")
 		}
 	})
+
+	t.Run("decode error", func(t *testing.T) {
+		var node yaml.Node
+		_ = yaml.Unmarshal([]byte(`threads: "abc"`), &node)
+		mappingNode := node.Content[0]
+		p := &profile.Profile{Config: *mappingNode}
+		if err := v.Validate(p); err == nil {
+			t.Fatal("expected validation to fail for invalid threads format, got nil")
+		}
+	})
+
+	t.Run("Tool method", func(t *testing.T) {
+		if v.Tool() != "scan" {
+			t.Errorf("expected Tool() to be scan, got %s", v.Tool())
+		}
+	})
 }

@@ -3,6 +3,7 @@ package console_test
 import (
 	"context"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -95,5 +96,83 @@ func TestController_ContextCancellation(t *testing.T) {
 		// Pass
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timeout waiting for controller shutdown on context cancellation")
+	}
+}
+
+func TestController_TerminalAndRaw(t *testing.T) {
+	// Try opening /dev/tty to test actual terminal behavior
+	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		t.Skip("skipping /dev/tty test: controlling terminal not available")
+		return
+	}
+	defer f.Close()
+
+	fd := f.Fd()
+	if !console.IsTerminal(fd) {
+		t.Errorf("expected /dev/tty to be a terminal")
+	}
+
+	state, err := console.MakeRaw(int(fd))
+	if err != nil {
+		t.Fatalf("MakeRaw failed: %v", err)
+	}
+
+	err = console.Restore(int(fd), state)
+	if err != nil {
+		t.Errorf("Restore failed: %v", err)
+	}
+
+	// Test nil state restore
+	if err := console.Restore(int(fd), nil); err != nil {
+		t.Errorf("Restore with nil state should succeed, got: %v", err)
+	}
+
+	// Start Controller using /dev/tty and cancel context immediately
+	ctx, cancel := context.WithCancel(context.Background())
+	c := console.NewController(f)
+	go c.Start(ctx)
+	cancel()
+
+	select {
+	case <-c.Done():
+		// Pass
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for controller using terminal to stop")
+	}
+}
+
+func TestController_StdinTesting(t *testing.T) {
+	c := console.NewController(os.Stdin)
+	ctx, cancel := context.WithCancel(context.Background())
+	go c.Start(ctx)
+	cancel()
+
+	select {
+	case <-c.Done():
+		// Pass
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for stdin bypass controller")
+	}
+}
+
+type errorReader struct{}
+
+func (e errorReader) Read(p []byte) (n int, err error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func TestController_ReadError(t *testing.T) {
+	c := console.NewController(errorReader{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go c.Start(ctx)
+
+	select {
+	case <-c.Done():
+		// Pass
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for controller with error reader to terminate")
 	}
 }

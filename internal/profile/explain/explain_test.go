@@ -191,4 +191,110 @@ func TestExplain_BuildAndRender(t *testing.T) {
 			t.Errorf("expected schema validation error, got: %v", err)
 		}
 	})
+
+	t.Run("tool-specific validation failure", func(t *testing.T) {
+		store := &mockStore{
+			profiles: map[string]*types.Profile{
+				"scan/invalid-threads": {
+					Schema: 1,
+					Name:   "scan/invalid-threads",
+					Tool:   "scan",
+					Config: parseYAMLNode("threads: 0"),
+				},
+			},
+		}
+		_, err := explain.Build(store, "scan/invalid-threads")
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "threads must be at least 1") {
+			t.Errorf("expected threads validation error, got: %v", err)
+		}
+	})
+
+	t.Run("decode overlay failure", func(t *testing.T) {
+		store := &mockStore{
+			profiles: map[string]*types.Profile{
+				"scan/invalid-format": {
+					Schema: 1,
+					Name:   "scan/invalid-format",
+					Tool:   "scan",
+					Config: parseYAMLNode("threads: abc"),
+				},
+			},
+		}
+		_, err := explain.Build(store, "scan/invalid-format")
+		if err == nil {
+			t.Fatal("expected decode error, got nil")
+		}
+	})
+
+	t.Run("all metadata fields and configuration options", func(t *testing.T) {
+		store := &mockStore{
+			profiles: map[string]*types.Profile{
+				"scan/complex": {
+					Schema:       1,
+					Name:         "scan/complex",
+					Tool:         "scan",
+					Description:  "Complex configuration description",
+					Author:       "Author Name",
+					Homepage:     "http://example.com",
+					License:      "MIT",
+					Experimental: true,
+					Created:      "2026-01-01",
+					Updated:      "2026-01-02",
+					Config: parseYAMLNode(`
+threads: 50
+recursive: true
+strategy: dfs
+max-depth: 5
+output: ndjson
+timeout: 15s
+delay: 150ms
+rate: 2.5
+recurse-on: "200,301"
+exclude-status: "404"
+include-headers: ["Server=nginx"]
+exclude-headers: ["Server=Apache"]
+`),
+				},
+			},
+		}
+
+		model, err := explain.Build(store, "scan/complex")
+		if err != nil {
+			t.Fatalf("Build failed: %v", err)
+		}
+
+		rendered := explain.RenderText(model)
+
+		wantSubstrings := []string{
+			"Profile\n\n    scan/complex",
+			"Description\n\n    Complex configuration description",
+			"Author\n\n    Author Name",
+			"Homepage\n\n    http://example.com",
+			"License\n\n    MIT",
+			"Experimental\n\n    true",
+			"Created\n\n    2026-01-01",
+			"Updated\n\n    2026-01-02",
+			"Threads:              50",
+			"Recursive:            true",
+			"Strategy:             dfs",
+			"Max Depth:            5",
+			"Output:               ndjson",
+			"Timeout:              15s",
+			"Delay:                150ms",
+			"Rate:                 2.5",
+			"Recurse On:\n\n    200\n    301",
+			"Exclude Status:\n\n    404",
+			"Include Headers:\n\n    Server=nginx",
+			"Exclude Headers:\n\n    Server=Apache",
+		}
+
+		for _, s := range wantSubstrings {
+			if !strings.Contains(rendered, s) {
+				t.Errorf("expected output to contain %q, but did not. Got:\n%s", s, rendered)
+			}
+		}
+	})
 }

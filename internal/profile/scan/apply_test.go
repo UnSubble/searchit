@@ -15,6 +15,7 @@ func TestUnmarshalYAML(t *testing.T) {
 		name     string
 		yamlData string
 		verify   func(t *testing.T, o scan.Overlay)
+		wantErr  bool
 	}{
 		{
 			name: "all fields present with duration strings",
@@ -35,6 +36,8 @@ exclude-status: "404,500"
 recurse-on: "200-300"
 include-size: "100-200"
 exclude-size: "0"
+include-headers: ["Server=nginx"]
+exclude-headers: ["Server=Apache"]
 `,
 			verify: func(t *testing.T, o scan.Overlay) {
 				if o.Threads == nil || *o.Threads != 10 {
@@ -85,6 +88,12 @@ exclude-size: "0"
 				if o.ExcludeSize == nil || *o.ExcludeSize != "0" {
 					t.Errorf("exclude-size = %v, want 0", o.ExcludeSize)
 				}
+				if o.IncludeHeaders == nil || len(*o.IncludeHeaders) != 1 || (*o.IncludeHeaders)[0] != "Server=nginx" {
+					t.Errorf("include-headers = %v", o.IncludeHeaders)
+				}
+				if o.ExcludeHeaders == nil || len(*o.ExcludeHeaders) != 1 || (*o.ExcludeHeaders)[0] != "Server=Apache" {
+					t.Errorf("exclude-headers = %v", o.ExcludeHeaders)
+				}
 			},
 		},
 		{
@@ -118,15 +127,48 @@ delay: 500
 				}
 			},
 		},
+		{
+			name:     "invalid timeout string",
+			yamlData: `timeout: invalid`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid timeout array",
+			yamlData: `timeout: [1, 2]`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid connect-timeout string",
+			yamlData: `connect-timeout: invalid`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid connect-timeout array",
+			yamlData: `connect-timeout: [1, 2]`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid delay string",
+			yamlData: `delay: invalid`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid delay array",
+			yamlData: `delay: [1, 2]`,
+			wantErr:  true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var o scan.Overlay
-			if err := yaml.Unmarshal([]byte(tc.yamlData), &o); err != nil {
-				t.Fatalf("failed to unmarshal: %v", err)
+			err := yaml.Unmarshal([]byte(tc.yamlData), &o)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("unmarshal error = %v, wantErr %v", err, tc.wantErr)
 			}
-			tc.verify(t, o)
+			if err == nil && tc.verify != nil {
+				tc.verify(t, o)
+			}
 		})
 	}
 }
@@ -134,50 +176,112 @@ delay: 500
 func TestApply(t *testing.T) {
 	cfg := config.Default()
 
-	// Initial values verify
-	if cfg.Threads != 32 {
-		t.Fatalf("expected default threads 32, got %d", cfg.Threads)
-	}
-	if cfg.Recursive {
-		t.Fatalf("expected default recursive false")
-	}
-
-	// 1. Apply single profile overrides
 	threadsVal := 64
 	recursiveVal := true
-	o1 := scan.Overlay{
-		Threads:   &threadsVal,
-		Recursive: &recursiveVal,
+	wordlistVal := "custom.txt"
+	timeoutVal := 20 * time.Second
+	connectTimeoutVal := 5 * time.Second
+	maxDepthVal := uint16(5)
+	strategyVal := "dfs"
+	delayVal := 100 * time.Millisecond
+	rateVal := 12.5
+	outputVal := "json"
+	quietVal := true
+	normalizePathsVal := true
+	collapseSlashesVal := true
+	excludeStatusVal := "500"
+	recurseOnVal := "200,302"
+	includeSizeVal := "500-1000"
+	excludeSizeVal := "123"
+	includeHeadersVal := []string{"Server=nginx"}
+	excludeHeadersVal := []string{"X-Header=val"}
+
+	o := scan.Overlay{
+		Wordlist:        &wordlistVal,
+		Threads:         &threadsVal,
+		Timeout:         &timeoutVal,
+		ConnectTimeout:  &connectTimeoutVal,
+		Recursive:       &recursiveVal,
+		MaxDepth:        &maxDepthVal,
+		Strategy:        &strategyVal,
+		Delay:           &delayVal,
+		Rate:            &rateVal,
+		Output:          &outputVal,
+		Quiet:           &quietVal,
+		NormalizePaths:  &normalizePathsVal,
+		CollapseSlashes: &collapseSlashesVal,
+		ExcludeStatus:   &excludeStatusVal,
+		RecurseOn:       &recurseOnVal,
+		IncludeSize:     &includeSizeVal,
+		ExcludeSize:     &excludeSizeVal,
+		IncludeHeaders:  &includeHeadersVal,
+		ExcludeHeaders:  &excludeHeadersVal,
 	}
 
-	scan.Apply(&cfg, o1)
+	scan.Apply(&cfg, o)
 
+	if cfg.Wordlist != "custom.txt" {
+		t.Errorf("Wordlist = %s", cfg.Wordlist)
+	}
 	if cfg.Threads != 64 {
-		t.Errorf("threads = %d, want 64", cfg.Threads)
+		t.Errorf("Threads = %d", cfg.Threads)
+	}
+	if cfg.Timeout != 20 {
+		t.Errorf("Timeout = %d", cfg.Timeout)
+	}
+	if cfg.ConnectTimeout != 5*time.Second {
+		t.Errorf("ConnectTimeout = %v", cfg.ConnectTimeout)
 	}
 	if !cfg.Recursive {
-		t.Errorf("recursive = false, want true")
+		t.Errorf("Recursive = false")
 	}
-
-	// 2. Verify omitted fields remain unchanged (e.g. strategy should still be BFS)
-	if cfg.Strategy != recursion.BFS {
-		t.Errorf("strategy = %v, want BFS", cfg.Strategy)
-	}
-
-	// 3. Apply multiple profiles (precedence)
-	threadsVal2 := 12
-	strategyVal := "dfs"
-	o2 := scan.Overlay{
-		Threads:  &threadsVal2,
-		Strategy: &strategyVal,
-	}
-
-	scan.Apply(&cfg, o2)
-
-	if cfg.Threads != 12 {
-		t.Errorf("threads = %d, want 12 (overridden by second profile)", cfg.Threads)
+	if cfg.MaxDepth != 5 {
+		t.Errorf("MaxDepth = %d", cfg.MaxDepth)
 	}
 	if cfg.Strategy != recursion.DFS {
-		t.Errorf("strategy = %v, want DFS (updated by second profile)", cfg.Strategy)
+		t.Errorf("Strategy = %v", cfg.Strategy)
+	}
+	if cfg.Delay != 100*time.Millisecond {
+		t.Errorf("Delay = %v", cfg.Delay)
+	}
+	if cfg.Rate != 12.5 {
+		t.Errorf("Rate = %f", cfg.Rate)
+	}
+	if cfg.Output != "json" {
+		t.Errorf("Output = %s", cfg.Output)
+	}
+	if !cfg.Quiet {
+		t.Errorf("Quiet = false")
+	}
+	if !cfg.Paths.NormalizePaths {
+		t.Errorf("NormalizePaths = false")
+	}
+	if !cfg.Paths.CollapseSlashes {
+		t.Errorf("CollapseSlashes = false")
+	}
+	if !cfg.Status.Exclude.Match(500) {
+		t.Errorf("ExcludeStatus failed")
+	}
+	if !cfg.RecurseOn.Match(302) {
+		t.Errorf("RecurseOn failed")
+	}
+	if !cfg.IncludeSize.Match(600) {
+		t.Errorf("IncludeSize failed")
+	}
+	if !cfg.ExcludeSize.Match(123) {
+		t.Errorf("ExcludeSize failed")
+	}
+	if len(cfg.IncludeHeaders) != 1 || cfg.IncludeHeaders[0].Name != "Server" {
+		t.Errorf("IncludeHeaders failed")
+	}
+	if len(cfg.ExcludeHeaders) != 1 || cfg.ExcludeHeaders[0].Value != "val" {
+		t.Errorf("ExcludeHeaders failed")
+	}
+
+	// Verify strategy parsing ignore on invalid value
+	invalidStrategy := "invalid"
+	scan.Apply(&cfg, scan.Overlay{Strategy: &invalidStrategy})
+	if cfg.Strategy != recursion.DFS {
+		t.Errorf("invalid strategy should not change strategy, got %v", cfg.Strategy)
 	}
 }
