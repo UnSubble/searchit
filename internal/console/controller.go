@@ -86,6 +86,7 @@ func (c *Controller) Start(ctx context.Context) {
 		close(c.done)
 	}()
 
+	inStatsView := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -94,6 +95,14 @@ func (c *Controller) Start(ctx context.Context) {
 			if res.err != nil {
 				return
 			}
+			if inStatsView {
+				inStatsView = false
+				select {
+				case c.ch <- CommandProgress:
+				default:
+				}
+				continue
+			}
 			switch res.b {
 			case 'p':
 				select {
@@ -101,6 +110,7 @@ func (c *Controller) Start(ctx context.Context) {
 				default:
 				}
 			case 's':
+				inStatsView = true
 				select {
 				case c.ch <- CommandStats:
 				default:

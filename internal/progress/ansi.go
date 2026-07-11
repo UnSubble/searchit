@@ -20,21 +20,20 @@ type discoveryEntry struct {
 
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
 type ANSIRenderer struct {
-	Writer   io.Writer
-	Target   string
-	Profiles []string
-	Mode     string
-	limit    int
+	Writer        io.Writer
+	Target        string
+	Profiles      []string
+	Mode          string
+	limit         int
+	lastLineCount int
 
 	mu     sync.Mutex
 	recent []discoveryEntry
 	frozen bool
 }
 
-const layoutHeight = 23
-
 // NewANSIRenderer creates a new ANSIRenderer writing to the provided Writer.
-// Automatically hides terminal cursor and freezes the top scrolling region.
+// Automatically hides terminal cursor.
 func NewANSIRenderer(w io.Writer, target string, profiles []string, mode string) *ANSIRenderer {
 	if w == nil {
 		w = os.Stdout
@@ -44,15 +43,6 @@ func NewANSIRenderer(w io.Writer, target string, profiles []string, mode string)
 
 	frozen := false
 	if f, ok := w.(*os.File); ok && console.IsTerminal(f.Fd()) {
-		// Reserve space for layoutHeight lines
-		for i := 0; i < layoutHeight; i++ {
-			fmt.Fprintln(w)
-		}
-		// Set scroll margin to start at layoutHeight + 1
-		scrollStart := layoutHeight + 1
-		fmt.Fprintf(w, "\033[%d;r", scrollStart)
-		// Move cursor to start of scroll margin
-		fmt.Fprintf(w, "\033[%d;1H", scrollStart)
 		frozen = true
 	}
 
@@ -81,39 +71,50 @@ func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string) {
 	}
 }
 
-// Close restores the terminal state by resetting margins and showing the cursor.
+// RecentEntries returns a copy of the recent discoveries.
+func (tr *ANSIRenderer) RecentEntries() []discoveryEntry {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	copied := make([]discoveryEntry, len(tr.recent))
+	copy(copied, tr.recent)
+	return copied
+}
+
+// Close restores the terminal state by showing the cursor.
 func (tr *ANSIRenderer) Close() error {
-	// Reset margins (\033[r) and show cursor (\033[?25h)
-	fmt.Fprint(tr.Writer, "\033[r\033[?25h")
+	// Show cursor (\033[?25h)
+	fmt.Fprint(tr.Writer, "\033[?25h")
 	return nil
 }
 
-// Clear erases the frozen progress block.
+// ResetLineCount resets the internal line counter so the next Render call
+// prints fresh without attempting to cursor-up over non-existent lines.
+// Call this after an external operation that cleared the terminal.
+func (tr *ANSIRenderer) ResetLineCount() {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	tr.lastLineCount = 0
+}
+
+// Clear erases the rendered progress block by moving the cursor up and clearing lines.
 func (tr *ANSIRenderer) Clear() {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
-	if tr.frozen {
-		fmt.Fprint(tr.Writer, "\033[s")
-		fmt.Fprint(tr.Writer, "\033[1;1H")
-		for i := 0; i < layoutHeight; i++ {
-			fmt.Fprint(tr.Writer, "\033[K\n")
+	if tr.frozen && tr.lastLineCount > 0 {
+		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lastLineCount)
+		for i := 0; i < tr.lastLineCount; i++ {
+			fmt.Fprint(tr.Writer, "\r\033[K\n")
 		}
-		fmt.Fprint(tr.Writer, "\033[u")
+		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lastLineCount)
+		tr.lastLineCount = 0
 	}
 }
 
-// Render overwrites the frozen top block using ANSI escape sequences.
+// Render overwrites the progress block by composing sections and passing them to draw().
 func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-
-	if tr.frozen {
-		// Save cursor
-		fmt.Fprint(tr.Writer, "\033[s")
-		// Move to top-left
-		fmt.Fprint(tr.Writer, "\033[1;1H")
-	}
 
 	// 1. Get Terminal Width dynamically
 	termWidth := 80
@@ -123,51 +124,55 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 		}
 	}
 
-	// 2. Bounded Content Width (approx 100 max, 80 min)
-	contentWidth := termWidth
-	if contentWidth > 100 {
-		contentWidth = 100
-	}
-	if contentWidth < 80 {
-		contentWidth = 80
+	// 2. Content Width (clamp between 72 and 96 columns)
+	contentWidth := clamp(termWidth-8, 72, 96)
+
+	// 3. Profiles string helper
+	profilesStr := "none"
+	if len(tr.Profiles) > 0 {
+		profilesStr = strings.Join(tr.Profiles, " -> ")
 	}
 
-	// 3. Center the content area on wide terminals
-	leftPadding := 0
-	if termWidth > contentWidth {
-		leftPadding = (termWidth - contentWidth) / 2
-	}
-	paddingStr := strings.Repeat(" ", leftPadding)
+	// 4. Fixed divider around 48 characters
+	divider := strings.Repeat("─", 48)
 
-	// Formatting helpers within bounded content area
+	// 5. Compose the layout parts
+	var lines []string
+	lines = append(lines, tr.renderHeader(profilesStr, contentWidth)...)
+	lines = append(lines, "")
+	lines = append(lines, "Progress")
+	lines = append(lines, divider)
+	lines = append(lines, tr.renderStats(snap)...)
+	lines = append(lines, "")
+	lines = append(lines, "Recent discoveries")
+	lines = append(lines, divider)
+	lines = append(lines, tr.renderDiscoveries(contentWidth)...)
+	lines = append(lines, "")
+	lines = append(lines, tr.renderControls())
+
+	// 6. Draw with a small constant left margin (2 spaces)
+	tr.draw(lines, "  ")
+
+	return nil
+}
+
+func (tr *ANSIRenderer) renderHeader(profilesStr string, contentWidth int) []string {
 	formatHeaderLine := func(label, value string) string {
-		maxValLen := contentWidth - 15
+		maxValLen := contentWidth - 12
 		val := value
 		if len(val) > maxValLen && maxValLen > 3 {
 			val = val[:maxValLen-3] + "..."
 		}
-		return fmt.Sprintf("%-15s%s", label, val)
+		return fmt.Sprintf("%-12s%s", label, val)
 	}
-
-	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
-		colWidth := contentWidth / 2
-
-		leftText := fmt.Sprintf("%-15s%s", leftKey, leftVal)
-		if len(leftText) > colWidth {
-			leftText = leftText[:colWidth]
-		} else {
-			leftText = leftText + strings.Repeat(" ", colWidth-len(leftText))
-		}
-
-		rightText := fmt.Sprintf("%-16s%s", rightKey, rightVal)
-		maxRightLen := contentWidth - colWidth
-		if len(rightText) > maxRightLen {
-			rightText = rightText[:maxRightLen]
-		}
-
-		return leftText + rightText
+	return []string{
+		formatHeaderLine("Target", tr.Target),
+		formatHeaderLine("Profiles", profilesStr),
+		formatHeaderLine("Mode", tr.Mode),
 	}
+}
 
+func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
 	elapsed := time.Since(snap.StartTime)
 	h := int(elapsed.Hours())
 	m := int(elapsed.Minutes()) % 60
@@ -183,72 +188,72 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 		etaStr = fmt.Sprintf("%02d:%02d:%02d", eh, em, es)
 	}
 
-	profilesStr := "none"
-	if len(tr.Profiles) > 0 {
-		profilesStr = strings.Join(tr.Profiles, " -> ")
+	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
+		leftText := fmt.Sprintf("%-12s%-14s", leftKey, leftVal)
+		rightText := fmt.Sprintf("%-12s%s", rightKey, rightVal)
+		return leftText + rightText
 	}
 
-	divider := strings.Repeat("─", contentWidth)
-
-	// Section 1: Header
-	lines := []string{
-		formatHeaderLine("Target:", tr.Target),
-		formatHeaderLine("Profiles:", profilesStr),
-		formatHeaderLine("Mode:", tr.Mode),
+	return []string{
+		formatStatsRow("Elapsed", elapsedStr, "ETA", etaStr),
 		"",
-	}
-
-	// Section 2: Statistics
-	lines = append(lines,
-		"Progress",
-		divider,
-		formatStatsRow("Elapsed:", elapsedStr, "ETA:", etaStr),
-		formatStatsRow("Requests:", fmt.Sprintf("%d", snap.RequestsSent), "Responses:", fmt.Sprintf("%d", snap.ResponsesReceived)),
-		formatStatsRow("Req/s:", fmt.Sprintf("%.0f", snap.RequestsPerSecond), "Workers:", fmt.Sprintf("%d", snap.ActiveWorkers)),
-		formatStatsRow("Queue:", fmt.Sprintf("%d", snap.QueuedJobs), "Found:", fmt.Sprintf("%d", snap.Discovered)),
-		formatStatsRow("Filtered:", fmt.Sprintf("%d", snap.RequestsFiltered), "Failed:", fmt.Sprintf("%d", snap.RequestsFailed)),
-		formatStatsRow("Avg Latency:", formatLatency(snap.AverageLatency), "Retries/Redir:", fmt.Sprintf("%d / %d", snap.Retries, snap.Redirects)),
+		formatStatsRow("Requests", fmt.Sprintf("%d", snap.RequestsSent), "Responses", fmt.Sprintf("%d", snap.ResponsesReceived)),
 		"",
-	)
-
-	// Section 3: Recent discoveries
-	lines = append(lines,
-		"Recent discoveries",
-		divider,
-	)
-
-	for _, l := range lines {
-		fmt.Fprintf(tr.Writer, "\033[K%s%s\n", paddingStr, l)
+		formatStatsRow("Req/s", fmt.Sprintf("%.0f", snap.RequestsPerSecond), "Workers", fmt.Sprintf("%d", snap.ActiveWorkers)),
+		"",
+		formatStatsRow("Queue", fmt.Sprintf("%d", snap.QueuedJobs), "Found", fmt.Sprintf("%d", snap.Discovered)),
+		"",
+		formatStatsRow("Filtered", fmt.Sprintf("%d", snap.RequestsFiltered), "Failed", fmt.Sprintf("%d", snap.RequestsFailed)),
+		"",
+		formatStatsRow("Latency", formatLatency(snap.AverageLatency), "Retries", fmt.Sprintf("%d / %d", snap.Retries, snap.Redirects)),
 	}
+}
 
-	// Output recent discoveries section
-	for i := 0; i < tr.limit; i++ {
-		if i < len(tr.recent) {
-			entry := tr.recent[i]
-			statusPrefix := fmt.Sprintf("%d  ", entry.statusCode)
-			maxPathLen := contentWidth - len(statusPrefix)
-			p := entry.path
-			if len(p) > maxPathLen && maxPathLen > 3 {
-				p = p[:maxPathLen-3] + "..."
-			}
-			line := statusPrefix + p
-			fmt.Fprintf(tr.Writer, "\033[K%s%s\n", paddingStr, line)
-		} else {
-			fmt.Fprintf(tr.Writer, "\033[K%s\n", paddingStr)
+func (tr *ANSIRenderer) renderDiscoveries(contentWidth int) []string {
+	if len(tr.recent) == 0 {
+		return []string{"No discoveries yet."}
+	}
+	var lines []string
+	for _, entry := range tr.recent {
+		statusPrefix := fmt.Sprintf("%d ", entry.statusCode)
+		maxPathLen := contentWidth - len(statusPrefix)
+		p := entry.path
+		if len(p) > maxPathLen && maxPathLen > 3 {
+			p = p[:maxPathLen-3] + "..."
 		}
+		lines = append(lines, statusPrefix+p)
+	}
+	return lines
+}
+
+func (tr *ANSIRenderer) renderControls() string {
+	return "Controls: p Refresh · s Statistics · q Graceful stop"
+}
+
+func (tr *ANSIRenderer) draw(lines []string, marginStr string) {
+	// 1. Move cursor back up if we rendered before
+	if tr.frozen && tr.lastLineCount > 0 {
+		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lastLineCount)
 	}
 
-	// Section 4: Controls
-	fmt.Fprintf(tr.Writer, "\033[K%s\n", paddingStr)
-	fmt.Fprintf(tr.Writer, "\033[K%sControls:\n", paddingStr)
-	fmt.Fprintf(tr.Writer, "\033[K%s[p] refresh    [s] statistics    [q] graceful stop\n", paddingStr)
+	// 2. Print the new lines
+	for _, line := range lines {
+		fmt.Fprintf(tr.Writer, "\r\033[K%s%s\n", marginStr, line)
+	}
+
+	// 3. Clear any remaining lines from the previous draw
+	if tr.frozen && tr.lastLineCount > len(lines) {
+		diff := tr.lastLineCount - len(lines)
+		for i := 0; i < diff; i++ {
+			fmt.Fprint(tr.Writer, "\r\033[K\n")
+		}
+		// Move cursor back up by the diff so it sits exactly at the end of the printed lines
+		fmt.Fprintf(tr.Writer, "\033[%dA", diff)
+	}
 
 	if tr.frozen {
-		// Restore cursor
-		fmt.Fprint(tr.Writer, "\033[u")
+		tr.lastLineCount = len(lines)
 	}
-
-	return nil
 }
 
 func formatLatency(d time.Duration) string {
@@ -274,4 +279,14 @@ func extractPath(target, urlStr string) string {
 		return p
 	}
 	return urlStr
+}
+
+func clamp(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }

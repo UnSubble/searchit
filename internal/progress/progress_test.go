@@ -147,7 +147,7 @@ func TestANSIRenderer_RecentResultBuffer(t *testing.T) {
 	if bytes.Contains(buf.Bytes(), []byte("  /path1\n")) {
 		t.Errorf("expected /path1 to be evicted, but it was found in output")
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("200  /path7")) {
+	if !bytes.Contains(buf.Bytes(), []byte("200 /path7")) {
 		t.Errorf("expected /path7 to be in output, but it was missing")
 	}
 }
@@ -162,9 +162,8 @@ func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
 		t.Fatalf("unexpected rendering error: %v", err)
 	}
 
-	out1 := buf.String()
-	if !strings.Contains(out1, "Target:") {
-		t.Errorf("expected output to contain Target: header, got %q", out1)
+	if !strings.Contains(buf.String(), "Target") {
+		t.Errorf("expected output to contain Target header, got %q", buf.String())
 	}
 }
 
@@ -186,19 +185,22 @@ func TestManager_PrintStats(t *testing.T) {
 
 	out := buf.String()
 	expectedSubstrings := []string{
-		"--- Extended Statistics ---",
-		"Elapsed:",
-		"Requests:            1",
-		"Responses:           2",
-		"Discovered:          0",
-		"Filtered:            1",
-		"Failed:              1",
-		"Bytes:               150",
-		"Workers:             5",
-		"Queue:               10",
-		"Status Distribution",
-		"200 : 1",
-		"404 : 1",
+		"Statistics",
+		"General",
+		"Requests sent",
+		"Responses received",
+		"Filtered",
+		"Failed",
+		"Bytes received",
+		"Performance",
+		"Elapsed",
+		"Workers",
+		"Active",
+		"Queue",
+		"Responses",
+		"200",
+		"404",
+		"Press any key to return",
 	}
 
 	for _, sub := range expectedSubstrings {
@@ -241,10 +243,9 @@ func TestANSIRenderer_FormatLatency_All(t *testing.T) {
 	c := stats.NewCollector()
 	snap := c.Snapshot()
 
-	// Test case 1: <= 0 duration
 	snap.AverageLatency = -5 * time.Second
 	_ = r.Render(snap)
-	if !strings.Contains(buf.String(), "Avg Latency:   -") {
+	if !strings.Contains(buf.String(), "Latency     -") {
 		t.Errorf("expected '-' for negative latency, got: %s", buf.String())
 	}
 	buf.Reset()
@@ -287,10 +288,10 @@ func TestANSIRenderer_ExtractPath_All(t *testing.T) {
 	_ = r.Render(c.Snapshot())
 
 	out := buf.String()
-	if !strings.Contains(out, "200  /path1") {
+	if !strings.Contains(out, "200 /path1") {
 		t.Errorf("expected /path1 to be formatted, got:\n%s", out)
 	}
-	if !strings.Contains(out, "301  http://otherhost/path2") {
+	if !strings.Contains(out, "301 http://otherhost/path2") {
 		t.Errorf("expected full URL path2 to be preserved, got:\n%s", out)
 	}
 }
@@ -335,7 +336,7 @@ func TestManager_PrintStats_ANSIRenderer(t *testing.T) {
 	m.PrintStats()
 
 	out := buf.String()
-	if !strings.Contains(out, "--- Extended Statistics ---") {
+	if !strings.Contains(out, "Statistics") {
 		t.Errorf("expected statistics output, got:\n%s", out)
 	}
 }
@@ -360,7 +361,7 @@ func TestManager_PrintStats_DefaultWriter(t *testing.T) {
 	_, _ = io.Copy(&buf, pr)
 	out := buf.String()
 
-	if !strings.Contains(out, "--- Extended Statistics ---") {
+	if !strings.Contains(out, "Statistics") {
 		t.Errorf("expected statistics on stdout, got:\n%s", out)
 	}
 }

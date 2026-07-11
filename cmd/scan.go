@@ -267,6 +267,8 @@ var scanCmd = &cobra.Command{
 				}
 				renderer = progress.NewANSIRenderer(os.Stdout, targetURL, appliedProfiles, modeStr)
 				progMgr = progress.NewManager(collector, renderer, 1*time.Second)
+				progMgr.ConfiguredThreads = cfg.Threads
+				progMgr.Formatter = fmttr
 
 				if interactive {
 					consoleCtrl := console.NewController(os.Stdin)
@@ -324,9 +326,10 @@ var scanCmd = &cobra.Command{
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
 					if r.Accepted {
-						_ = fmttr.Print(r)
 						if progMgr != nil {
-							progMgr.RecordResult(r.StatusCode, r.URL)
+							progMgr.HandleResult(r)
+						} else {
+							_ = fmttr.Print(r)
 						}
 					}
 				}
@@ -359,9 +362,10 @@ var scanCmd = &cobra.Command{
 
 				for r := range results {
 					if r.Accepted {
-						_ = fmttr.Print(r)
 						if progMgr != nil {
-							progMgr.RecordResult(r.StatusCode, r.URL)
+							progMgr.HandleResult(r)
+						} else {
+							_ = fmttr.Print(r)
 						}
 					}
 				}
