@@ -10,7 +10,13 @@ import (
 
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/stats"
+	"golang.org/x/term"
 )
+
+type discoveryEntry struct {
+	statusCode int
+	path       string
+}
 
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
 type ANSIRenderer struct {
@@ -21,9 +27,11 @@ type ANSIRenderer struct {
 	limit    int
 
 	mu     sync.Mutex
-	recent []string
+	recent []discoveryEntry
 	frozen bool
 }
+
+const layoutHeight = 23
 
 // NewANSIRenderer creates a new ANSIRenderer writing to the provided Writer.
 // Automatically hides terminal cursor and freezes the top scrolling region.
@@ -36,14 +44,15 @@ func NewANSIRenderer(w io.Writer, target string, profiles []string, mode string)
 
 	frozen := false
 	if f, ok := w.(*os.File); ok && console.IsTerminal(f.Fd()) {
-		// Reserve space for 23 lines
-		for i := 0; i < 23; i++ {
+		// Reserve space for layoutHeight lines
+		for i := 0; i < layoutHeight; i++ {
 			fmt.Fprintln(w)
 		}
-		// Set scroll margin to start at line 24
-		fmt.Fprint(w, "\033[24;r")
+		// Set scroll margin to start at layoutHeight + 1
+		scrollStart := layoutHeight + 1
+		fmt.Fprintf(w, "\033[%d;r", scrollStart)
 		// Move cursor to start of scroll margin
-		fmt.Fprint(w, "\033[24;1H")
+		fmt.Fprintf(w, "\033[%d;1H", scrollStart)
 		frozen = true
 	}
 
@@ -63,7 +72,7 @@ func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string) {
 	defer tr.mu.Unlock()
 
 	path := extractPath(tr.Target, urlStr)
-	entry := fmt.Sprintf("%d  %s", statusCode, path)
+	entry := discoveryEntry{statusCode: statusCode, path: path}
 
 	if len(tr.recent) >= tr.limit {
 		tr.recent = append(tr.recent[1:], entry)
@@ -87,7 +96,7 @@ func (tr *ANSIRenderer) Clear() {
 	if tr.frozen {
 		fmt.Fprint(tr.Writer, "\033[s")
 		fmt.Fprint(tr.Writer, "\033[1;1H")
-		for i := 0; i < 23; i++ {
+		for i := 0; i < layoutHeight; i++ {
 			fmt.Fprint(tr.Writer, "\033[K\n")
 		}
 		fmt.Fprint(tr.Writer, "\033[u")
@@ -104,6 +113,59 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 		fmt.Fprint(tr.Writer, "\033[s")
 		// Move to top-left
 		fmt.Fprint(tr.Writer, "\033[1;1H")
+	}
+
+	// 1. Get Terminal Width dynamically
+	termWidth := 80
+	if f, ok := tr.Writer.(*os.File); ok && console.IsTerminal(f.Fd()) {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil {
+			termWidth = w
+		}
+	}
+
+	// 2. Bounded Content Width (approx 100 max, 80 min)
+	contentWidth := termWidth
+	if contentWidth > 100 {
+		contentWidth = 100
+	}
+	if contentWidth < 80 {
+		contentWidth = 80
+	}
+
+	// 3. Center the content area on wide terminals
+	leftPadding := 0
+	if termWidth > contentWidth {
+		leftPadding = (termWidth - contentWidth) / 2
+	}
+	paddingStr := strings.Repeat(" ", leftPadding)
+
+	// Formatting helpers within bounded content area
+	formatHeaderLine := func(label, value string) string {
+		maxValLen := contentWidth - 15
+		val := value
+		if len(val) > maxValLen && maxValLen > 3 {
+			val = val[:maxValLen-3] + "..."
+		}
+		return fmt.Sprintf("%-15s%s", label, val)
+	}
+
+	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
+		colWidth := contentWidth / 2
+
+		leftText := fmt.Sprintf("%-15s%s", leftKey, leftVal)
+		if len(leftText) > colWidth {
+			leftText = leftText[:colWidth]
+		} else {
+			leftText = leftText + strings.Repeat(" ", colWidth-len(leftText))
+		}
+
+		rightText := fmt.Sprintf("%-16s%s", rightKey, rightVal)
+		maxRightLen := contentWidth - colWidth
+		if len(rightText) > maxRightLen {
+			rightText = rightText[:maxRightLen]
+		}
+
+		return leftText + rightText
 	}
 
 	elapsed := time.Since(snap.StartTime)
@@ -126,39 +188,60 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 		profilesStr = strings.Join(tr.Profiles, " -> ")
 	}
 
-	linesToPrint := []string{
-		fmt.Sprintf("Target:        %s", tr.Target),
-		fmt.Sprintf("Profiles:      %s", profilesStr),
-		fmt.Sprintf("Mode:          %s", tr.Mode),
+	divider := strings.Repeat("─", contentWidth)
+
+	// Section 1: Header
+	lines := []string{
+		formatHeaderLine("Target:", tr.Target),
+		formatHeaderLine("Profiles:", profilesStr),
+		formatHeaderLine("Mode:", tr.Mode),
 		"",
+	}
+
+	// Section 2: Statistics
+	lines = append(lines,
 		"Progress",
-		"──────────────────────────────────────────────",
-		fmt.Sprintf("Elapsed:       %-10s         ETA:           %-10s", elapsedStr, etaStr),
-		fmt.Sprintf("Requests:      %-10d         Responses:     %-10d", snap.RequestsSent, snap.ResponsesReceived),
-		fmt.Sprintf("Req/s:         %-10.0f         Workers:       %-10d", snap.RequestsPerSecond, snap.ActiveWorkers),
-		fmt.Sprintf("Queue:         %-10d         Found:         %-10d", snap.QueuedJobs, snap.Discovered),
-		fmt.Sprintf("Filtered:      %-10d         Failed:        %-10d", snap.RequestsFiltered, snap.RequestsFailed),
-		fmt.Sprintf("Avg Latency:   %-10s         Retries/Redir: %d / %d", formatLatency(snap.AverageLatency), snap.Retries, snap.Redirects),
+		divider,
+		formatStatsRow("Elapsed:", elapsedStr, "ETA:", etaStr),
+		formatStatsRow("Requests:", fmt.Sprintf("%d", snap.RequestsSent), "Responses:", fmt.Sprintf("%d", snap.ResponsesReceived)),
+		formatStatsRow("Req/s:", fmt.Sprintf("%.0f", snap.RequestsPerSecond), "Workers:", fmt.Sprintf("%d", snap.ActiveWorkers)),
+		formatStatsRow("Queue:", fmt.Sprintf("%d", snap.QueuedJobs), "Found:", fmt.Sprintf("%d", snap.Discovered)),
+		formatStatsRow("Filtered:", fmt.Sprintf("%d", snap.RequestsFiltered), "Failed:", fmt.Sprintf("%d", snap.RequestsFailed)),
+		formatStatsRow("Avg Latency:", formatLatency(snap.AverageLatency), "Retries/Redir:", fmt.Sprintf("%d / %d", snap.Retries, snap.Redirects)),
 		"",
+	)
+
+	// Section 3: Recent discoveries
+	lines = append(lines,
 		"Recent discoveries",
-		"──────────────────────────────────────────────",
+		divider,
+	)
+
+	for _, l := range lines {
+		fmt.Fprintf(tr.Writer, "\033[K%s%s\n", paddingStr, l)
 	}
 
-	for _, l := range linesToPrint {
-		fmt.Fprintf(tr.Writer, "\033[K%s\n", l)
-	}
-
+	// Output recent discoveries section
 	for i := 0; i < tr.limit; i++ {
 		if i < len(tr.recent) {
-			fmt.Fprintf(tr.Writer, "\033[K%s\n", tr.recent[i])
+			entry := tr.recent[i]
+			statusPrefix := fmt.Sprintf("%d  ", entry.statusCode)
+			maxPathLen := contentWidth - len(statusPrefix)
+			p := entry.path
+			if len(p) > maxPathLen && maxPathLen > 3 {
+				p = p[:maxPathLen-3] + "..."
+			}
+			line := statusPrefix + p
+			fmt.Fprintf(tr.Writer, "\033[K%s%s\n", paddingStr, line)
 		} else {
-			fmt.Fprintf(tr.Writer, "\033[K\n")
+			fmt.Fprintf(tr.Writer, "\033[K%s\n", paddingStr)
 		}
 	}
 
-	fmt.Fprintf(tr.Writer, "\033[K\n")
-	fmt.Fprintf(tr.Writer, "\033[KControls:\n")
-	fmt.Fprintf(tr.Writer, "\033[K[p] refresh    [s] statistics    [q] graceful stop\n")
+	// Section 4: Controls
+	fmt.Fprintf(tr.Writer, "\033[K%s\n", paddingStr)
+	fmt.Fprintf(tr.Writer, "\033[K%sControls:\n", paddingStr)
+	fmt.Fprintf(tr.Writer, "\033[K%s[p] refresh    [s] statistics    [q] graceful stop\n", paddingStr)
 
 	if tr.frozen {
 		// Restore cursor
