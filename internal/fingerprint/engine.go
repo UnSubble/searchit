@@ -19,4 +19,5 @@ func (e *Engine) Analyze(ctx *Context) {
 	// Static detector dispatch pipeline.
 	// As new detectors are added, add their invocation here.
 	detectHeaders(ctx, fp)
+	detectHTML(ctx, fp)
 }
