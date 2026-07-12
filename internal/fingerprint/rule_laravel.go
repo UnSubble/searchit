@@ -3,15 +3,12 @@ package fingerprint
 import "strings"
 
 // matchLaravel evaluates signals for indicators of the Laravel framework.
-// Evidence combined:
-// - laravel_session cookie (confidence = 0.9)
-// - livewire.js script source (confidence = 0.8)
-// - php X-Powered-By/Server header (confidence = 0.15)
 func matchLaravel(signals []Signal) (Confidence, bool) {
 	var (
 		hasLaravelSession bool
 		hasLivewireScript bool
 		hasPHPHeader      bool
+		hasASPNetHeader   bool
 	)
 
 	for _, s := range signals {
@@ -25,27 +22,34 @@ func matchLaravel(signals []Signal) (Confidence, bool) {
 			hasLivewireScript = true
 		}
 
-		// 3. Supporting PHP headers check
-		if s.Source == "header:X-Powered-By" && strings.Contains(strings.ToLower(s.Value), "php") {
-			hasPHPHeader = true
+		// 3. Supporting PHP and ASP.NET headers check
+		if s.Source == "header:X-Powered-By" {
+			valLower := strings.ToLower(s.Value)
+			if strings.Contains(valLower, "php") {
+				hasPHPHeader = true
+			}
+			if strings.Contains(valLower, "asp.net") {
+				hasASPNetHeader = true
+			}
 		}
 	}
 
-	if !hasLaravelSession && !hasLivewireScript && !hasPHPHeader {
+	// Exclusions
+	if hasASPNetHeader {
 		return 0, false
 	}
 
-	// Calculate combined probability: 1 - (1 - c1)(1 - c2)...
-	p := 1.0
-	if hasLaravelSession {
-		p *= (1.0 - 0.90)
+	// Deterministic scoring hierarchy
+	switch {
+	case hasLaravelSession:
+		return Confidence(1.0), true
+	case hasLivewireScript && hasPHPHeader:
+		return Confidence(0.85), true
+	case hasLivewireScript:
+		return Confidence(0.70), true
+	case hasPHPHeader:
+		return Confidence(0.15), true
+	default:
+		return 0, false
 	}
-	if hasLivewireScript {
-		p *= (1.0 - 0.80)
-	}
-	if hasPHPHeader {
-		p *= (1.0 - 0.15)
-	}
-
-	return Confidence(1.0 - p), true
 }

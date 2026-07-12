@@ -3,10 +3,6 @@ package fingerprint
 import "strings"
 
 // matchReact evaluates signals for indicators of React.
-// Evidence combined:
-// - data-reactroot or data-react-html attribute (confidence = 0.95)
-// - script src path containing react (confidence = 0.7)
-// - root/app container element ID (confidence = 0.15)
 func matchReact(signals []Signal) (Confidence, bool) {
 	var (
 		hasReactAttr   bool
@@ -41,16 +37,18 @@ func matchReact(signals []Signal) (Confidence, bool) {
 		return 0, false
 	}
 
-	p := 1.0
-	if hasReactAttr {
-		p *= (1.0 - 0.95)
+	// Deterministic scoring hierarchy
+	switch {
+	case hasReactAttr && hasReactScript:
+		// React attributes and script assets present together yields certainty
+		return Confidence(1.0), true
+	case hasReactAttr:
+		return Confidence(0.95), true
+	case hasReactScript:
+		return Confidence(0.70), true
+	case hasRootId:
+		return Confidence(0.15), true
+	default:
+		return 0, false
 	}
-	if hasReactScript {
-		p *= (1.0 - 0.70)
-	}
-	if hasRootId {
-		p *= (1.0 - 0.15)
-	}
-
-	return Confidence(1.0 - p), true
 }

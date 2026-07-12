@@ -32,7 +32,7 @@ func TestMatcher_Match_SingleSignal(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
 
-	// Single Laravel session cookie
+	// Single Laravel session cookie -> Certain (1.0)
 	fp.AddSignal(fingerprint.Signal{Source: "cookie", Value: "laravel_session", Confidence: 1.0})
 
 	matcher := fingerprint.NewMatcher()
@@ -47,7 +47,7 @@ func TestMatcher_Match_SingleSignal(t *testing.T) {
 		t.Errorf("Expected technology Laravel, got %q", res.Name)
 	}
 
-	expectedConf := fingerprint.Confidence(0.9)
+	expectedConf := fingerprint.Confidence(1.0)
 	if !almostEqual(float32(res.Confidence), float32(expectedConf)) {
 		t.Errorf("Expected Laravel confidence %v, got %v", expectedConf, res.Confidence)
 	}
@@ -57,7 +57,7 @@ func TestMatcher_Match_MultipleSignals(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
 
-	// Laravel session cookie + livewire script + weak PHP server indicator
+	// Laravel session cookie + livewire script + PHP server indicator -> Certain (1.0)
 	fp.AddSignal(fingerprint.Signal{Source: "cookie", Value: "laravel_session", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "html:script", Value: "/js/livewire.js?id=123", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "PHP/8.1", Confidence: 1.0})
@@ -74,19 +74,35 @@ func TestMatcher_Match_MultipleSignals(t *testing.T) {
 		t.Errorf("Expected technology Laravel, got %q", res.Name)
 	}
 
-	// 1 - (1 - 0.9) * (1 - 0.8) * (1 - 0.15)
-	// 1 - 0.1 * 0.2 * 0.85 = 1 - 0.017 = 0.983
-	expectedConf := fingerprint.Confidence(0.983)
+	expectedConf := fingerprint.Confidence(1.0)
 	if !almostEqual(float32(res.Confidence), float32(expectedConf)) {
 		t.Errorf("Expected Laravel confidence %v, got %v", expectedConf, res.Confidence)
 	}
 }
 
-func TestMatcher_Match_WordPressAlgebraicSum(t *testing.T) {
+func TestMatcher_Match_LaravelExclusion(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
 
-	// WordPress generator + stylesheet link + logged-in cookie
+	// Laravel session cookie (normally 1.0) but conflicting ASP.NET X-Powered-By header -> Exclude
+	fp.AddSignal(fingerprint.Signal{Source: "cookie", Value: "laravel_session", Confidence: 1.0})
+	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "ASP.NET", Confidence: 1.0})
+
+	matcher := fingerprint.NewMatcher()
+	results := matcher.Match(fp)
+
+	for _, res := range results {
+		if res.Name == "Laravel" {
+			t.Fatal("Expected Laravel to be excluded due to conflicting ASP.NET header, but it matched")
+		}
+	}
+}
+
+func TestMatcher_Match_WordPressEvidenceAccumulation(t *testing.T) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("example.com")
+
+	// WordPress generator + stylesheet link + logged-in cookie -> Certain (1.0)
 	fp.AddSignal(fingerprint.Signal{Source: "html:meta:name:generator", Value: "WordPress 5.8", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "html:link:stylesheet", Value: "/wp-content/themes/twentytwenty/style.css", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "cookie", Value: "wordpress_logged_in_xyz", Confidence: 1.0})
@@ -103,9 +119,7 @@ func TestMatcher_Match_WordPressAlgebraicSum(t *testing.T) {
 		t.Errorf("Expected technology WordPress, got %q", res.Name)
 	}
 
-	// 1 - (1 - 0.95) * (1 - 0.9) * (1 - 0.9)
-	// 1 - 0.05 * 0.1 * 0.1 = 1 - 0.0005 = 0.9995
-	expectedConf := fingerprint.Confidence(0.9995)
+	expectedConf := fingerprint.Confidence(1.0)
 	if !almostEqual(float32(res.Confidence), float32(expectedConf)) {
 		t.Errorf("Expected WordPress confidence %v, got %v", expectedConf, res.Confidence)
 	}
@@ -115,7 +129,7 @@ func TestMatcher_Match_ConflictingAndMultiple(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
 
-	// WordPress theme stylesheet link + React data attribute
+	// WordPress theme stylesheet link (0.90) + React data attribute (0.95)
 	fp.AddSignal(fingerprint.Signal{Source: "html:link:stylesheet", Value: "/wp-content/style.css", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "html:attr:data-reactroot", Value: "", Confidence: 1.0})
 
@@ -148,7 +162,7 @@ func BenchmarkMatcher_Evaluate(b *testing.B) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("bench.com")
 
-	// Hydrate fingerprint with 10 typical signals
+	// Hydrate fingerprint with typical signals
 	fp.AddSignal(fingerprint.Signal{Source: "header:Server", Value: "nginx/1.18", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "cookie", Value: "laravel_session", Confidence: 1.0})
 	fp.AddSignal(fingerprint.Signal{Source: "html:script", Value: "/js/livewire.js", Confidence: 1.0})
