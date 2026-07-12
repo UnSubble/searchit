@@ -4,7 +4,6 @@ Searchit is a concurrent, extensible, and profile-based web content discovery to
 
 [![Release](https://img.shields.io/github/v/release/unsubble/searchit)](https://github.com/unsubble/searchit/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/unsubble/searchit/ci.yml?branch=main&label=CI)](https://github.com/unsubble/searchit/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/unsubble/searchit)](https://goreportcard.com/report/github.com/unsubble/searchit)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/unsubble/searchit)](go.mod)
 [![License](https://img.shields.io/github/license/unsubble/searchit)](LICENSE)
 
