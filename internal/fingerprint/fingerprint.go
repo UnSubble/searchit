@@ -10,14 +10,6 @@ import "sync"
 // signals accumulate per fingerprint.
 type Confidence float32
 
-// Common confidence levels.
-const (
-	ConfidenceLow     Confidence = 0.25
-	ConfidenceMedium  Confidence = 0.50
-	ConfidenceHigh    Confidence = 0.75
-	ConfidenceCertain Confidence = 1.00
-)
-
 // Signal is a single labeled observation contributed by a detector.
 //
 // Source identifies which detector produced the signal, using a colon-separated
@@ -53,7 +45,7 @@ type Fingerprint struct {
 	// It is set at construction time and never mutated.
 	host string
 
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	signals []Signal
 }
 
@@ -79,17 +71,9 @@ func (f *Fingerprint) AddSignal(s Signal) {
 // Signals returns a snapshot of all signals collected so far.
 // The returned slice is a copy and safe to read without holding any lock.
 func (f *Fingerprint) Signals() []Signal {
-	f.mu.RLock()
+	f.mu.Lock()
 	out := make([]Signal, len(f.signals))
 	copy(out, f.signals)
-	f.mu.RUnlock()
+	f.mu.Unlock()
 	return out
-}
-
-// SignalCount returns the number of signals recorded without allocating a copy.
-func (f *Fingerprint) SignalCount() int {
-	f.mu.RLock()
-	n := len(f.signals)
-	f.mu.RUnlock()
-	return n
 }

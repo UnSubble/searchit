@@ -9,28 +9,6 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Confidence
-// ---------------------------------------------------------------------------
-
-func TestConfidence_Constants(t *testing.T) {
-	if fingerprint.ConfidenceLow >= fingerprint.ConfidenceMedium {
-		t.Error("ConfidenceLow must be less than ConfidenceMedium")
-	}
-	if fingerprint.ConfidenceMedium >= fingerprint.ConfidenceHigh {
-		t.Error("ConfidenceMedium must be less than ConfidenceHigh")
-	}
-	if fingerprint.ConfidenceHigh >= fingerprint.ConfidenceCertain {
-		t.Error("ConfidenceHigh must be less than ConfidenceCertain")
-	}
-	if fingerprint.ConfidenceCertain != 1.0 {
-		t.Errorf("ConfidenceCertain = %v, want 1.0", fingerprint.ConfidenceCertain)
-	}
-	if fingerprint.ConfidenceLow <= 0 {
-		t.Errorf("ConfidenceLow = %v, want > 0", fingerprint.ConfidenceLow)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Fingerprint
 // ---------------------------------------------------------------------------
 
@@ -46,18 +24,14 @@ func TestFingerprint_AddSignal_And_Signals(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
 
-	if n := fp.SignalCount(); n != 0 {
-		t.Fatalf("SignalCount() = %d, want 0 on a fresh fingerprint", n)
+	if n := len(fp.Signals()); n != 0 {
+		t.Fatalf("Signals() len = %d, want 0 on a fresh fingerprint", n)
 	}
 
-	s1 := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.ConfidenceHigh}
-	s2 := fingerprint.Signal{Source: "cookie:name", Value: "PHPSESSID", Confidence: fingerprint.ConfidenceMedium}
+	s1 := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.Confidence(0.75)}
+	s2 := fingerprint.Signal{Source: "cookie:name", Value: "PHPSESSID", Confidence: fingerprint.Confidence(0.50)}
 	fp.AddSignal(s1)
 	fp.AddSignal(s2)
-
-	if n := fp.SignalCount(); n != 2 {
-		t.Fatalf("SignalCount() = %d, want 2", n)
-	}
 
 	got := fp.Signals()
 	if len(got) != 2 {
@@ -74,7 +48,7 @@ func TestFingerprint_AddSignal_And_Signals(t *testing.T) {
 func TestFingerprint_Signals_ReturnsCopy(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
-	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "PHP/8.1", Confidence: fingerprint.ConfidenceHigh})
+	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "PHP/8.1", Confidence: fingerprint.Confidence(0.75)})
 
 	snap := fp.Signals()
 	// Mutate the returned slice; the fingerprint must be unaffected.
@@ -102,15 +76,15 @@ func TestFingerprint_ConcurrentAddSignal(t *testing.T) {
 				fp.AddSignal(fingerprint.Signal{
 					Source:     fmt.Sprintf("worker:%d", id),
 					Value:      fmt.Sprintf("val-%d", j),
-					Confidence: fingerprint.ConfidenceLow,
+					Confidence: fingerprint.Confidence(0.25),
 				})
 			}
 		}(i)
 	}
 	wg.Wait()
 
-	if got := fp.SignalCount(); got != goroutines*signalsEach {
-		t.Errorf("SignalCount() = %d, want %d after concurrent writes", got, goroutines*signalsEach)
+	if got := len(fp.Signals()); got != goroutines*signalsEach {
+		t.Errorf("Signals() len = %d, want %d after concurrent writes", got, goroutines*signalsEach)
 	}
 }
 
@@ -236,21 +210,9 @@ func BenchmarkCache_GetOrCreate_Existing(b *testing.B) {
 func BenchmarkFingerprint_AddSignal(b *testing.B) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("bench.example.com")
-	s := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.ConfidenceHigh}
+	s := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.Confidence(0.75)}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		fp.AddSignal(s)
-	}
-}
-
-func BenchmarkFingerprint_SignalCount(b *testing.B) {
-	cache := fingerprint.NewCache()
-	fp := cache.GetOrCreate("bench.example.com")
-	for i := 0; i < 100; i++ {
-		fp.AddSignal(fingerprint.Signal{Source: "bench", Value: "v", Confidence: fingerprint.ConfidenceLow})
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = fp.SignalCount()
 	}
 }
