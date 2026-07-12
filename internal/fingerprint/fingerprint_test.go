@@ -1,0 +1,256 @@
+package fingerprint_test
+
+import (
+	"fmt"
+	"sync"
+	"testing"
+
+	"github.com/unsubble/searchit/internal/fingerprint"
+)
+
+// ---------------------------------------------------------------------------
+// Confidence
+// ---------------------------------------------------------------------------
+
+func TestConfidence_Constants(t *testing.T) {
+	if fingerprint.ConfidenceLow >= fingerprint.ConfidenceMedium {
+		t.Error("ConfidenceLow must be less than ConfidenceMedium")
+	}
+	if fingerprint.ConfidenceMedium >= fingerprint.ConfidenceHigh {
+		t.Error("ConfidenceMedium must be less than ConfidenceHigh")
+	}
+	if fingerprint.ConfidenceHigh >= fingerprint.ConfidenceCertain {
+		t.Error("ConfidenceHigh must be less than ConfidenceCertain")
+	}
+	if fingerprint.ConfidenceCertain != 1.0 {
+		t.Errorf("ConfidenceCertain = %v, want 1.0", fingerprint.ConfidenceCertain)
+	}
+	if fingerprint.ConfidenceLow <= 0 {
+		t.Errorf("ConfidenceLow = %v, want > 0", fingerprint.ConfidenceLow)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Fingerprint
+// ---------------------------------------------------------------------------
+
+func TestFingerprint_Host(t *testing.T) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("example.com")
+	if got := fp.Host(); got != "example.com" {
+		t.Errorf("Host() = %q, want %q", got, "example.com")
+	}
+}
+
+func TestFingerprint_AddSignal_And_Signals(t *testing.T) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("example.com")
+
+	if n := fp.SignalCount(); n != 0 {
+		t.Fatalf("SignalCount() = %d, want 0 on a fresh fingerprint", n)
+	}
+
+	s1 := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.ConfidenceHigh}
+	s2 := fingerprint.Signal{Source: "cookie:name", Value: "PHPSESSID", Confidence: fingerprint.ConfidenceMedium}
+	fp.AddSignal(s1)
+	fp.AddSignal(s2)
+
+	if n := fp.SignalCount(); n != 2 {
+		t.Fatalf("SignalCount() = %d, want 2", n)
+	}
+
+	got := fp.Signals()
+	if len(got) != 2 {
+		t.Fatalf("Signals() len = %d, want 2", len(got))
+	}
+	if got[0] != s1 {
+		t.Errorf("Signals()[0] = %+v, want %+v", got[0], s1)
+	}
+	if got[1] != s2 {
+		t.Errorf("Signals()[1] = %+v, want %+v", got[1], s2)
+	}
+}
+
+func TestFingerprint_Signals_ReturnsCopy(t *testing.T) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("example.com")
+	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "PHP/8.1", Confidence: fingerprint.ConfidenceHigh})
+
+	snap := fp.Signals()
+	// Mutate the returned slice; the fingerprint must be unaffected.
+	snap[0] = fingerprint.Signal{Source: "poisoned", Value: "poisoned", Confidence: 0}
+
+	after := fp.Signals()
+	if after[0].Source == "poisoned" {
+		t.Error("Signals() returned a live slice; mutations must not affect the fingerprint")
+	}
+}
+
+func TestFingerprint_ConcurrentAddSignal(t *testing.T) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("concurrent.example.com")
+
+	const goroutines = 50
+	const signalsEach = 20
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < signalsEach; j++ {
+				fp.AddSignal(fingerprint.Signal{
+					Source:     fmt.Sprintf("worker:%d", id),
+					Value:      fmt.Sprintf("val-%d", j),
+					Confidence: fingerprint.ConfidenceLow,
+				})
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if got := fp.SignalCount(); got != goroutines*signalsEach {
+		t.Errorf("SignalCount() = %d, want %d after concurrent writes", got, goroutines*signalsEach)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cache
+// ---------------------------------------------------------------------------
+
+func TestCache_GetOrCreate_SamePointer(t *testing.T) {
+	cache := fingerprint.NewCache()
+	fp1 := cache.GetOrCreate("example.com")
+	fp2 := cache.GetOrCreate("example.com")
+	if fp1 != fp2 {
+		t.Error("GetOrCreate returned different pointers for the same host")
+	}
+}
+
+func TestCache_Get_MissingHost(t *testing.T) {
+	cache := fingerprint.NewCache()
+	if got := cache.Get("missing.example.com"); got != nil {
+		t.Errorf("Get on absent host = %v, want nil", got)
+	}
+}
+
+func TestCache_Get_AfterCreate(t *testing.T) {
+	cache := fingerprint.NewCache()
+	created := cache.GetOrCreate("example.com")
+	got := cache.Get("example.com")
+	if got != created {
+		t.Error("Get after GetOrCreate returned a different pointer")
+	}
+}
+
+func TestCache_Len(t *testing.T) {
+	cache := fingerprint.NewCache()
+	if n := cache.Len(); n != 0 {
+		t.Fatalf("Len() = %d on empty cache, want 0", n)
+	}
+	cache.GetOrCreate("a.example.com")
+	cache.GetOrCreate("b.example.com")
+	cache.GetOrCreate("a.example.com") // duplicate; must not increase count
+	if n := cache.Len(); n != 2 {
+		t.Errorf("Len() = %d, want 2", n)
+	}
+}
+
+func TestCache_Hosts(t *testing.T) {
+	cache := fingerprint.NewCache()
+	cache.GetOrCreate("alpha.example.com")
+	cache.GetOrCreate("beta.example.com")
+
+	hosts := cache.Hosts()
+	if len(hosts) != 2 {
+		t.Fatalf("Hosts() len = %d, want 2", len(hosts))
+	}
+	set := make(map[string]bool)
+	for _, h := range hosts {
+		set[h] = true
+	}
+	if !set["alpha.example.com"] || !set["beta.example.com"] {
+		t.Errorf("Hosts() = %v, missing expected entries", hosts)
+	}
+}
+
+func TestCache_Hosts_ReturnsCopy(t *testing.T) {
+	cache := fingerprint.NewCache()
+	cache.GetOrCreate("example.com")
+	snap := cache.Hosts()
+	snap[0] = "poisoned"
+	if cache.Hosts()[0] == "poisoned" {
+		t.Error("Hosts() returned a live slice; mutations must not affect the cache")
+	}
+}
+
+func TestCache_ConcurrentGetOrCreate(t *testing.T) {
+	cache := fingerprint.NewCache()
+	const goroutines = 100
+	const hosts = 10
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	ptrs := make([]*fingerprint.Fingerprint, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			host := fmt.Sprintf("host%d.example.com", id%hosts)
+			ptrs[id] = cache.GetOrCreate(host)
+		}(i)
+	}
+	wg.Wait()
+
+	// Verify pointer stability: same host must always return the same pointer.
+	hostPtrs := make(map[string]*fingerprint.Fingerprint)
+	for i := 0; i < goroutines; i++ {
+		host := fmt.Sprintf("host%d.example.com", i%hosts)
+		if existing, ok := hostPtrs[host]; ok {
+			if existing != ptrs[i] {
+				t.Errorf("host %s returned different pointers across concurrent calls", host)
+			}
+		} else {
+			hostPtrs[host] = ptrs[i]
+		}
+	}
+
+	if n := cache.Len(); n != hosts {
+		t.Errorf("Len() = %d after concurrent access, want %d", n, hosts)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkCache_GetOrCreate_Existing(b *testing.B) {
+	cache := fingerprint.NewCache()
+	cache.GetOrCreate("bench.example.com")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.GetOrCreate("bench.example.com")
+	}
+}
+
+func BenchmarkFingerprint_AddSignal(b *testing.B) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("bench.example.com")
+	s := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.ConfidenceHigh}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		fp.AddSignal(s)
+	}
+}
+
+func BenchmarkFingerprint_SignalCount(b *testing.B) {
+	cache := fingerprint.NewCache()
+	fp := cache.GetOrCreate("bench.example.com")
+	for i := 0; i < 100; i++ {
+		fp.AddSignal(fingerprint.Signal{Source: "bench", Value: "v", Confidence: fingerprint.ConfidenceLow})
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = fp.SignalCount()
+	}
+}
