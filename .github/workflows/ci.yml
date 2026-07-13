@@ -69,18 +69,18 @@ jobs:
         run: go mod download
 
       - name: Unit Tests
-        run: go test -v ./...
+        run: go test -v "./..."
 
       - name: Race Detection Tests
         # Only run race tests on Linux/macOS; race detector on Windows in Actions is sometimes slow or flaky
         if: matrix.os != 'windows-latest'
-        run: go test -race ./...
+        run: go test -race "./..."
 
       - name: Code Coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test "-coverprofile=coverage.out" -covermode=atomic "./..."
 
       - name: Compile Benchmarks (Verification)
-        run: go test -run=^$ -bench=. ./...
+        run: go test -run=^$ "-bench=." "./..."
 
       - name: Build local binary (Unix)
         if: matrix.os != 'windows-latest'
