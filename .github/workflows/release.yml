@@ -5,16 +5,23 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     name: Build & Upload Release Artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -31,7 +38,7 @@ jobs:
           ./build.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@60a1d31e97bb2beea40c1b4ae64dbfc60ae5d10fc # v4.4.0
         with:
           name: searchit-binaries
           path: dist/*
