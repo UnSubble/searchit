@@ -76,6 +76,7 @@ func TestParse(t *testing.T) {
 				Disallow: /admin
 			`,
 			wantRules: []robots.Directive{
+				{Type: robots.Sitemap, Path: "http://example.com/sitemap.xml"},
 				{Type: robots.Disallow, Path: "/admin"},
 			},
 		},

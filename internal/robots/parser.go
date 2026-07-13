@@ -12,6 +12,7 @@ type Type int
 const (
 	Allow Type = iota
 	Disallow
+	Sitemap
 )
 
 // Directive is a single robots.txt path rule.
@@ -20,7 +21,7 @@ type Directive struct {
 	Path string
 }
 
-// Parse extracts Allow and Disallow paths from a robots.txt stream.
+// Parse extracts Allow, Disallow, and Sitemap paths from a robots.txt stream.
 // It parses line-by-line using bufio.Scanner to keep allocations and
 // memory footprint minimal. It ignores comments and unsupported directives.
 func Parse(r io.Reader) ([]Directive, error) {
@@ -54,6 +55,8 @@ func Parse(r io.Reader) ([]Directive, error) {
 			dirType = Allow
 		case "disallow":
 			dirType = Disallow
+		case "sitemap":
+			dirType = Sitemap
 		default:
 			continue // ignore unsupported directives (e.g. User-agent, Crawl-delay)
 		}

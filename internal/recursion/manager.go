@@ -11,6 +11,7 @@ import (
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/robots"
+	"github.com/unsubble/searchit/internal/sitemap"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
@@ -105,7 +106,8 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		}
 
 		if len(seeds) > 0 {
-			m.discoverRobots(ctx, seeds[0], frontier, visited)
+			robotsSitemaps := m.discoverRobots(ctx, seeds[0], frontier, visited)
+			m.discoverSitemaps(ctx, seeds[0], robotsSitemaps, frontier, visited)
 		}
 
 		if m.stats != nil {
@@ -253,23 +255,27 @@ func normalizeURL(u string) string {
 }
 
 // discoverRobots downloads, parses, and enqueues robots.txt rules as high-priority seeds.
-func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier *Frontier, visited map[string]struct{}) {
+// It returns any Sitemap URLs discovered in the robots.txt file.
+func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier *Frontier, visited map[string]struct{}) []string {
+	var sitemaps []string
+
 	body, _, err := robots.Download(ctx, m.client, targetURL)
 	if err != nil {
-		return
+		return nil
 	}
 	defer body.Close()
 
 	directives, err := robots.Parse(body)
 	if err != nil {
-		return
+		return nil
 	}
 
 	u, err := url.Parse(targetURL)
 	if err != nil {
-		return
+		return nil
 	}
 	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+	hostRootURL, _ := url.Parse(hostRoot)
 
 	var fp *fingerprint.Fingerprint
 	if m.fingerprintCache != nil {
@@ -277,6 +283,16 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 	}
 
 	for _, dir := range directives {
+		if dir.Type == robots.Sitemap {
+			sitemapURL, err := url.Parse(dir.Path)
+			if err != nil {
+				continue
+			}
+			resolvedSitemap := hostRootURL.ResolveReference(sitemapURL).String()
+			sitemaps = append(sitemaps, resolvedSitemap)
+			continue
+		}
+
 		if fp != nil {
 			source := "robots:allow"
 			if dir.Type == robots.Disallow {
@@ -313,4 +329,48 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 		visited[key] = struct{}{}
 		frontier.PushFront(engine.Job{URL: childURL, Depth: 0})
 	}
+
+	return sitemaps
+}
+
+// discoverSitemaps triggers sitemap crawling starting with default locations and sitemaps from robots.txt.
+func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robotsSitemaps []string, frontier *Frontier, visited map[string]struct{}) {
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return
+	}
+	defaultSitemap := fmt.Sprintf("%s://%s/sitemap.xml", u.Scheme, u.Host)
+
+	// Build list of unique starting sitemap URLs
+	var startURLs []string
+	startURLs = append(startURLs, defaultSitemap)
+	for _, s := range robotsSitemaps {
+		norm := strings.TrimRight(strings.ToLower(s), "/")
+		if norm != strings.TrimRight(strings.ToLower(defaultSitemap), "/") {
+			startURLs = append(startURLs, s)
+		}
+	}
+
+	disc, err := sitemap.NewDiscoverer(m.client, m.fingerprintCache, targetURL)
+	if err != nil {
+		return
+	}
+
+	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+	hostRootURL, _ := url.Parse(hostRoot)
+
+	disc.Discover(ctx, startURLs, func(candidatePath string) {
+		parsedCand, err := url.Parse(candidatePath)
+		if err != nil {
+			return
+		}
+		childURL := hostRootURL.ResolveReference(parsedCand).String()
+
+		key := normalizeURL(childURL)
+		if _, seen := visited[key]; seen {
+			return
+		}
+		visited[key] = struct{}{}
+		frontier.PushFront(engine.Job{URL: childURL, Depth: 0})
+	})
 }
