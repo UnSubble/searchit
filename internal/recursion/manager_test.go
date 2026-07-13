@@ -815,3 +815,80 @@ func TestManager_RobotsDiscoveryAndFrontierSeeding(t *testing.T) {
 		}
 	}
 }
+
+func TestFrontier_GrowthAndStress(t *testing.T) {
+	tests := []struct {
+		name     string
+		strategy recursion.Strategy
+	}{
+		{"BFS Growth", recursion.BFS},
+		{"DFS Growth", recursion.DFS},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := recursion.NewFrontier(tc.strategy)
+
+			// 1. Stress insertions to trigger growth multiple times.
+			// Initial default capacity is 2048. Pushing 5000 items will trigger growth.
+			const count = 5000
+			for i := 0; i < count; i++ {
+				f.Push(engine.Job{URL: fmt.Sprintf("url-%d", i)})
+			}
+
+			if f.Len() != count {
+				t.Errorf("expected len %d, got %d", count, f.Len())
+			}
+
+			// 2. Pop all and verify correct ordering invariants
+			popped := make([]string, 0, count)
+			for {
+				j, ok := f.Pop()
+				if !ok {
+					break
+				}
+				popped = append(popped, j.URL)
+			}
+
+			if len(popped) != count {
+				t.Fatalf("expected to pop %d items, popped %d", count, len(popped))
+			}
+
+			if tc.strategy == recursion.BFS {
+				// BFS: FIFO order
+				for i := 0; i < count; i++ {
+					want := fmt.Sprintf("url-%d", i)
+					if popped[i] != want {
+						t.Errorf("BFS ordering mismatch at %d: got %q, want %q", i, popped[i], want)
+					}
+				}
+			} else {
+				// DFS: LIFO order
+				for i := 0; i < count; i++ {
+					want := fmt.Sprintf("url-%d", count-1-i)
+					if popped[i] != want {
+						t.Errorf("DFS ordering mismatch at %d: got %q, want %q", i, popped[i], want)
+					}
+				}
+			}
+
+			// 3. Interleaved push/pop to verify head wrap-around correctness
+			for i := 0; i < 1000; i++ {
+				f.Push(engine.Job{URL: fmt.Sprintf("interleaved-%d", i)})
+				j, ok := f.Pop()
+				if !ok {
+					t.Fatalf("expected pop to succeed at %d", i)
+				}
+				if tc.strategy == recursion.BFS {
+					if j.URL != fmt.Sprintf("interleaved-%d", i) {
+						t.Errorf("expected %q, got %q", fmt.Sprintf("interleaved-%d", i), j.URL)
+					}
+				} else {
+					if j.URL != fmt.Sprintf("interleaved-%d", i) {
+						t.Errorf("expected %q, got %q", fmt.Sprintf("interleaved-%d", i), j.URL)
+					}
+				}
+			}
+		})
+	}
+}

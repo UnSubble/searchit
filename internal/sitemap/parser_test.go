@@ -137,6 +137,101 @@ func TestParseStream_Empty(t *testing.T) {
 	}
 }
 
+func TestParseStream_MalformedXML_Extreme(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantItems []sitemap.XMLItem
+		wantErr   bool
+	}{
+		{
+			name: "Cut-off XML stream / premature EOF",
+			input: `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url>
+      <loc>http://example.com/valid</loc>
+   </url>
+   <url>
+      <loc>http://example.com/cut-off`,
+			wantItems: []sitemap.XMLItem{
+				{Loc: "http://example.com/valid", IsSitemap: false},
+			},
+			wantErr: true,
+		},
+		{
+			name: "XML namespaces and custom tags ignored",
+			input: `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns:custom="http://custom.org">
+   <url>
+      <loc>http://example.com/item</loc>
+      <custom:meta>some metadata</custom:meta>
+      <unknown>ignored element</unknown>
+   </url>
+</urlset>`,
+			wantItems: []sitemap.XMLItem{
+				{Loc: "http://example.com/item", IsSitemap: false},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Invalid UTF-8 encoding in location element",
+			input: `<?xml version="1.0" encoding="UTF-8"?>
+<urlset>
+   <url>
+      <loc>http://example.com/path-` + string([]byte{0xff, 0xfe, 0xfd}) + `</loc>
+   </url>
+</urlset>`,
+			wantItems: nil,
+			wantErr:   true,
+		},
+		{
+			name: "Extreme whitespace, tabs, and newlines inside tags",
+			input: `<?xml version="1.0" encoding="UTF-8"?>
+<urlset>
+   <url>
+      <loc>
+		
+		http://example.com/whitespace
+		
+	  </loc>
+	  <changefreq>
+		monthly
+	  </changefreq>
+   </url>
+</urlset>`,
+			wantItems: []sitemap.XMLItem{
+				{Loc: "http://example.com/whitespace", ChangeFreq: "monthly", IsSitemap: false},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotItems []sitemap.XMLItem
+			err := sitemap.ParseStream(strings.NewReader(tc.input), func(item sitemap.XMLItem) {
+				gotItems = append(gotItems, item)
+			})
+
+			if (err != nil) != tc.wantErr {
+				t.Errorf("ParseStream() error = %v, wantErr = %v", err, tc.wantErr)
+			}
+
+			if len(gotItems) != len(tc.wantItems) {
+				t.Fatalf("item count mismatch: got %d, want %d.\nGot: %+v\nWant: %+v",
+					len(gotItems), len(tc.wantItems), gotItems, tc.wantItems)
+			}
+
+			for i, got := range gotItems {
+				want := tc.wantItems[i]
+				if got.Loc != want.Loc || got.IsSitemap != want.IsSitemap || got.ChangeFreq != want.ChangeFreq {
+					t.Errorf("got[%d] = %+v, want %+v", i, got, want)
+				}
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------

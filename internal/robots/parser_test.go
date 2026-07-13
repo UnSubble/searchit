@@ -80,6 +80,55 @@ func TestParse(t *testing.T) {
 				{Type: robots.Disallow, Path: "/admin"},
 			},
 		},
+		{
+			name:  "Mixed CRLF and LF line endings",
+			input: "Disallow: /crlf\r\nAllow: /lf\nDisallow: /another\r",
+			wantRules: []robots.Directive{
+				{Type: robots.Disallow, Path: "/crlf"},
+				{Type: robots.Allow, Path: "/lf"},
+				{Type: robots.Disallow, Path: "/another"},
+			},
+		},
+		{
+			name: "Multiple colons in values",
+			input: `
+				Sitemap: http://foo:80/bar:8080/sitemap.xml
+				Disallow: /path:with:colons:
+			`,
+			wantRules: []robots.Directive{
+				{Type: robots.Sitemap, Path: "http://foo:80/bar:8080/sitemap.xml"},
+				{Type: robots.Disallow, Path: "/path:with:colons:"},
+			},
+		},
+		{
+			name: "Duplicate identical directives are parsed",
+			input: `
+				Disallow: /duplicate
+				Disallow: /duplicate
+			`,
+			wantRules: []robots.Directive{
+				{Type: robots.Disallow, Path: "/duplicate"},
+				{Type: robots.Disallow, Path: "/duplicate"},
+			},
+		},
+		{
+			name:  "Extreme whitespace and tabs around separator",
+			input: "\tAllow\t:\t\t   /extreme-whitespace\t\t\r\n",
+			wantRules: []robots.Directive{
+				{Type: robots.Allow, Path: "/extreme-whitespace"},
+			},
+		},
+		{
+			name: "UTF-8 content paths",
+			input: `
+				Disallow: /héllo-world
+				Allow: /日本語
+			`,
+			wantRules: []robots.Directive{
+				{Type: robots.Disallow, Path: "/héllo-world"},
+				{Type: robots.Allow, Path: "/日本語"},
+			},
+		},
 	}
 
 	for _, tc := range tests {

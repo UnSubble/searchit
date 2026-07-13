@@ -194,6 +194,63 @@ func TestCache_ConcurrentGetOrCreate(t *testing.T) {
 	}
 }
 
+func TestFingerprint_Robustness(t *testing.T) {
+	cache := fingerprint.NewCache()
+
+	// 1. Empty string lookup
+	fpEmpty := cache.GetOrCreate("")
+	if fpEmpty == nil {
+		t.Error("expected GetOrCreate(\"\") to return a fingerprint instance, got nil")
+	}
+
+	// 2. Write identical signals repeatedly to ensure stability
+	const repetitions = 200
+	sig := fingerprint.Signal{Source: "test", Value: "duplicate", Confidence: 1.0}
+	for i := 0; i < repetitions; i++ {
+		fpEmpty.AddSignal(sig)
+	}
+	signals := fpEmpty.Signals()
+	if len(signals) != repetitions {
+		t.Errorf("expected %d signals, got %d", repetitions, len(signals))
+	}
+
+	// 3. High concurrency read and write stress
+	const workers = 30
+	const actions = 100
+	var wg sync.WaitGroup
+	wg.Add(workers * 2)
+
+	// Write workers
+	for i := 0; i < workers; i++ {
+		go func(wID int) {
+			defer wg.Done()
+			for a := 0; a < actions; a++ {
+				fp := cache.GetOrCreate(fmt.Sprintf("host-%d.com", wID%3))
+				fp.AddSignal(fingerprint.Signal{
+					Source:     fmt.Sprintf("source-%d", a),
+					Value:      "value",
+					Confidence: 0.5,
+				})
+			}
+		}(i)
+	}
+
+	// Read workers
+	for i := 0; i < workers; i++ {
+		go func(wID int) {
+			defer wg.Done()
+			for a := 0; a < actions; a++ {
+				fp := cache.Get(fmt.Sprintf("host-%d.com", wID%3))
+				if fp != nil {
+					_ = fp.Signals()
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------

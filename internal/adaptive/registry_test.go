@@ -2,6 +2,7 @@ package adaptive_test
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/unsubble/searchit/internal/adaptive"
@@ -110,4 +111,51 @@ func TestSupportedIDs_ContainsAll(t *testing.T) {
 			t.Errorf("SupportedIDs() missing %q", p.ID)
 		}
 	}
+}
+
+func TestRegistry_Stress(t *testing.T) {
+	// 1. Extreme lookup values: extremely long string, empty string
+	longID := strings.Repeat("a", 10000)
+	if _, ok := adaptive.Lookup(longID); ok {
+		t.Error("expected Lookup of 10000 characters to fail")
+	}
+
+	// 2. High concurrency lookups
+	const workers = 50
+	const lookupsPerWorker = 500
+	var startBarrier sync.WaitGroup
+	var workersWg sync.WaitGroup
+
+	startBarrier.Add(1)
+	workersWg.Add(workers)
+
+	for i := 0; i < workers; i++ {
+		go func(workerID int) {
+			defer workersWg.Done()
+			// Wait for start signal to maximize concurrency contention
+			startBarrier.Wait()
+
+			techs := []string{"laravel", "spring", "wordpress", "express", "LARAVEL", "Django", "  go  ", "invalid"}
+			for j := 0; j < lookupsPerWorker; j++ {
+				input := techs[j%len(techs)]
+				p, ok := adaptive.Lookup(input)
+				if input == "invalid" {
+					if ok {
+						t.Errorf("expected failure for %q", input)
+					}
+				} else {
+					if !ok {
+						t.Errorf("expected success for %q", input)
+					}
+					canonical := strings.ToLower(strings.TrimSpace(input))
+					if p.ID != canonical {
+						t.Errorf("got %q, want %q", p.ID, canonical)
+					}
+				}
+			}
+		}(i)
+	}
+
+	startBarrier.Done()
+	workersWg.Wait()
 }

@@ -164,3 +164,97 @@ func TestDiscoverer_Discover(t *testing.T) {
 		t.Error("expected fingerprint to contain sitemap:priority signal")
 	}
 }
+
+func TestDiscoverer_EdgeCases(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		requests []string
+		yielded  []string
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests = append(requests, r.URL.Path)
+		mu.Unlock()
+
+		switch r.URL.Path {
+		case "/loop1.xml":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <sitemap><loc>/loop2.xml</loc></sitemap>
+</sitemapindex>`))
+		case "/loop2.xml":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <sitemap><loc>/loop1.xml</loc></sitemap>
+</sitemapindex>`))
+		case "/duplicates.xml":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/dup</loc></url>
+   <url><loc>/dup</loc></url>
+</urlset>`))
+		case "/error500.xml":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/empty.xml":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	fpCache := fingerprint.NewCache()
+	disc, err := sitemap.NewDiscoverer(http.DefaultClient, fpCache, srv.URL)
+	if err != nil {
+		t.Fatalf("failed to create discoverer: %v", err)
+	}
+
+	yield := func(path string) {
+		mu.Lock()
+		yielded = append(yielded, path)
+		mu.Unlock()
+	}
+
+	// 1. Verify loop prevention / cycles terminate gracefully
+	disc.Discover(context.Background(), []string{srv.URL + "/loop1.xml"}, yield)
+	// Both loop1 and loop2 should be requested exactly once
+	mu.Lock()
+	reqs := make([]string, len(requests))
+	copy(reqs, requests)
+	requests = nil
+	mu.Unlock()
+
+	if len(reqs) != 2 {
+		t.Errorf("expected 2 cyclic sitemap requests, got %d: %v", len(reqs), reqs)
+	}
+
+	// 2. Verify duplicate URL items are yielded (deduplication is done at frontier integration/visited set level)
+	disc.Discover(context.Background(), []string{srv.URL + "/duplicates.xml"}, yield)
+	mu.Lock()
+	dupsYielded := make([]string, len(yielded))
+	copy(dupsYielded, yielded)
+	yielded = nil
+	mu.Unlock()
+
+	if len(dupsYielded) != 2 || dupsYielded[0] != "/dup" || dupsYielded[1] != "/dup" {
+		t.Errorf("expected duplicate items to be yielded, got %v", dupsYielded)
+	}
+
+	// 3. Verify server error status codes (e.g. 500) and empty sitemaps handle cleanly
+	disc.Discover(context.Background(), []string{
+		srv.URL + "/error500.xml",
+		srv.URL + "/empty.xml",
+		srv.URL + "/nonexistent.xml",
+	}, yield)
+
+	mu.Lock()
+	errorYielded := len(yielded)
+	mu.Unlock()
+	if errorYielded != 0 {
+		t.Errorf("expected 0 items yielded from error/empty sitemaps, got %d", errorYielded)
+	}
+}

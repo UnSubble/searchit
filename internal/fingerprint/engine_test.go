@@ -445,6 +445,149 @@ func TestEngine_Analyze_Concurrent(t *testing.T) {
 	}
 }
 
+func TestEngine_Headers_EdgeCases(t *testing.T) {
+	cache := fingerprint.NewCache()
+	engine := fingerprint.NewEngine(cache)
+
+	// 1. Nil headers, nil body context
+	ctxNil := &fingerprint.Context{
+		Host:   "nil-ctx.com",
+		Header: nil,
+		Body:   nil,
+	}
+	engine.Analyze(ctxNil)
+	if fp := cache.Get("nil-ctx.com"); fp == nil {
+		t.Fatal("expected fingerprint to be created for nil context, got nil")
+	}
+
+	// 2. Extremely long header values
+	longVal := strings.Repeat("a", 120000)
+	ctxLong := &fingerprint.Context{
+		Host:   "long-header.com",
+		Header: http.Header{"Server": []string{longVal}},
+	}
+	engine.Analyze(ctxLong)
+	fpLong := cache.Get("long-header.com")
+	if fpLong == nil {
+		t.Fatal("expected fingerprint for long header, got nil")
+	}
+	signals := fpLong.Signals()
+	if len(signals) != 1 || signals[0].Value != longVal {
+		t.Errorf("expected 1 signal with long value, got %+v", signals)
+	}
+
+	// 3. Duplicated headers and malformed cookies
+	ctxDup := &fingerprint.Context{
+		Host: "dup-headers.com",
+		Header: http.Header{
+			"Server": []string{"Apache", "nginx"},
+			"Set-Cookie": []string{
+				"=value", // empty name
+				";",      // empty cookie
+				"name=",  // empty value
+				"a=b=c",  // multiple equals
+				"  cookie_with_spaces  = val ",
+			},
+		},
+	}
+	engine.Analyze(ctxDup)
+	fpDup := cache.Get("dup-headers.com")
+	if fpDup == nil {
+		t.Fatal("expected fingerprint for dup headers, got nil")
+	}
+	signalsDup := fpDup.Signals()
+	// Should have 2 Server signals + valid cookies: "name" (from "name="), "a" (from "a=b=c"), "cookie_with_spaces" (from "cookie_with_spaces = val")
+	// Total expected signals: 5
+	var serverCount, cookieCount int
+	for _, s := range signalsDup {
+		if s.Source == "header:Server" {
+			serverCount++
+		}
+		if s.Source == "cookie" {
+			cookieCount++
+			if s.Value != "name" && s.Value != "a" && s.Value != "cookie_with_spaces" {
+				t.Errorf("unexpected cookie name parsed: %q", s.Value)
+			}
+		}
+	}
+	if serverCount != 2 {
+		t.Errorf("expected 2 server signals, got %d", serverCount)
+	}
+	if cookieCount != 3 {
+		t.Errorf("expected 3 valid cookie signals, got %d: %+v", cookieCount, signalsDup)
+	}
+}
+
+func TestEngine_HTML_EdgeCases(t *testing.T) {
+	cache := fingerprint.NewCache()
+	engine := fingerprint.NewEngine(cache)
+
+	// 1. Deeply nested HTML structures (1500 nested tags to test stack limits)
+	var sb strings.Builder
+	for i := 0; i < 1500; i++ {
+		sb.WriteString("<div>")
+	}
+	sb.WriteString("<meta name=\"generator\" content=\"NestedNestedNested\" />")
+	for i := 0; i < 1500; i++ {
+		sb.WriteString("</div>")
+	}
+
+	ctxDeep := &fingerprint.Context{
+		Host: "deep-html.com",
+		Header: http.Header{
+			"Content-Type": []string{"text/html; charset=utf-8"},
+		},
+		Body: []byte(sb.String()),
+	}
+	engine.Analyze(ctxDeep)
+	fpDeep := cache.Get("deep-html.com")
+	if fpDeep == nil {
+		t.Fatal("expected fingerprint for deep HTML, got nil")
+	}
+	signalsDeep := fpDeep.Signals()
+	// Check that we successfully parsed the meta tag nested inside 1500 divs without stack overflow or crash
+	var foundMeta bool
+	for _, s := range signalsDeep {
+		if s.Source == "html:meta:name:generator" && s.Value == "NestedNestedNested" {
+			foundMeta = true
+		}
+	}
+	if !foundMeta {
+		t.Error("failed to find nested meta tag signal in deeply nested HTML structure")
+	}
+
+	// 2. HTML comments clamping and weird UTF-8 characters
+	commentVal := "Theme: " + strings.Repeat("𠜎", 100)
+	ctxComment := &fingerprint.Context{
+		Host: "comment-html.com",
+		Header: http.Header{
+			"Content-Type": []string{"text/html"},
+		},
+		Body: []byte("<!-- " + commentVal + " -->"),
+	}
+	engine.Analyze(ctxComment)
+	fpComment := cache.Get("comment-html.com")
+	if fpComment == nil {
+		t.Fatal("expected fingerprint for comment HTML, got nil")
+	}
+	var commentSignals []fingerprint.Signal
+	for _, sig := range fpComment.Signals() {
+		if sig.Source == "html:comment" {
+			commentSignals = append(commentSignals, sig)
+		}
+	}
+	if len(commentSignals) != 1 {
+		t.Fatalf("expected 1 html:comment signal, got %d: %+v", len(commentSignals), commentSignals)
+	}
+	s := commentSignals[0]
+	if !strings.HasSuffix(s.Value, "...") {
+		t.Errorf("expected comment value to be clamped and end with '...', got: %q", s.Value)
+	}
+	if len(s.Value) > 256 {
+		t.Errorf("expected comment value to be clamped to max 256 characters, got %d", len(s.Value))
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
