@@ -38,7 +38,7 @@ jobs:
           ./build.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@60a1d31e97bb2beea40c1b4ae64dbfc60ae5d10fc # v4.4.0
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
-          name: searchit-binaries
-          path: dist/*
+           name: searchit-binaries
+           path: dist/*
