@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -161,6 +162,12 @@ var scanCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		stats.GlobalInstrumentation.Reset()
+		atomic.StoreInt32(&stats.GlobalInstrumentation.Enabled, 1)
+		if os.Getenv("SEARCHIT_TRACE") == "1" {
+			atomic.StoreInt32(&stats.GlobalInstrumentation.Trace, 1)
+		}
+
 		// Ensure SilenceErrors/SilenceUsage are always reset when RunE returns,
 		// so that transient profile-load failures do not permanently suppress
 		// error output for subsequent invocations within the same test binary.
@@ -389,15 +396,20 @@ var scanCmd = &cobra.Command{
 				}()
 
 				for r := range results {
+					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					if r.Accepted {
+						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 						if progMgr != nil {
 							progMgr.HandleResult(r)
 						} else {
 							_ = fmttr.Print(r)
 						}
+					} else {
+						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 					}
 				}
 			}
+			stats.GlobalInstrumentation.PrintReconciliation()
 			scanCancel()
 			if progDone != nil {
 				<-progDone

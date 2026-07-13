@@ -41,6 +41,7 @@ func Start(
 
 	go func() {
 		wg.Wait()
+		stats.GlobalInstrumentation.LogEvent("results channel close")
 		close(results)
 	}()
 

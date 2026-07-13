@@ -24,19 +24,34 @@ func Join(base, path string) (string, error) {
 		return "", fmt.Errorf("base URL must not contain a fragment: %q", base)
 	}
 
-	// Strip trailing slashes from the base path and leading slashes from the
-	// appended path so there is always exactly one slash at the join point,
-	// regardless of how the caller supplies either side.
-	basePath := strings.TrimRight(u.Path, "/")
-	u.Path = basePath + "/" + strings.TrimLeft(path, "/")
+	cleanedPath := strings.TrimLeft(path, "/")
 
-	return u.String(), nil
+	rel, err := url.Parse(cleanedPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid candidate path: %w", err)
+	}
+
+	// Strip fragment from candidate path
+	rel.Fragment = ""
+
+	// Ensure the base URL path ends with a slash so ResolveReference appends to it
+	if !strings.HasSuffix(u.Path, "/") {
+		u.Path += "/"
+	}
+
+	resolved := u.ResolveReference(rel)
+	return resolved.String(), nil
 }
 
 // CleanWord applies path policy checks and transformations to a word.
 // It returns the cleaned word and false if it is rejected.
 func CleanWord(word string, norm, collapse bool) (string, bool) {
-	if word == "." || word == ".." {
+	// Strip fragments
+	if idx := strings.Index(word, "#"); idx != -1 {
+		word = word[:idx]
+	}
+
+	if word == "" || word == "." || word == ".." {
 		return "", false
 	}
 	if collapse {

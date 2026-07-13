@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/unsubble/searchit/internal/size"
@@ -74,8 +75,12 @@ func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-ch
 	go func() {
 		defer close(out)
 		for r := range results {
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 			if r.Accepted {
+				atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 				out <- r
+			} else {
+				atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 			}
 		}
 	}()

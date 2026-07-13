@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/unsubble/searchit/internal/httpclient"
@@ -22,6 +23,21 @@ type HeaderFilter struct {
 	Value string
 }
 
+func sendResult(results chan<- Result, res Result) {
+	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsProduced, 1)
+	results <- res
+}
+
+func drainAndClose(body io.ReadCloser) {
+	if body == nil {
+		return
+	}
+	// Limit read to 2048 bytes to discard small/typical bodies (like 404 responses),
+	// allowing persistent TCP connection reuse without unbounded memory overhead.
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, 2048))
+	body.Close()
+}
+
 // Worker executes the response pipeline for incoming jobs.
 // Pipeline: Status -> Headers -> Content-Length -> Body
 func Worker(
@@ -36,23 +52,33 @@ func Worker(
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
+	atomic.AddInt64(&stats.GlobalInstrumentation.WorkersStarted, 1)
+	defer func() {
+		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersExited, 1)
+		stats.GlobalInstrumentation.LogEvent("worker exit")
+	}()
+
 	if collector != nil {
 		collector.IncrementActiveWorkers()
 		defer collector.DecrementActiveWorkers()
 	}
 	for job := range jobs {
+		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
 		if limiter != nil {
 			err := limiter.Wait(ctx)
 			if err != nil {
+				atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRej, 1)
 				return
 			}
 		}
 
 		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results, collector)
+		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 		if delay > 0 {
 			select {
 			case <-ctx.Done():
+				stats.GlobalInstrumentation.LogEvent("context cancellation")
 				return
 			case <-time.After(delay):
 			}
@@ -79,13 +105,13 @@ func process(
 		if collector != nil {
 			collector.RecordRequestFailed()
 		}
-		results <- Result{
+		sendResult(results, Result{
 			URL:      job.URL,
 			Depth:    job.Depth,
 			Accepted: false,
 			Origin:   job.Origin,
 			Err:      err,
-		}
+		})
 		return
 	}
 
@@ -95,13 +121,13 @@ func process(
 		if collector != nil {
 			collector.RecordRequestFailed()
 		}
-		results <- Result{
+		sendResult(results, Result{
 			URL:      job.URL,
 			Depth:    job.Depth,
 			Accepted: false,
 			Origin:   job.Origin,
 			Err:      err,
-		}
+		})
 		return
 	}
 
@@ -111,54 +137,54 @@ func process(
 
 	// Stage 1: Status
 	if exclude.Match(resp.StatusCode) {
-		resp.Body.Close()
+		drainAndClose(resp.Body)
 		if collector != nil {
 			collector.RecordResponseReceived(resp.StatusCode, 0)
 			collector.RecordRequestFiltered()
 		}
-		results <- Result{
+		sendResult(results, Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
-		}
+		})
 		return
 	}
 
 	// Stage 2: Headers
 	if !AcceptHeaders(resp, incHeaders, excHeaders) {
-		resp.Body.Close()
+		drainAndClose(resp.Body)
 		if collector != nil {
 			collector.RecordResponseReceived(resp.StatusCode, 0)
 			collector.RecordRequestFiltered()
 		}
-		results <- Result{
+		sendResult(results, Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
-		}
+		})
 		return
 	}
 
 	// Stage 3: Content-Length
 	length := httpclient.ContentLength(resp)
 	if !AcceptContentLength(length, incSize, excSize) {
-		resp.Body.Close()
+		drainAndClose(resp.Body)
 		if collector != nil {
 			collector.RecordResponseReceived(resp.StatusCode, length)
 			collector.RecordRequestFiltered()
 		}
-		results <- Result{
+		sendResult(results, Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
-		}
+		})
 		return
 	}
 
@@ -174,7 +200,7 @@ func process(
 			collector.RecordRequestSucceeded()
 			collector.RecordDiscovered()
 		}
-		results <- Result{
+		sendResult(results, Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
 			Length:     length,
@@ -182,7 +208,7 @@ func process(
 			Accepted:   true,
 			Origin:     job.Origin,
 			Err:        err,
-		}
+		})
 		return
 	}
 	resp.Body.Close()
@@ -193,14 +219,14 @@ func process(
 		collector.RecordDiscovered()
 	}
 
-	results <- Result{
+	sendResult(results, Result{
 		URL:        job.URL,
 		StatusCode: resp.StatusCode,
 		Length:     length,
 		Depth:      job.Depth,
 		Accepted:   true,
 		Origin:     job.Origin,
-	}
+	})
 }
 
 // AcceptHeaders evaluates headers matching.

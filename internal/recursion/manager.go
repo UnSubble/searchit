@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/unsubble/searchit/internal/engine"
@@ -92,7 +93,11 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 	out := make(chan engine.Result, workers)
 
 	go func() {
-		defer close(out)
+		defer func() {
+			atomic.AddInt64(&stats.GlobalInstrumentation.SchedulerExit, 1)
+			stats.GlobalInstrumentation.LogEvent("manager exit")
+			close(out)
+		}()
 
 		frontier := NewFrontier(m.strategy)
 		visited := make(map[string]struct{})
@@ -101,6 +106,8 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			key := normalizeURL(u)
 			if _, seen := visited[key]; !seen {
 				visited[key] = struct{}{}
+				atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 				frontier.Push(engine.Job{URL: u, Depth: 0, Origin: engine.OriginProfile})
 			}
 		}
@@ -146,12 +153,22 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 				case <-ctx.Done():
 					// Drain pending results before exiting so workers can finish
 					// and the results channel closes without goroutine leaks.
+					stats.GlobalInstrumentation.LogEvent("context cancellation")
+					stats.GlobalInstrumentation.LogEvent("jobs channel close")
 					close(jobs)
-					for range results {
+					for result := range results {
+						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
+						if result.Accepted {
+							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
+						} else {
+							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
+						}
 					}
 					return
 
 				case jobs <- next:
+					atomic.AddInt64(&stats.GlobalInstrumentation.JobsDispatched, 1)
+					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 					frontier.Pop()
 					pending++
 
@@ -160,6 +177,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 						return
 					}
 
+					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
 					m.handleResult(ctx, result, frontier, visited, out)
 				}
@@ -168,26 +186,38 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 				// arrives to avoid a busy-wait spin.
 				select {
 				case <-ctx.Done():
+					stats.GlobalInstrumentation.LogEvent("context cancellation")
+					stats.GlobalInstrumentation.LogEvent("jobs channel close")
 					close(jobs)
-					for range results {
+					for result := range results {
+						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
+						if result.Accepted {
+							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
+						} else {
+							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
+						}
 					}
 					return
 				case result, ok := <-results:
 					if !ok {
 						return
 					}
+					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
 					m.handleResult(ctx, result, frontier, visited, out)
 				}
 			}
 		}
 
+		atomic.StoreInt64(&stats.GlobalInstrumentation.JobsRemaining, int64(frontier.Len()))
+		stats.GlobalInstrumentation.LogEvent("jobs channel close")
 		close(jobs)
 		if m.stats != nil {
 			m.stats.SetQueuedJobs(0)
 		}
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 			m.handleResult(ctx, result, frontier, visited, out)
 		}
 	}()
@@ -205,12 +235,15 @@ func (m *Manager) handleResult(
 	out chan<- engine.Result,
 ) {
 	if !result.Accepted {
+		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 		return
 	}
+	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 
 	select {
 	case out <- result:
 	case <-ctx.Done():
+		stats.GlobalInstrumentation.LogEvent("context cancellation")
 		return
 	}
 
@@ -242,6 +275,8 @@ func (m *Manager) handleResult(
 			continue
 		}
 		visited[key] = struct{}{}
+		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
 	}
 	if err := <-readErr; err != nil && err != context.Canceled {
@@ -249,9 +284,17 @@ func (m *Manager) handleResult(
 	}
 }
 
-// normalizeURL strips trailing slashes so /admin and /admin/ map to the same key.
+// normalizeURL strips trailing slashes and fragments to normalize directory matches.
 func normalizeURL(u string) string {
-	return strings.TrimRight(u, "/")
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return strings.TrimRight(u, "/")
+	}
+	parsed.Fragment = ""
+	if parsed.Path != "/" {
+		parsed.Path = strings.TrimRight(parsed.Path, "/")
+	}
+	return parsed.String()
 }
 
 // discoverRobots downloads, parses, and enqueues robots.txt rules as high-priority seeds.
@@ -327,6 +370,8 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 			continue
 		}
 		visited[key] = struct{}{}
+		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: engine.OriginRobots})
 	}
 
@@ -371,6 +416,7 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 		if err != nil {
 			return
 		}
+		parsedCand.Fragment = "" // Strip fragments to prevent double-scheduling
 		childURL := hostRootURL.ResolveReference(parsedCand).String()
 
 		key := normalizeURL(childURL)
@@ -378,6 +424,8 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 			return
 		}
 		visited[key] = struct{}{}
+		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: origin})
 	})
 }

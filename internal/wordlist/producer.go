@@ -2,8 +2,10 @@ package wordlist
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/stats"
 )
 
 // DefaultWordBuffer is the capacity of the internal word channel.
@@ -21,7 +23,12 @@ type Producer struct {
 }
 
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
-	defer close(jobs)
+	defer func() {
+		close(jobs)
+		stats.GlobalInstrumentation.LogEvent("jobs channel close")
+		atomic.AddInt64(&stats.GlobalInstrumentation.ProducerExit, 1)
+		stats.GlobalInstrumentation.LogEvent("producer exited")
+	}()
 
 	// Validate the base before touching the reader so a bad URL is caught
 	// immediately rather than after consuming part of the wordlist.
@@ -40,6 +47,7 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 	for {
 		select {
 		case <-ctx.Done():
+			stats.GlobalInstrumentation.LogEvent("context cancellation")
 			return ctx.Err()
 		case word, ok := <-words:
 			if !ok {
@@ -53,10 +61,15 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 			if err != nil {
 				return err
 			}
+
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+
 			select {
 			case <-ctx.Done():
+				stats.GlobalInstrumentation.LogEvent("context cancellation")
 				return ctx.Err()
 			case jobs <- engine.Job{URL: url}:
+				atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 			}
 		}
 	}

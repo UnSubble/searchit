@@ -33,6 +33,12 @@ func TestJoin(t *testing.T) {
 
 		// Empty path is valid — used for base validation in Producer
 		{"https://example.com", "", "https://example.com/"},
+
+		// Query strings and fragments on candidate path
+		{"https://example.com", "admin?debug=1", "https://example.com/admin?debug=1"},
+		{"https://example.com", "admin#section", "https://example.com/admin"},
+		{"https://example.com", "admin?debug=1#section", "https://example.com/admin?debug=1"},
+		{"https://example.com/app", "admin?debug=1#section", "https://example.com/app/admin?debug=1"},
 	}
 
 	for _, tc := range tests {
