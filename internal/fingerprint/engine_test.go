@@ -516,6 +516,30 @@ func TestEngine_Headers_EdgeCases(t *testing.T) {
 	if cookieCount != 3 {
 		t.Errorf("expected 3 valid cookie signals, got %d: %+v", cookieCount, signalsDup)
 	}
+
+	// 4. Set-Cookie header with only attributes and no name-value pair
+	ctxAttrs := &fingerprint.Context{
+		Host: "attrs-cookies.com",
+		Header: http.Header{
+			"Set-Cookie": []string{
+				"Secure; HttpOnly",
+				"SameSite=Lax",
+				"HttpOnly",
+			},
+		},
+	}
+	engine.Analyze(ctxAttrs)
+	fpAttrs := cache.Get("attrs-cookies.com")
+	if fpAttrs == nil {
+		t.Fatal("expected fingerprint for attributes cookies, got nil")
+	}
+	for _, s := range fpAttrs.Signals() {
+		if s.Source == "cookie" {
+			if s.Value == "Secure" || s.Value == "HttpOnly" {
+				t.Errorf("Cookie parsing bug: attribute %q was parsed as a cookie name", s.Value)
+			}
+		}
+	}
 }
 
 func TestEngine_HTML_EdgeCases(t *testing.T) {

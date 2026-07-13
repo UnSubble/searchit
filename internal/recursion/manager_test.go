@@ -892,3 +892,83 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 		})
 	}
 }
+
+func TestManager_RobotsSitemapSSRFPrevention(t *testing.T) {
+	var requestedURLs []string
+	var mu sync.Mutex
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requestedURLs = append(requestedURLs, r.URL.Path)
+		mu.Unlock()
+
+		if r.URL.Path == "/robots.txt" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`
+				User-agent: *
+				Sitemap: http://malicious-external-domain.com/external-sitemap.xml
+				Sitemap: /local-sitemap.xml
+			`))
+			return
+		}
+		if r.URL.Path == "/local-sitemap.xml" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/local-path</loc></url>
+</urlset>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	reader := staticReader{words: []string{}}
+	a := newApp(t)
+
+	m := recursion.NewManager(
+		a.HTTPClient,
+		a.Config.Status.Exclude,
+		reader,
+		recursion.BFS,
+		1,
+		a.Config.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		nil,
+	)
+
+	_ = collectResults(m.Run(context.Background(), seeds, 1))
+
+	// Verify requested URLs.
+	// We expect /robots.txt and /local-sitemap.xml to be fetched, but NOT any external sitemap.
+	var hasExternalRequest bool
+	var hasLocalSitemapRequest bool
+
+	mu.Lock()
+	reqs := requestedURLs
+	mu.Unlock()
+
+	for _, path := range reqs {
+		if strings.Contains(path, "external") {
+			hasExternalRequest = true
+		}
+		if path == "/local-sitemap.xml" {
+			hasLocalSitemapRequest = true
+		}
+	}
+
+	if hasExternalRequest {
+		t.Error("SSRF Risk: Manager sent a request to the external sitemap URL advertised in robots.txt")
+	}
+	if !hasLocalSitemapRequest {
+		t.Error("Expected local-sitemap.xml to be requested, but it was not")
+	}
+}

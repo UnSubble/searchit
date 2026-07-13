@@ -68,12 +68,23 @@ func detectHeaders(ctx *Context, fp *Fingerprint) {
 	}
 }
 
-// parseCookieName extracts the cookie name from a Set-Cookie value string.
-// Set-Cookie values typically follow the RFC 6265 format:
-// "CookieName=CookieValue; Option1=Val1; Option2..."
+var reservedCookieAttrs = map[string]bool{
+	"secure":   true,
+	"httponly": true,
+	"samesite": true,
+	"path":     true,
+	"domain":   true,
+	"expires":  true,
+	"max-age":  true,
+}
+
 func parseCookieName(val string) string {
 	parts := strings.SplitN(val, ";", 2)
 	namePart := strings.TrimSpace(parts[0])
 	nameParts := strings.SplitN(namePart, "=", 2)
-	return strings.TrimSpace(nameParts[0])
+	name := strings.TrimSpace(nameParts[0])
+	if reservedCookieAttrs[strings.ToLower(name)] {
+		return "" // Cookie attributes or invalid formats
+	}
+	return name
 }

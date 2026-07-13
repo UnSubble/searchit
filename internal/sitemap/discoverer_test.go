@@ -2,6 +2,7 @@ package sitemap_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -257,4 +258,34 @@ func TestDiscoverer_EdgeCases(t *testing.T) {
 	if errorYielded != 0 {
 		t.Errorf("expected 0 items yielded from error/empty sitemaps, got %d", errorYielded)
 	}
+}
+
+func TestDiscoverer_Concurrency(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/path</loc></url>
+</urlset>`))
+	}))
+	t.Cleanup(srv.Close)
+
+	fpCache := fingerprint.NewCache()
+	disc, err := sitemap.NewDiscoverer(http.DefaultClient, fpCache, srv.URL)
+	if err != nil {
+		t.Fatalf("failed to create discoverer: %v", err)
+	}
+
+	const workers = 20
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for i := 0; i < workers; i++ {
+		go func(wID int) {
+			defer wg.Done()
+			disc.Discover(context.Background(), []string{srv.URL + fmt.Sprintf("/sitemap-%d.xml", wID)}, func(path string) {})
+		}(i)
+	}
+
+	wg.Wait()
 }

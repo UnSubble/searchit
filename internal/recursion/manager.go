@@ -345,6 +345,13 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 	var startURLs []string
 	startURLs = append(startURLs, defaultSitemap)
 	for _, s := range robotsSitemaps {
+		sURL, err := url.Parse(s)
+		if err != nil {
+			continue
+		}
+		if sURL.Host != u.Host {
+			continue // SSRF prevention: ignore sitemaps located on foreign hosts
+		}
 		norm := strings.TrimRight(strings.ToLower(s), "/")
 		if norm != strings.TrimRight(strings.ToLower(defaultSitemap), "/") {
 			startURLs = append(startURLs, s)

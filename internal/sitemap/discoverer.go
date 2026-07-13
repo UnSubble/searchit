@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/unsubble/searchit/internal/fingerprint"
 )
@@ -15,6 +16,7 @@ import (
 type Discoverer struct {
 	client           *http.Client
 	fingerprintCache *fingerprint.Cache
+	mu               sync.Mutex // Protects visitedSitemaps
 	visitedSitemaps  map[string]struct{}
 	targetURL        *url.URL
 }
@@ -44,10 +46,13 @@ func (d *Discoverer) Discover(ctx context.Context, startURLs []string, yield fun
 
 func (d *Discoverer) processSitemap(ctx context.Context, sitemapURLStr string, yield func(path string)) {
 	normalizedSitemap := strings.TrimRight(strings.ToLower(sitemapURLStr), "/")
+	d.mu.Lock()
 	if _, seen := d.visitedSitemaps[normalizedSitemap]; seen {
+		d.mu.Unlock()
 		return
 	}
 	d.visitedSitemaps[normalizedSitemap] = struct{}{}
+	d.mu.Unlock()
 
 	parentURL, err := url.Parse(sitemapURLStr)
 	if err != nil {
