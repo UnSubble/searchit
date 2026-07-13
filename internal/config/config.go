@@ -3,6 +3,7 @@ package config
 import (
 	"time"
 
+	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -38,6 +39,10 @@ type Config struct {
 	ExcludeHeaders []HeaderFilter
 
 	Status StatusConfig
+
+	// TechProfile is the explicitly-selected adaptive technology profile.
+	// A nil value means no explicit selection; automatic detection applies.
+	TechProfile *adaptive.TechProfile
 }
 
 type HeaderFilter struct {

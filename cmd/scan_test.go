@@ -38,7 +38,27 @@ func resetFlagsForTest() {
 	flagConnectTimeout = "3s"
 	flagProfiles = nil
 	flagNoProgress = false
+	flagTech = ""
 	resolvedTargets = nil
+
+	// Reset silence flags that may have been set by profile-loading failures
+	// in prior tests, which would suppress PreRunE errors in subsequent tests.
+	scanCmd.SilenceErrors = false
+	scanCmd.SilenceUsage = false
+
+	// Reset Changed state on all flags of both commands, and explicitly reset help flags.
+	rootCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		f.Changed = false
+		if f.Name == "help" {
+			_ = f.Value.Set("false")
+		}
+	})
+	scanCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		f.Changed = false
+		if f.Name == "help" {
+			_ = f.Value.Set("false")
+		}
+	})
 }
 
 func TestCLI_Validation(t *testing.T) {
@@ -611,4 +631,139 @@ func shouldEnableProgressWith(cfg config.Config, noProgress bool, isTerminal boo
 		return false
 	}
 	return true
+}
+
+func TestCLI_TechFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{
+			name:    "valid tech laravel",
+			args:    []string{"scan", "-u", "http://localhost", "--tech", "laravel"},
+			wantErr: false,
+		},
+		{
+			name:    "valid tech spring",
+			args:    []string{"scan", "-u", "http://localhost", "--tech", "spring"},
+			wantErr: false,
+		},
+		{
+			name:    "valid tech uppercase",
+			args:    []string{"scan", "-u", "http://localhost", "--tech", "LARAVEL"},
+			wantErr: false,
+		},
+		{
+			name:    "valid tech mixed case",
+			args:    []string{"scan", "-u", "http://localhost", "--tech", "WordPress"},
+			wantErr: false,
+		},
+		{
+			name:    "unknown tech rejected",
+			args:    []string{"scan", "-u", "http://localhost", "--tech", "rails"},
+			wantErr: true,
+		},
+		{
+			name:    "empty tech treated as no tech specified",
+			args:    []string{"scan", "-u", "http://localhost", "--tech", ""},
+			wantErr: false,
+		},
+		{
+			name:    "no tech flag is valid",
+			args:    []string{"scan", "-u", "http://localhost"},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			rootCmd.SetContext(ctx)
+			scanCmd.SetContext(ctx)
+			resetFlagsForTest()
+			rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+			scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+			rootCmd.SetArgs(tc.args)
+
+			buf := new(bytes.Buffer)
+			rootCmd.SetOut(buf)
+			rootCmd.SetErr(buf)
+			testHookConfigApplied = func(config.Config) {}
+			defer func() { testHookConfigApplied = nil }()
+
+			err := rootCmd.ExecuteContext(ctx)
+			if tc.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestApplyCLIOverrides_TechProfile(t *testing.T) {
+	runWithTech := func(t *testing.T, techArg string) config.Config {
+		t.Helper()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		rootCmd.SetContext(ctx)
+		scanCmd.SetContext(ctx)
+		resetFlagsForTest()
+		rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+		scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+
+		args := []string{"scan", "-u", "http://localhost"}
+		if techArg != "" {
+			args = append(args, "--tech", techArg)
+		}
+		rootCmd.SetArgs(args)
+
+		buf := new(bytes.Buffer)
+		rootCmd.SetOut(buf)
+		rootCmd.SetErr(buf)
+
+		var got config.Config
+		testHookConfigApplied = func(c config.Config) { got = c }
+		defer func() { testHookConfigApplied = nil }()
+
+		if err := rootCmd.ExecuteContext(ctx); err != nil {
+			t.Fatalf("Execute() error: %v", err)
+		}
+		return got
+	}
+
+	t.Run("tech flag populates TechProfile", func(t *testing.T) {
+		got := runWithTech(t, "laravel")
+		if got.TechProfile == nil {
+			t.Fatal("TechProfile is nil, want non-nil")
+		}
+		if got.TechProfile.ID != "laravel" {
+			t.Errorf("TechProfile.ID = %q, want %q", got.TechProfile.ID, "laravel")
+		}
+		if got.TechProfile.DisplayName != "Laravel" {
+			t.Errorf("TechProfile.DisplayName = %q, want %q", got.TechProfile.DisplayName, "Laravel")
+		}
+	})
+
+	t.Run("case-insensitive --tech sets canonical ID", func(t *testing.T) {
+		got := runWithTech(t, "SPRING")
+		if got.TechProfile == nil {
+			t.Fatal("TechProfile is nil, want non-nil")
+		}
+		if got.TechProfile.ID != "spring" {
+			t.Errorf("TechProfile.ID = %q, want canonical %q", got.TechProfile.ID, "spring")
+		}
+	})
+
+	t.Run("no --tech flag leaves TechProfile nil", func(t *testing.T) {
+		got := runWithTech(t, "")
+		if got.TechProfile != nil {
+			t.Errorf("TechProfile = %+v, want nil", got.TechProfile)
+		}
+	})
 }

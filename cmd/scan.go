@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
@@ -50,6 +51,7 @@ var (
 	flagConnectTimeout  string
 	flagProfiles        []string
 	flagNoProgress      bool
+	flagTech            string
 
 	resolvedTargets []string
 
@@ -147,9 +149,26 @@ var scanCmd = &cobra.Command{
 			return fmt.Errorf("at least one target is required")
 		}
 
+		if flagTech != "" {
+			if _, ok := adaptive.Lookup(flagTech); !ok {
+				return fmt.Errorf(
+					"unknown technology %q; supported values: %s",
+					flagTech, adaptive.SupportedIDs(),
+				)
+			}
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Ensure SilenceErrors/SilenceUsage are always reset when RunE returns,
+		// so that transient profile-load failures do not permanently suppress
+		// error output for subsequent invocations within the same test binary.
+		defer func() {
+			cmd.SilenceErrors = false
+			cmd.SilenceUsage = false
+		}()
+
 		// 1. Start from defaults.
 		cfg := config.Default()
 
@@ -209,6 +228,9 @@ var scanCmd = &cobra.Command{
 			for _, name := range appliedProfiles {
 				fmt.Printf("    %s\n", name)
 			}
+		}
+		if cfg.Output == "text" && !cfg.Quiet && cfg.TechProfile != nil {
+			fmt.Printf("[*] Tech profile: %s\n", cfg.TechProfile.ID)
 		}
 
 		if testHookConfigApplied != nil {
@@ -466,6 +488,11 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("exclude-header") {
 		cfg.ExcludeHeaders = parseHeaderFlags(flagExcludeHeaders)
 	}
+	if flagTech != "" {
+		if p, ok := adaptive.Lookup(flagTech); ok {
+			cfg.TechProfile = &p
+		}
+	}
 }
 
 // formatRecurseOn returns a human-readable string for the recurse-on filters.
@@ -649,6 +676,13 @@ func init() {
 		"no-progress",
 		false,
 		"disable the live progress display (progress is enabled automatically when stdout is a terminal)",
+	)
+
+	scanCmd.Flags().StringVar(
+		&flagTech,
+		"tech",
+		"",
+		"explicitly select a technology profile, bypassing automatic detection (e.g. laravel, spring, wordpress)",
 	)
 }
 

@@ -39,7 +39,13 @@ func runScanProfileTest(args []string, hook func(config.Config)) error {
 	flagRate = 0
 	flagConnectTimeout = "3s"
 	flagProfiles = nil
+	flagNoProgress = false
+	flagTech = ""
 	resolvedTargets = nil
+
+	// Reset silence flags that prior failing tests may have set.
+	scanCmd.SilenceErrors = false
+	scanCmd.SilenceUsage = false
 
 	// Set test hook
 	testHookConfigApplied = hook
