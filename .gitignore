@@ -16,6 +16,8 @@ coverage.html
 cpu.out
 mem.out
 *.prof
+*.pprof
+*.test
 
 # Temporary files
 tmp/
