@@ -23,7 +23,7 @@ func ParseStream(r io.Reader, callback func(XMLItem)) error {
 
 	var (
 		inLoc, inLastMod, inChangeFreq, inPriority bool
-		inUrl                                      bool
+		inUrl, inSitemap                           bool
 		item                                       XMLItem
 	)
 
@@ -42,8 +42,11 @@ func ParseStream(r io.Reader, callback func(XMLItem)) error {
 			switch name {
 			case "url":
 				inUrl = true
+				inSitemap = false
 				item = XMLItem{IsSitemap: false}
 			case "sitemap":
+				inSitemap = true
+				inUrl = false
 				item = XMLItem{IsSitemap: true}
 			case "loc":
 				inLoc = true
@@ -64,11 +67,18 @@ func ParseStream(r io.Reader, callback func(XMLItem)) error {
 				item.LastMod = strings.TrimSpace(item.LastMod)
 				item.ChangeFreq = strings.TrimSpace(item.ChangeFreq)
 				item.Priority = strings.TrimSpace(item.Priority)
-				callback(item)
+				if item.Loc != "" {
+					callback(item)
+				}
+				item = XMLItem{}
 			case "sitemap":
+				inSitemap = false
 				item.Loc = strings.TrimSpace(item.Loc)
 				item.LastMod = strings.TrimSpace(item.LastMod)
-				callback(item)
+				if item.Loc != "" {
+					callback(item)
+				}
+				item = XMLItem{}
 			case "loc":
 				inLoc = false
 			case "lastmod":
@@ -80,6 +90,9 @@ func ParseStream(r io.Reader, callback func(XMLItem)) error {
 			}
 
 		case xml.CharData:
+			if !inUrl && !inSitemap {
+				continue
+			}
 			val := string(se)
 			if inLoc {
 				item.Loc += val

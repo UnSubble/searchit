@@ -8,5 +8,6 @@ type Result struct {
 	Length     int64 // -1 when Content-Length is absent
 	Depth      uint16
 	Accepted   bool
+	Origin     string
 	Err        error
 }

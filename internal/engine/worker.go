@@ -83,6 +83,7 @@ func process(
 			URL:      job.URL,
 			Depth:    job.Depth,
 			Accepted: false,
+			Origin:   job.Origin,
 			Err:      err,
 		}
 		return
@@ -98,6 +99,7 @@ func process(
 			URL:      job.URL,
 			Depth:    job.Depth,
 			Accepted: false,
+			Origin:   job.Origin,
 			Err:      err,
 		}
 		return
@@ -119,6 +121,7 @@ func process(
 			StatusCode: resp.StatusCode,
 			Depth:      job.Depth,
 			Accepted:   false,
+			Origin:     job.Origin,
 		}
 		return
 	}
@@ -135,6 +138,7 @@ func process(
 			StatusCode: resp.StatusCode,
 			Depth:      job.Depth,
 			Accepted:   false,
+			Origin:     job.Origin,
 		}
 		return
 	}
@@ -153,6 +157,7 @@ func process(
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
+			Origin:     job.Origin,
 		}
 		return
 	}
@@ -175,6 +180,7 @@ func process(
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   true,
+			Origin:     job.Origin,
 			Err:        err,
 		}
 		return
@@ -193,6 +199,7 @@ func process(
 		Length:     length,
 		Depth:      job.Depth,
 		Accepted:   true,
+		Origin:     job.Origin,
 	}
 }
 

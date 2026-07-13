@@ -1,6 +1,8 @@
 package sitemap_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"net/http"
@@ -9,16 +11,29 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/sitemap"
 )
+
+func gzipCompress(data []byte) []byte {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	_, _ = w.Write(data)
+	_ = w.Close()
+	return buf.Bytes()
+}
 
 func TestDiscoverer_Discover(t *testing.T) {
 	var (
 		mu          sync.Mutex
 		requests    []string
-		discoveries []string
+		discoveries []struct {
+			path   string
+			origin string
+		}
 	)
 
 	// Mock server that serves nested sitemaps and target files
@@ -80,9 +95,12 @@ func TestDiscoverer_Discover(t *testing.T) {
 		t.Fatalf("failed to create discoverer: %v", err)
 	}
 
-	disc.Discover(context.Background(), []string{srv.URL + "/sitemap.xml"}, func(path string) {
+	disc.Discover(context.Background(), []string{srv.URL + "/sitemap.xml"}, func(path string, origin string) {
 		mu.Lock()
-		discoveries = append(discoveries, path)
+		discoveries = append(discoveries, struct {
+			path   string
+			origin string
+		}{path: path, origin: origin})
 		mu.Unlock()
 	})
 
@@ -98,13 +116,22 @@ func TestDiscoverer_Discover(t *testing.T) {
 	}
 
 	// Verify discoveries (only local paths, resolved relative links, ignored fragments, preserved queries)
-	expectedDiscoveries := []string{"/relative-path", "/absolute-path?q=test"}
-	if len(discoveries) != len(expectedDiscoveries) {
-		t.Fatalf("expected discoveries: %v, got: %v", expectedDiscoveries, discoveries)
+	expectedDiscoveries := []struct {
+		path   string
+		origin string
+	}{
+		{path: "/relative-path", origin: engine.OriginSitemapIdx},
+		{path: "/absolute-path?q=test", origin: engine.OriginSitemapIdx},
 	}
-	for i, path := range discoveries {
-		if path != expectedDiscoveries[i] {
-			t.Errorf("discovery[%d] expected %q, got %q", i, expectedDiscoveries[i], path)
+	if len(discoveries) != len(expectedDiscoveries) {
+		t.Fatalf("expected discoveries: %+v, got: %+v", expectedDiscoveries, discoveries)
+	}
+	for i, item := range discoveries {
+		if item.path != expectedDiscoveries[i].path {
+			t.Errorf("discovery[%d] expected path %q, got %q", i, expectedDiscoveries[i].path, item.path)
+		}
+		if item.origin != expectedDiscoveries[i].origin {
+			t.Errorf("discovery[%d] expected origin %q, got %q", i, expectedDiscoveries[i].origin, item.origin)
 		}
 	}
 
@@ -166,11 +193,58 @@ func TestDiscoverer_Discover(t *testing.T) {
 	}
 }
 
+func TestDiscoverer_Compressed(t *testing.T) {
+	var (
+		mu          sync.Mutex
+		discoveries []struct {
+			path   string
+			origin string
+		}
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sitemap.xml.gz":
+			w.Header().Set("Content-Type", "application/x-gzip")
+			w.WriteHeader(http.StatusOK)
+			payload := gzipCompress([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/gzipped-path</loc></url>
+</urlset>`))
+			_, _ = w.Write(payload)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	disc, err := sitemap.NewDiscoverer(http.DefaultClient, nil, srv.URL)
+	if err != nil {
+		t.Fatalf("failed to create discoverer: %v", err)
+	}
+
+	disc.Discover(context.Background(), []string{srv.URL + "/sitemap.xml.gz"}, func(path string, origin string) {
+		mu.Lock()
+		discoveries = append(discoveries, struct {
+			path   string
+			origin string
+		}{path: path, origin: origin})
+		mu.Unlock()
+	})
+
+	if len(discoveries) != 1 || discoveries[0].path != "/gzipped-path" || discoveries[0].origin != engine.OriginSitemapXml {
+		t.Errorf("expected 1 gzipped discovery, got: %+v", discoveries)
+	}
+}
+
 func TestDiscoverer_EdgeCases(t *testing.T) {
 	var (
 		mu       sync.Mutex
 		requests []string
-		yielded  []string
+		yielded  []struct {
+			path   string
+			origin string
+		}
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,27 +276,40 @@ func TestDiscoverer_EdgeCases(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		case "/empty.xml":
 			w.WriteHeader(http.StatusOK)
+		case "/malformed.xml":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/partial-success</loc></url>
+   <url><loc>/broken-loc`)) // missing closing tag/malformed
+		case "/utf8.xml":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/%d1%82%d0%b5%d1%81%d1%82</loc></url>
+</urlset>`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(srv.Close)
 
-	fpCache := fingerprint.NewCache()
-	disc, err := sitemap.NewDiscoverer(http.DefaultClient, fpCache, srv.URL)
+	disc, err := sitemap.NewDiscoverer(http.DefaultClient, nil, srv.URL)
 	if err != nil {
 		t.Fatalf("failed to create discoverer: %v", err)
 	}
 
-	yield := func(path string) {
+	yield := func(path string, origin string) {
 		mu.Lock()
-		yielded = append(yielded, path)
+		yielded = append(yielded, struct {
+			path   string
+			origin string
+		}{path: path, origin: origin})
 		mu.Unlock()
 	}
 
 	// 1. Verify loop prevention / cycles terminate gracefully
 	disc.Discover(context.Background(), []string{srv.URL + "/loop1.xml"}, yield)
-	// Both loop1 and loop2 should be requested exactly once
 	mu.Lock()
 	reqs := make([]string, len(requests))
 	copy(reqs, requests)
@@ -236,12 +323,15 @@ func TestDiscoverer_EdgeCases(t *testing.T) {
 	// 2. Verify duplicate URL items are yielded (deduplication is done at frontier integration/visited set level)
 	disc.Discover(context.Background(), []string{srv.URL + "/duplicates.xml"}, yield)
 	mu.Lock()
-	dupsYielded := make([]string, len(yielded))
+	dupsYielded := make([]struct {
+		path   string
+		origin string
+	}, len(yielded))
 	copy(dupsYielded, yielded)
 	yielded = nil
 	mu.Unlock()
 
-	if len(dupsYielded) != 2 || dupsYielded[0] != "/dup" || dupsYielded[1] != "/dup" {
+	if len(dupsYielded) != 2 || dupsYielded[0].path != "/dup" || dupsYielded[1].path != "/dup" {
 		t.Errorf("expected duplicate items to be yielded, got %v", dupsYielded)
 	}
 
@@ -258,6 +348,72 @@ func TestDiscoverer_EdgeCases(t *testing.T) {
 	if errorYielded != 0 {
 		t.Errorf("expected 0 items yielded from error/empty sitemaps, got %d", errorYielded)
 	}
+
+	// 4. Verify partial success with malformed XML
+	disc.Discover(context.Background(), []string{srv.URL + "/malformed.xml"}, yield)
+	mu.Lock()
+	malformedYielded := make([]struct {
+		path   string
+		origin string
+	}, len(yielded))
+	copy(malformedYielded, yielded)
+	yielded = nil
+	mu.Unlock()
+
+	if len(malformedYielded) != 1 || malformedYielded[0].path != "/partial-success" {
+		t.Errorf("expected partial discovery success before malformed tag, got: %+v", malformedYielded)
+	}
+
+	// 5. Verify UTF-8 URLs
+	disc.Discover(context.Background(), []string{srv.URL + "/utf8.xml"}, yield)
+	mu.Lock()
+	utf8Yielded := make([]struct {
+		path   string
+		origin string
+	}, len(yielded))
+	copy(utf8Yielded, yielded)
+	yielded = nil
+	mu.Unlock()
+
+	if len(utf8Yielded) != 1 || utf8Yielded[0].path != "/тест" {
+		t.Errorf("expected UTF-8 path, got: %q", utf8Yielded[0].path)
+	}
+}
+
+func TestDiscoverer_Cancellation(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		yielded []string
+	)
+
+	// Slow server to guarantee we can cancel context mid-request
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url><loc>/path-after-cancellation</loc></url>
+</urlset>`))
+	}))
+	t.Cleanup(srv.Close)
+
+	disc, err := sitemap.NewDiscoverer(http.DefaultClient, nil, srv.URL)
+	if err != nil {
+		t.Fatalf("failed to create discoverer: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	disc.Discover(ctx, []string{srv.URL + "/sitemap.xml"}, func(path string, origin string) {
+		mu.Lock()
+		yielded = append(yielded, path)
+		mu.Unlock()
+	})
+
+	if len(yielded) != 0 {
+		t.Errorf("expected 0 discoveries on context cancellation, got: %v", yielded)
+	}
 }
 
 func TestDiscoverer_Concurrency(t *testing.T) {
@@ -270,8 +426,7 @@ func TestDiscoverer_Concurrency(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	fpCache := fingerprint.NewCache()
-	disc, err := sitemap.NewDiscoverer(http.DefaultClient, fpCache, srv.URL)
+	disc, err := sitemap.NewDiscoverer(http.DefaultClient, nil, srv.URL)
 	if err != nil {
 		t.Fatalf("failed to create discoverer: %v", err)
 	}
@@ -283,7 +438,7 @@ func TestDiscoverer_Concurrency(t *testing.T) {
 	for i := 0; i < workers; i++ {
 		go func(wID int) {
 			defer wg.Done()
-			disc.Discover(context.Background(), []string{srv.URL + fmt.Sprintf("/sitemap-%d.xml", wID)}, func(path string) {})
+			disc.Discover(context.Background(), []string{srv.URL + fmt.Sprintf("/sitemap-%d.xml", wID)}, func(path string, origin string) {})
 		}(i)
 	}
 

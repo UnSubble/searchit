@@ -101,7 +101,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			key := normalizeURL(u)
 			if _, seen := visited[key]; !seen {
 				visited[key] = struct{}{}
-				frontier.Push(engine.Job{URL: u, Depth: 0})
+				frontier.Push(engine.Job{URL: u, Depth: 0, Origin: engine.OriginProfile})
 			}
 		}
 
@@ -242,7 +242,7 @@ func (m *Manager) handleResult(
 			continue
 		}
 		visited[key] = struct{}{}
-		frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1})
+		frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
 	}
 	if err := <-readErr; err != nil && err != context.Canceled {
 		// Reader failures during recursion do not invalidate already-scheduled children.
@@ -327,7 +327,7 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 			continue
 		}
 		visited[key] = struct{}{}
-		frontier.PushFront(engine.Job{URL: childURL, Depth: 0})
+		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: engine.OriginRobots})
 	}
 
 	return sitemaps
@@ -366,7 +366,7 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	hostRootURL, _ := url.Parse(hostRoot)
 
-	disc.Discover(ctx, startURLs, func(candidatePath string) {
+	disc.Discover(ctx, startURLs, func(candidatePath string, origin string) {
 		parsedCand, err := url.Parse(candidatePath)
 		if err != nil {
 			return
@@ -378,6 +378,6 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 			return
 		}
 		visited[key] = struct{}{}
-		frontier.PushFront(engine.Job{URL: childURL, Depth: 0})
+		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: origin})
 	})
 }
