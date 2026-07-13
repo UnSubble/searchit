@@ -161,7 +161,7 @@ func TestScanProfile_CLIOverrides(t *testing.T) {
 
 func TestScanProfile_UserProfile(t *testing.T) {
 	// Create a temp directory for user profiles
-	tmpDir := t.TempDir()
+	tmpDir := setupTestHome(t)
 	scanDir := filepath.Join(tmpDir, "scan")
 	if err := os.MkdirAll(scanDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -194,9 +194,6 @@ config:
 	// which returns a DefaultStore. If we mock/override the environment variable HOME,
 	// os.UserHomeDir() will return our temp dir!
 	// Let's set HOME / USERPROFILE env var.
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
 
 	// Since on some OS it's USERPROFILE or we want to construct the exact structure:
 	// ~/.config/searchit/profiles/scan/custom.yaml
@@ -235,10 +232,7 @@ func TestScanProfile_MissingProfile(t *testing.T) {
 }
 
 func TestScanProfile_InvalidProfile(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	_ = os.MkdirAll(userConfigDir, 0o755)
@@ -259,10 +253,7 @@ config:
 }
 
 func TestScanProfile_ValidationFailure(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	_ = os.MkdirAll(userConfigDir, 0o755)
@@ -403,10 +394,7 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 }
 
 func TestScanProfile_DependencyResolutionIntegration(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {

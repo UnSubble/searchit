@@ -48,6 +48,21 @@ func runProfileCommand(args []string) (string, error) {
 	return buf.String(), err
 }
 
+func setupTestHome(t *testing.T) string {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+
+	os.Setenv("HOME", tmpDir)
+	os.Setenv("USERPROFILE", tmpDir)
+
+	t.Cleanup(func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	})
+	return tmpDir
+}
+
 func TestProfileListOutput(t *testing.T) {
 	out, err := runProfileCommand([]string{"profile", "list"})
 	if err != nil {
@@ -108,10 +123,7 @@ func TestProfileShowAllEmbedded(t *testing.T) {
 
 func TestProfileCreateOutput(t *testing.T) {
 	// Set user config directory using tmpDir via HOME env override
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	out, err := runProfileCommand([]string{"profile", "create", "scan/mytest"})
 	if err != nil {
@@ -136,10 +148,7 @@ func TestProfileCreateOutput(t *testing.T) {
 }
 
 func TestProfileCreate_Duplicate(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = setupTestHome(t)
 
 	_, err := runProfileCommand([]string{"profile", "create", "scan/dup"})
 	if err != nil {
@@ -154,10 +163,7 @@ func TestProfileCreate_Duplicate(t *testing.T) {
 }
 
 func TestProfileCreate_InvalidName(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = setupTestHome(t)
 
 	_, err := runProfileCommand([]string{"profile", "create", "invalidname"})
 	if err == nil {
@@ -166,10 +172,7 @@ func TestProfileCreate_InvalidName(t *testing.T) {
 }
 
 func TestProfileValidate_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = setupTestHome(t)
 
 	// Create a valid user profile
 	_, err := runProfileCommand([]string{"profile", "create", "scan/myval"})
@@ -199,10 +202,7 @@ func TestProfileValidate_Failure_MissingFile(t *testing.T) {
 }
 
 func TestProfileValidate_Failure_InvalidContent(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	// Write an invalid profile (e.g. invalid strategy)
 	scanDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
@@ -229,10 +229,7 @@ config:
 }
 
 func TestProfileValidate_Failure_MalformedYAML(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	scanDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	_ = os.MkdirAll(scanDir, 0o755)
@@ -319,10 +316,7 @@ func makeMockExecCommand(_ *testing.T, mockContent string) func(name string, arg
 }
 
 func TestProfileEdit_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = setupTestHome(t)
 
 	// Create user profile
 	_, err := runProfileCommand([]string{"profile", "create", "scan/myedit"})
@@ -361,10 +355,7 @@ config:
 }
 
 func TestProfileEdit_ValidationFailure(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = setupTestHome(t)
 
 	// Create user profile
 	_, err := runProfileCommand([]string{"profile", "create", "scan/myeditval"})
@@ -400,10 +391,7 @@ config:
 }
 
 func TestProfileEdit_Embedded(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	// Mock editor
 	editor.DefaultExecCommand = makeMockExecCommand(t, `schema: 1
@@ -430,10 +418,7 @@ config:
 }
 
 func TestProfileCmd_MetadataShowAndList(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	_ = os.MkdirAll(userConfigDir, 0o755)
@@ -491,15 +476,11 @@ config:
 }
 
 func TestProfileGraphCmd(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := setupTestHome(t)
 	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
 
 	profileYAML := `schema: 1
 name: scan/myprofile
@@ -558,15 +539,11 @@ depends:
 }
 
 func TestProfileExplainCmd(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := setupTestHome(t)
 	userConfigDir := filepath.Join(tmpDir, ".config", "searchit", "profiles", "scan")
 	if err := os.MkdirAll(userConfigDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
 
 	profileYAML := `schema: 1
 name: scan/wordpress

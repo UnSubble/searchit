@@ -44,6 +44,21 @@ func makeMockExecCommand(t *testing.T, mockContent string) func(name string, arg
 	}
 }
 
+func setupTestHome(t *testing.T) string {
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+
+	os.Setenv("HOME", tmpDir)
+	os.Setenv("USERPROFILE", tmpDir)
+
+	t.Cleanup(func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	})
+	return tmpDir
+}
+
 func TestFindEditor(t *testing.T) {
 	// Backup env vars
 	oldVisual := os.Getenv("VISUAL")
@@ -440,10 +455,7 @@ func TestSession_NonDefaultStore(t *testing.T) {
 	_ = profile.RegisterBuiltinValidators()
 	_ = profile.RegisterBuiltinDecoders()
 
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	store := &mockStore{
 		profiles: map[string]*types.Profile{
@@ -510,10 +522,7 @@ func TestSession_DefaultStoreWithHome(t *testing.T) {
 	_ = profile.RegisterBuiltinValidators()
 	_ = profile.RegisterBuiltinDecoders()
 
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	tmpDir := setupTestHome(t)
 
 	store := &profile.DefaultStore{UserDir: ""}
 
@@ -722,11 +731,23 @@ config:
 		_ = os.MkdirAll(scanDir, 0o755)
 		_ = os.WriteFile(filepath.Join(scanDir, "myval.yaml"), []byte(validYAML), 0o644)
 
-		oldTmp := os.Getenv("TMPDIR")
-		os.Setenv("TMPDIR", "/nonexistent-dir-12345")
-		defer os.Setenv("TMPDIR", oldTmp)
+		oldTmpDir := os.Getenv("TMPDIR")
+		oldTmp := os.Getenv("TMP")
+		oldTemp := os.Getenv("TEMP")
+
+		nonexistentDir := filepath.Join(tmpDir, "nonexistent-dir-12345")
+		os.Setenv("TMPDIR", nonexistentDir)
+		os.Setenv("TMP", nonexistentDir)
+		os.Setenv("TEMP", nonexistentDir)
+
+		defer func() {
+			os.Setenv("TMPDIR", oldTmpDir)
+			os.Setenv("TMP", oldTmp)
+			os.Setenv("TEMP", oldTemp)
+		}()
 
 		session := editor.NewSession(store)
+		session.ExecCommand = makeMockExecCommand(t, "data")
 		err := session.Run("scan/myval")
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -736,11 +757,24 @@ config:
 
 func TestCreateTempProfile_Failure(t *testing.T) {
 	oldTmpDir := os.Getenv("TMPDIR")
-	os.Setenv("TMPDIR", "/nonexistent-directory-searchit-test")
-	defer os.Setenv("TMPDIR", oldTmpDir)
+	oldTmp := os.Getenv("TMP")
+	oldTemp := os.Getenv("TEMP")
+
+	tmpDir := t.TempDir()
+	nonexistentDir := filepath.Join(tmpDir, "nonexistent-directory-searchit-test")
+
+	os.Setenv("TMPDIR", nonexistentDir)
+	os.Setenv("TMP", nonexistentDir)
+	os.Setenv("TEMP", nonexistentDir)
+
+	defer func() {
+		os.Setenv("TMPDIR", oldTmpDir)
+		os.Setenv("TMP", oldTmp)
+		os.Setenv("TEMP", oldTemp)
+	}()
 
 	_, err := editor.CreateTempProfile([]byte("data"))
 	if err == nil {
-		t.Fatal("expected error creating temporary profile when TMPDIR is nonexistent, got nil")
+		t.Fatal("expected error creating temporary profile when TMPDIR/TMP/TEMP is nonexistent, got nil")
 	}
 }
