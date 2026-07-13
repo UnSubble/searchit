@@ -114,8 +114,10 @@ func process(
 		})
 		return
 	}
+	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)
 
 	startTime := time.Now()
+	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsSent, 1)
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector != nil {
@@ -130,6 +132,7 @@ func process(
 		})
 		return
 	}
+	atomic.AddInt64(&stats.GlobalInstrumentation.ResponsesReceived, 1)
 
 	if collector != nil {
 		collector.RecordLatency(time.Since(startTime))

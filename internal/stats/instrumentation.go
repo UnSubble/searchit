@@ -35,6 +35,11 @@ type Instrumentation struct {
 	WorkerJobsRej  int64
 	WorkersExited  int64
 
+	// HTTP Lifecycle
+	RequestsBuilt     int64
+	RequestsSent      int64
+	ResponsesReceived int64
+
 	// Results
 	ResultsProduced int64
 	ResultsConsumed int64
@@ -70,6 +75,9 @@ func (i *Instrumentation) PrintReconciliation() {
 	jobsSubmitted := atomic.LoadInt64(&i.JobsSubmitted)
 	jobsRecv := atomic.LoadInt64(&i.WorkerJobsRecv)
 	jobsComp := atomic.LoadInt64(&i.WorkerJobsComp)
+	reqsBuilt := atomic.LoadInt64(&i.RequestsBuilt)
+	reqsSent := atomic.LoadInt64(&i.RequestsSent)
+	respsRecv := atomic.LoadInt64(&i.ResponsesReceived)
 	resultsProd := atomic.LoadInt64(&i.ResultsProduced)
 	resultsCons := atomic.LoadInt64(&i.ResultsConsumed)
 
@@ -85,9 +93,21 @@ func (i *Instrumentation) PrintReconciliation() {
 	} else if jobsComp != jobsRecv {
 		mismatch = true
 		mismatchStage = "Workers (Jobs Completed != Jobs Received)"
-	} else if resultsProd != jobsComp {
+	} else if reqsBuilt != jobsComp {
 		mismatch = true
-		mismatchStage = "Worker Output (Results Produced != Jobs Completed)"
+		mismatchStage = "Request Builder (Requests Built != Jobs Completed)"
+	} else if reqsSent != reqsBuilt {
+		mismatch = true
+		mismatchStage = "HTTP Transmission (Requests Sent != Requests Built)"
+	} else if respsRecv != reqsSent {
+		mismatch = true
+		mismatchStage = "HTTP Response (Responses Received != Requests Sent)"
+	} else if resultsProd != respsRecv {
+		// Note: Under normal workflow, some build or HTTP errors might prevent response,
+		// but inside workers all jobs must produce a result (either accepted or failed).
+		// Thus, resultsProd should equal jobsComp. If not:
+		mismatch = true
+		mismatchStage = "Worker Output (Results Produced != Responses Received)"
 	} else if resultsCons != resultsProd {
 		mismatch = true
 		mismatchStage = "Scheduler / Draining (Results Consumed != Results Produced)"
@@ -99,6 +119,9 @@ func (i *Instrumentation) PrintReconciliation() {
 	fmt.Fprintf(os.Stderr, "Jobs Submitted      : %d\n", jobsSubmitted)
 	fmt.Fprintf(os.Stderr, "Jobs Received       : %d\n", jobsRecv)
 	fmt.Fprintf(os.Stderr, "Jobs Completed      : %d\n", jobsComp)
+	fmt.Fprintf(os.Stderr, "Requests Built      : %d\n", reqsBuilt)
+	fmt.Fprintf(os.Stderr, "Requests Sent       : %d\n", reqsSent)
+	fmt.Fprintf(os.Stderr, "Responses Received  : %d\n", respsRecv)
 	fmt.Fprintf(os.Stderr, "Results Produced    : %d\n", resultsProd)
 	fmt.Fprintf(os.Stderr, "Results Consumed    : %d\n", resultsCons)
 	if mismatch {
@@ -150,6 +173,9 @@ func (i *Instrumentation) Reset() {
 	atomic.StoreInt64(&i.WorkerJobsComp, 0)
 	atomic.StoreInt64(&i.WorkerJobsRej, 0)
 	atomic.StoreInt64(&i.WorkersExited, 0)
+	atomic.StoreInt64(&i.RequestsBuilt, 0)
+	atomic.StoreInt64(&i.RequestsSent, 0)
+	atomic.StoreInt64(&i.ResponsesReceived, 0)
 	atomic.StoreInt64(&i.ResultsProduced, 0)
 	atomic.StoreInt64(&i.ResultsConsumed, 0)
 	atomic.StoreInt64(&i.ResultsAccepted, 0)
