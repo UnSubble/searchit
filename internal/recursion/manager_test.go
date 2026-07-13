@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
@@ -67,6 +69,7 @@ func newManager(t *testing.T, reader wordlist.Reader, strategy recursion.Strateg
 		nil,
 		nil,
 		0,
+		nil,
 		nil,
 	)
 }
@@ -444,7 +447,7 @@ func TestManager_CustomRecursionPolicy(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 
@@ -467,7 +470,7 @@ func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
 
@@ -517,6 +520,7 @@ func TestManager_RecursionDepthBoundaries(t *testing.T) {
 			nil,
 			nil,
 			0,
+			nil,
 			nil,
 		)
 
@@ -645,6 +649,7 @@ func TestManager_ReaderErrorHandling(t *testing.T) {
 		nil,
 		0,
 		nil,
+		nil,
 	)
 
 	results := collectResults(m.Run(context.Background(), seeds, 2))
@@ -670,5 +675,143 @@ func TestManager_Run_ImmediateCancel(t *testing.T) {
 	// Should drain and return immediately without running
 	if len(results) > 0 {
 		t.Errorf("expected 0 results due to immediate cancellation, got %v", results)
+	}
+}
+
+func TestManager_RobotsDiscoveryAndFrontierSeeding(t *testing.T) {
+	var requestedURLs []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedURLs = append(requestedURLs, r.URL.Path)
+		if r.URL.Path == "/robots.txt" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`
+				User-agent: *
+				Disallow: /secret
+				Allow: /public-info
+				Disallow: /duplicate
+				Disallow: /duplicate
+			`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	seeds := []string{srv.URL + "/start"}
+	reader := staticReader{words: []string{"word1"}}
+
+	a := newApp(t)
+	cache := fingerprint.NewCache()
+	m := recursion.NewManager(
+		a.HTTPClient,
+		a.Config.Status.Exclude,
+		reader,
+		recursion.BFS,
+		1, // Max depth 1
+		a.Config.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		cache,
+	)
+
+	results := collectResults(m.Run(context.Background(), seeds, 1))
+
+	// Verify that robots.txt was fetched and processed
+	foundRobots := false
+	for _, path := range requestedURLs {
+		if path == "/robots.txt" {
+			foundRobots = true
+		}
+	}
+	if !foundRobots {
+		t.Error("Expected /robots.txt to be fetched, but it was not")
+	}
+
+	// Verify target fingerprint observations
+	parsedURL, _ := url.Parse(srv.URL)
+	fp := cache.Get(parsedURL.Host)
+	if fp == nil {
+		t.Fatal("Expected target fingerprint to be created, but got nil")
+	}
+
+	signals := fp.Signals()
+	hasAllow := false
+	hasDisallow := false
+	for _, sig := range signals {
+		if sig.Source == "robots:allow" && sig.Value == "/public-info" {
+			hasAllow = true
+		}
+		if sig.Source == "robots:disallow" && sig.Value == "/secret" {
+			hasDisallow = true
+		}
+	}
+	if !hasAllow {
+		t.Error("Target fingerprint missing robots:allow observation for /public-info")
+	}
+	if !hasDisallow {
+		t.Error("Target fingerprint missing robots:disallow observation for /secret")
+	}
+
+	// Verify results contain robots.txt paths
+	foundSecret := false
+	foundPublic := false
+	foundDuplicate := 0
+	for _, r := range results {
+		if strings.HasSuffix(r.URL, "/secret") {
+			foundSecret = true
+		}
+		if strings.HasSuffix(r.URL, "/public-info") {
+			foundPublic = true
+		}
+		if strings.HasSuffix(r.URL, "/duplicate") {
+			foundDuplicate++
+		}
+	}
+
+	if !foundSecret {
+		t.Error("Expected /secret in scan results, but not found")
+	}
+	if !foundPublic {
+		t.Error("Expected /public-info in scan results, but not found")
+	}
+	if foundDuplicate != 1 {
+		t.Errorf("Expected /duplicate to be scanned exactly once, but got %d scans", foundDuplicate)
+	}
+
+	// Verify request prioritization (robots.txt seeds should be scanned before wordlist recursion or target seeds if possible)
+	// The request order should start with robots.txt, then robots.txt seeds, then target seeds, then wordlist items.
+	// Since we enqueued robots.txt seeds via PushFront, they sit at the very front of the frontier.
+	if len(requestedURLs) > 0 {
+		// First request is robots.txt
+		if requestedURLs[0] != "/robots.txt" {
+			t.Errorf("Expected first request to be /robots.txt, got %s", requestedURLs[0])
+		}
+		// Subsequent requests should pop the frontier head, which contain the robots.txt seeds (/secret, /public-info, /duplicate)
+		// before /start (the target seed) and before /start/word1 (the wordlist child).
+		// Let's assert that /secret and /public-info are requested before /start/word1.
+		var secretIdx, publicIdx, word1Idx int
+		for i, path := range requestedURLs {
+			if path == "/secret" {
+				secretIdx = i
+			}
+			if path == "/public-info" {
+				publicIdx = i
+			}
+			if path == "/start/word1" {
+				word1Idx = i
+			}
+		}
+		if secretIdx >= word1Idx {
+			t.Errorf("Expected /secret (robots.txt seed) to be requested before /start/word1 (wordlist recursive item), but got indices: secret=%d, word1=%d", secretIdx, word1Idx)
+		}
+		if publicIdx >= word1Idx {
+			t.Errorf("Expected /public-info (robots.txt seed) to be requested before /start/word1 (wordlist recursive item), but got indices: public=%d, word1=%d", publicIdx, word1Idx)
+		}
 	}
 }

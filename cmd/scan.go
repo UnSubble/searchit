@@ -326,6 +326,7 @@ var scanCmd = &cobra.Command{
 					mapHeaders(cfg.ExcludeHeaders),
 					cfg.Delay,
 					limiter,
+					appState.FingerprintCache,
 				)
 				manager.SetStats(collector)
 				results := manager.Run(scanCtx, seeds, cfg.Threads)

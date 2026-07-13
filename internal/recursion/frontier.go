@@ -75,6 +75,17 @@ func (f *Frontier) Push(job engine.Job) {
 	f.size++
 }
 
+// PushFront enqueues a job at the head of the buffer, giving it the highest priority.
+func (f *Frontier) PushFront(job engine.Job) {
+	if f.size == len(f.buf) {
+		f.grow()
+	}
+
+	f.head = (f.head - 1 + len(f.buf)) % len(f.buf)
+	f.buf[f.head] = job
+	f.size++
+}
+
 // Pop dequeues the next job from the head of the buffer.
 func (f *Frontier) Pop() (engine.Job, bool) {
 	if f.size == 0 {

@@ -2,11 +2,15 @@ package recursion
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/fingerprint"
+	"github.com/unsubble/searchit/internal/robots"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
@@ -18,21 +22,22 @@ import (
 // It owns the frontier, the visited set, and all traversal decisions.
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
-	client          *http.Client
-	exclude         status.Filters
-	reader          wordlist.Reader
-	strategy        Strategy
-	maxDepth        uint16
-	recurseOn       status.Filters
-	normalizePaths  bool
-	collapseSlashes bool
-	includeSize     size.Filters
-	excludeSize     size.Filters
-	includeHeaders  []engine.HeaderFilter
-	excludeHeaders  []engine.HeaderFilter
-	delay           time.Duration
-	limiter         *rate.Limiter
-	stats           *stats.Collector
+	client           *http.Client
+	exclude          status.Filters
+	reader           wordlist.Reader
+	strategy         Strategy
+	maxDepth         uint16
+	recurseOn        status.Filters
+	normalizePaths   bool
+	collapseSlashes  bool
+	includeSize      size.Filters
+	excludeSize      size.Filters
+	includeHeaders   []engine.HeaderFilter
+	excludeHeaders   []engine.HeaderFilter
+	delay            time.Duration
+	limiter          *rate.Limiter
+	stats            *stats.Collector
+	fingerprintCache *fingerprint.Cache
 }
 
 func NewManager(
@@ -50,22 +55,24 @@ func NewManager(
 	excludeHeaders []engine.HeaderFilter,
 	delay time.Duration,
 	limiter *rate.Limiter,
+	fingerprintCache *fingerprint.Cache,
 ) *Manager {
 	return &Manager{
-		client:          client,
-		exclude:         exclude,
-		reader:          reader,
-		strategy:        strategy,
-		maxDepth:        maxDepth,
-		recurseOn:       recurseOn,
-		normalizePaths:  normalizePaths,
-		collapseSlashes: collapseSlashes,
-		includeSize:     includeSize,
-		excludeSize:     excludeSize,
-		includeHeaders:  includeHeaders,
-		excludeHeaders:  excludeHeaders,
-		delay:           delay,
-		limiter:         limiter,
+		client:           client,
+		exclude:          exclude,
+		reader:           reader,
+		strategy:         strategy,
+		maxDepth:         maxDepth,
+		recurseOn:        recurseOn,
+		normalizePaths:   normalizePaths,
+		collapseSlashes:  collapseSlashes,
+		includeSize:      includeSize,
+		excludeSize:      excludeSize,
+		includeHeaders:   includeHeaders,
+		excludeHeaders:   excludeHeaders,
+		delay:            delay,
+		limiter:          limiter,
+		fingerprintCache: fingerprintCache,
 	}
 }
 
@@ -95,6 +102,10 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 				visited[key] = struct{}{}
 				frontier.Push(engine.Job{URL: u, Depth: 0})
 			}
+		}
+
+		if len(seeds) > 0 {
+			m.discoverRobots(ctx, seeds[0], frontier, visited)
 		}
 
 		if m.stats != nil {
@@ -239,4 +250,67 @@ func (m *Manager) handleResult(
 // normalizeURL strips trailing slashes so /admin and /admin/ map to the same key.
 func normalizeURL(u string) string {
 	return strings.TrimRight(u, "/")
+}
+
+// discoverRobots downloads, parses, and enqueues robots.txt rules as high-priority seeds.
+func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier *Frontier, visited map[string]struct{}) {
+	body, _, err := robots.Download(ctx, m.client, targetURL)
+	if err != nil {
+		return
+	}
+	defer body.Close()
+
+	directives, err := robots.Parse(body)
+	if err != nil {
+		return
+	}
+
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return
+	}
+	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+
+	var fp *fingerprint.Fingerprint
+	if m.fingerprintCache != nil {
+		fp = m.fingerprintCache.GetOrCreate(u.Host)
+	}
+
+	for _, dir := range directives {
+		if fp != nil {
+			source := "robots:allow"
+			if dir.Type == robots.Disallow {
+				source = "robots:disallow"
+			}
+			fp.AddSignal(fingerprint.Signal{
+				Source:     source,
+				Value:      dir.Path,
+				Confidence: fingerprint.Confidence(1.0),
+			})
+		}
+
+		pathVal := strings.TrimSpace(dir.Path)
+		if idx := strings.IndexAny(pathVal, "*$"); idx != -1 {
+			pathVal = pathVal[:idx]
+		}
+		pathVal = strings.TrimSpace(pathVal)
+		if pathVal == "" {
+			continue
+		}
+		if !strings.HasPrefix(pathVal, "/") {
+			pathVal = "/" + pathVal
+		}
+
+		childURL, err := wordlist.Join(hostRoot, pathVal)
+		if err != nil {
+			continue
+		}
+
+		key := normalizeURL(childURL)
+		if _, seen := visited[key]; seen {
+			continue
+		}
+		visited[key] = struct{}{}
+		frontier.PushFront(engine.Job{URL: childURL, Depth: 0})
+	}
 }
