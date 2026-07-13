@@ -39,14 +39,14 @@ Output results in JSON format:
 searchit scan -u http://localhost:8080 -o json
 ```
 
-![JSON output example](../../assets/screenshots/searchit%20scan%20-u%20localhost%3A8080%20-o%20json.png)
+![JSON output example](../../assets/screenshots/searchit%20scan%20-u%20localhost-8080%20-o%20json.png)
 
 Output results in Line-Delimited JSON (NDJSON):
 ```bash
 searchit scan -u http://localhost:8080 -o ndjson
 ```
 
-![NDJSON output example](../../assets/screenshots/searchit%20scan%20-u%20localhost%3A8080%20-o%20ndjson.png)
+![NDJSON output example](../../assets/screenshots/searchit%20scan%20-u%20localhost-8080%20-o%20ndjson.png)
 
 ## Running in Quiet Text Mode
 Suppress stdout status updates to print only discovered endpoints:
@@ -54,7 +54,7 @@ Suppress stdout status updates to print only discovered endpoints:
 searchit scan -u http://localhost:8080 -q
 ```
 
-![Quiet mode output example](../../assets/screenshots/searchit%20scan%20-u%20localhost%3A8080%20-q.png)
+![Quiet mode output example](../../assets/screenshots/searchit%20scan%20-u%20localhost-8080%20-q.png)
 
 ## Disabling Progress
 Progress is enabled automatically in interactive terminals. To suppress it explicitly:
