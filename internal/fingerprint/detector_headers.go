@@ -27,6 +27,21 @@ func init() {
 	}
 }
 
+var usefulHeadersLower = []string{
+	"server",
+	"x-powered-by",
+	"x-generator",
+	"x-aspnet-version",
+	"x-drupal-cache",
+	"via",
+	"content-type",
+	"x-sharepointhealthscore",
+	"x-cms",
+	"x-framework",
+	"x-redirect-by",
+	"x-version",
+}
+
 // detectHeaders inspects HTTP response headers, extracts key fingerprinting
 // evidence, and records signals into the target Fingerprint.
 func detectHeaders(ctx *Context, fp *Fingerprint) {
@@ -34,57 +49,78 @@ func detectHeaders(ctx *Context, fp *Fingerprint) {
 		return
 	}
 
-	for rawKey, values := range ctx.Header {
-		lowerKey := strings.ToLower(rawKey)
-
-		// 1. Process standard useful headers
-		if displayKey, ok := usefulHeadersMap[lowerKey]; ok {
+	// 1. Direct lookup for standard useful headers (canonical and lowercased fallback)
+	for i, h := range usefulHeaders {
+		values, ok := ctx.Header[h]
+		if !ok {
+			values, ok = map[string][]string(ctx.Header)[usefulHeadersLower[i]]
+		}
+		if ok {
 			for _, val := range values {
 				val = strings.TrimSpace(val)
 				if val == "" {
 					continue
 				}
 				fp.AddSignal(Signal{
-					Source:     "header:" + displayKey,
+					Source:     "header:" + h,
 					Value:      val,
 					Confidence: Confidence(1.0),
 				})
 			}
 		}
+	}
 
-		// 2. Process Set-Cookie headers
-		if lowerKey == "set-cookie" {
-			for _, val := range values {
-				cookieName := parseCookieName(val)
-				if cookieName != "" {
-					fp.AddSignal(Signal{
-						Source:     "cookie",
-						Value:      cookieName,
-						Confidence: Confidence(1.0),
-					})
-				}
+	// 2. Direct lookup for Set-Cookie header
+	setCookieValues, ok := ctx.Header["Set-Cookie"]
+	if !ok {
+		setCookieValues, ok = map[string][]string(ctx.Header)["set-cookie"]
+	}
+	if ok {
+		for _, val := range setCookieValues {
+			cookieName := parseCookieName(val)
+			if cookieName != "" {
+				fp.AddSignal(Signal{
+					Source:     "cookie",
+					Value:      cookieName,
+					Confidence: Confidence(1.0),
+				})
 			}
 		}
 	}
 }
 
-var reservedCookieAttrs = map[string]bool{
-	"secure":   true,
-	"httponly": true,
-	"samesite": true,
-	"path":     true,
-	"domain":   true,
-	"expires":  true,
-	"max-age":  true,
+func isReservedCookieAttr(name string) bool {
+	switch len(name) {
+	case 4:
+		return strings.EqualFold(name, "path")
+	case 6:
+		return strings.EqualFold(name, "secure") || strings.EqualFold(name, "domain")
+	case 7:
+		return strings.EqualFold(name, "expires") || strings.EqualFold(name, "max-age")
+	case 8:
+		return strings.EqualFold(name, "httponly") || strings.EqualFold(name, "samesite")
+	}
+	return false
 }
 
 func parseCookieName(val string) string {
-	parts := strings.SplitN(val, ";", 2)
-	namePart := strings.TrimSpace(parts[0])
-	nameParts := strings.SplitN(namePart, "=", 2)
-	name := strings.TrimSpace(nameParts[0])
-	if reservedCookieAttrs[strings.ToLower(name)] {
-		return "" // Cookie attributes or invalid formats
+	idx := strings.IndexByte(val, ';')
+	namePart := val
+	if idx != -1 {
+		namePart = val[:idx]
+	}
+	namePart = strings.TrimSpace(namePart)
+
+	eqIdx := strings.IndexByte(namePart, '=')
+	var name string
+	if eqIdx != -1 {
+		name = strings.TrimSpace(namePart[:eqIdx])
+	} else {
+		name = strings.TrimSpace(namePart)
+	}
+
+	if isReservedCookieAttr(name) {
+		return ""
 	}
 	return name
 }

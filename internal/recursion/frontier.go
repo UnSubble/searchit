@@ -59,6 +59,17 @@ func NewFrontier(s Strategy) *Frontier {
 	}
 }
 
+// NewFrontierWithCapacity creates a Frontier with the specified initial capacity.
+func NewFrontierWithCapacity(s Strategy, capacity int) *Frontier {
+	if capacity <= 0 {
+		capacity = DefaultJobBuffer
+	}
+	return &Frontier{
+		strategy: s,
+		buf:      make([]engine.Job, capacity),
+	}
+}
+
 // Push enqueues a job. If the buffer is full, it is doubled.
 func (f *Frontier) Push(job engine.Job) {
 	if f.size == len(f.buf) {

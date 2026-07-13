@@ -22,7 +22,7 @@ func benchmarkBatch(b *testing.B, strategy Strategy, size int) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		f := NewFrontier(strategy)
+		f := NewFrontierWithCapacity(strategy, size)
 
 		for i := 0; i < size; i++ {
 			job.Depth = uint16(i % 10)
@@ -48,7 +48,7 @@ func benchmarkMixed(b *testing.B, strategy Strategy, size int) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		f := NewFrontier(strategy)
+		f := NewFrontierWithCapacity(strategy, size)
 
 		for i := 0; i < size; i++ {
 			job.Depth = uint16(i % 10)
@@ -80,7 +80,7 @@ func benchmarkGrow(b *testing.B, strategy Strategy) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		f := NewFrontier(strategy)
+		f := NewFrontierWithCapacity(strategy, size)
 
 		for i := 0; i < size; i++ {
 			job.Depth = uint16(i)
