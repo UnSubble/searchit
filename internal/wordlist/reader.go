@@ -8,3 +8,9 @@ import "context"
 type Reader interface {
 	Read(ctx context.Context, out chan<- string) error
 }
+
+// Countable is an optional interface that Readers can implement to report
+// the total number of words they contain (useful for progress bar estimation).
+type Countable interface {
+	Count() (int, error)
+}

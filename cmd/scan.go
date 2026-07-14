@@ -44,18 +44,19 @@ var (
 	// flagOutput is the output file path ("" means stdout).
 	flagOutput string
 	// flagFormat is the explicit output format name.
-	flagFormat         string
-	flagQuiet          bool
-	flagIncludeSize    string
-	flagExcludeSize    string
-	flagIncludeHeaders []string
-	flagExcludeHeaders []string
-	flagDelay          string
-	flagRate           float64
-	flagConnectTimeout string
-	flagProfiles       []string
-	flagNoProgress     bool
-	flagTech           string
+	flagFormat          string
+	flagQuiet           bool
+	flagIncludeSize     string
+	flagExcludeSize     string
+	flagIncludeHeaders  []string
+	flagExcludeHeaders  []string
+	flagDelay           string
+	flagRate            float64
+	flagConnectTimeout  string
+	flagProfiles        []string
+	flagNoProgress      bool
+	flagTech            string
+	flagFollowRedirects bool
 
 	resolvedTargets []string
 
@@ -271,6 +272,14 @@ var scanCmd = &cobra.Command{
 			reader = wordlist.FileReader{Path: cfg.Wordlist}
 		}
 
+		// Count total words if the reader supports it (for progress bar ETA estimation).
+		var totalWords int
+		if countable, ok := reader.(wordlist.Countable); ok {
+			if count, err := countable.Count(); err == nil {
+				totalWords = count
+			}
+		}
+
 		// Determine the output writer (file or stdout).
 		outWriter := os.Stdout
 		if cfg.OutputFile != "" {
@@ -303,6 +312,9 @@ var scanCmd = &cobra.Command{
 
 			scanCtx, scanCancel := context.WithCancel(ctx)
 			collector := stats.NewCollector()
+			if totalWords > 0 {
+				collector.SetQueuedJobs(int64(totalWords))
+			}
 			var progMgr *progress.Manager
 			var renderer *progress.ANSIRenderer
 			var progCmdChan chan console.Command
@@ -429,9 +441,12 @@ var scanCmd = &cobra.Command{
 					} else {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 					}
+					collector.DecrementQueuedJobs()
 				}
 			}
-			stats.GlobalInstrumentation.PrintReconciliation()
+			if !cfg.Quiet {
+				stats.GlobalInstrumentation.PrintReconciliation()
+			}
 			scanCancel()
 			if progDone != nil {
 				<-progDone
@@ -517,6 +532,9 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("quiet") {
 		cfg.Quiet = flagQuiet
+	}
+	if cmd.Flags().Changed("follow-redirects") {
+		cfg.FollowRedirects = flagFollowRedirects
 	}
 	if cmd.Flags().Changed("include-size") {
 		if f, err := size.Parse(flagIncludeSize); err == nil {
@@ -737,6 +755,13 @@ func init() {
 		"",
 		"explicitly select a technology profile, bypassing automatic detection (e.g. laravel, spring, wordpress)",
 	)
+
+	scanCmd.Flags().BoolVar(
+		&flagFollowRedirects,
+		"follow-redirects",
+		false,
+		"follow HTTP redirects",
+	)
 }
 
 func validateHeaderFlag(val string) error {
@@ -783,7 +808,7 @@ func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
 	if cfg.Quiet {
 		return false
 	}
-	if cfg.OutputFormat == "json" || cfg.OutputFormat == "ndjson" {
+	if cfg.OutputFormat == "json" || cfg.OutputFormat == "ndjson" || cfg.OutputFormat == "csv" || cfg.OutputFormat == "markdown" {
 		return false
 	}
 	if !console.IsTerminal(os.Stdout.Fd()) {

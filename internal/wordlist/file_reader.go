@@ -46,3 +46,23 @@ func (r FileReader) Read(ctx context.Context, out chan<- string) error {
 	}
 	return scanner.Err()
 }
+
+// Count returns the number of valid (non-empty, non-comment) words in the wordlist file.
+func (r FileReader) Count() (int, error) {
+	file, err := os.Open(r.Path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	count := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		count++
+	}
+	return count, scanner.Err()
+}

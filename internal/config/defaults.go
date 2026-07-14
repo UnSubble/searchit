@@ -15,13 +15,14 @@ func Default() Config {
 	}
 
 	return Config{
-		Threads:        32,
-		Timeout:        10 * time.Second,
-		ConnectTimeout: 3 * time.Second,
-		Recursive:      false,
-		MaxDepth:       3,
-		Strategy:       recursion.BFS,
-		RecurseOn:      status.MustParse("200,301,302,403"),
+		Threads:         32,
+		Timeout:         10 * time.Second,
+		ConnectTimeout:  3 * time.Second,
+		Recursive:       false,
+		MaxDepth:        3,
+		Strategy:        recursion.BFS,
+		FollowRedirects: false,
+		RecurseOn:       status.MustParse("200,301,302,403"),
 		Paths: PathConfig{
 			NormalizePaths:  false,
 			CollapseSlashes: false,

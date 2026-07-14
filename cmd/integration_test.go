@@ -342,6 +342,63 @@ func TestIntegration_Scans(t *testing.T) {
 			t.Fatalf("command failed: %v", err)
 		}
 	})
+
+	t.Run("redirect following default (false)", func(t *testing.T) {
+		redirectSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/redirect" {
+				w.Header().Set("Location", "/dest")
+				w.WriteHeader(http.StatusMovedPermanently)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer redirectSrv.Close()
+
+		wlPath := filepath.Join(t.TempDir(), "wl.txt")
+		_ = os.WriteFile(wlPath, []byte("redirect\n"), 0600)
+
+		// By default (or explicit false), it should report 301.
+		out, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", redirectSrv.URL,
+			"-w", wlPath,
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+		if !strings.Contains(out, "[+] 301 - "+redirectSrv.URL+"/redirect") {
+			t.Errorf("expected 301 redirect report, got:\n%s", out)
+		}
+	})
+
+	t.Run("redirect following explicit (true)", func(t *testing.T) {
+		redirectSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/redirect" {
+				w.Header().Set("Location", "/dest")
+				w.WriteHeader(http.StatusMovedPermanently)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer redirectSrv.Close()
+
+		wlPath := filepath.Join(t.TempDir(), "wl.txt")
+		_ = os.WriteFile(wlPath, []byte("redirect\n"), 0600)
+
+		// With --follow-redirects, it should follow and report 200.
+		out, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", redirectSrv.URL,
+			"-w", wlPath,
+			"--follow-redirects",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+		if !strings.Contains(out, "[+] 200 - "+redirectSrv.URL+"/redirect") {
+			t.Errorf("expected followed 200 report, got:\n%s", out)
+		}
+	})
 }
 
 func TestIntegration_ValidationErrors(t *testing.T) {

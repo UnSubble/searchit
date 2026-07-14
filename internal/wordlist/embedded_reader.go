@@ -43,3 +43,17 @@ func (EmbeddedReader) Read(ctx context.Context, out chan<- string) error {
 	}
 	return scanner.Err()
 }
+
+// Count returns the number of valid (non-empty, non-comment) words in the embedded wordlist.
+func (EmbeddedReader) Count() (int, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(embeddedCommon))
+	count := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		count++
+	}
+	return count, scanner.Err()
+}

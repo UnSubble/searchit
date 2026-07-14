@@ -202,6 +202,7 @@ func TestApply(t *testing.T) {
 	rateVal := 12.5
 	outputVal := "json"
 	quietVal := true
+	followRedirectsVal := true
 	normalizePathsVal := true
 	collapseSlashesVal := true
 	excludeStatusVal := "500"
@@ -223,6 +224,7 @@ func TestApply(t *testing.T) {
 		Rate:            &rateVal,
 		Format:          &outputVal,
 		Quiet:           &quietVal,
+		FollowRedirects: &followRedirectsVal,
 		NormalizePaths:  &normalizePathsVal,
 		CollapseSlashes: &collapseSlashesVal,
 		ExcludeStatus:   &excludeStatusVal,
@@ -267,6 +269,9 @@ func TestApply(t *testing.T) {
 	}
 	if !cfg.Quiet {
 		t.Errorf("Quiet = false")
+	}
+	if !cfg.FollowRedirects {
+		t.Errorf("FollowRedirects = false")
 	}
 	if !cfg.Paths.NormalizePaths {
 		t.Errorf("NormalizePaths = false")

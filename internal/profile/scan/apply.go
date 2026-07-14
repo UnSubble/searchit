@@ -47,6 +47,9 @@ func Apply(cfg *config.Config, o Overlay) {
 	if o.Quiet != nil {
 		cfg.Quiet = *o.Quiet
 	}
+	if o.FollowRedirects != nil {
+		cfg.FollowRedirects = *o.FollowRedirects
+	}
 	if o.NormalizePaths != nil {
 		cfg.Paths.NormalizePaths = *o.NormalizePaths
 	}

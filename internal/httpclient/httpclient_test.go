@@ -11,28 +11,28 @@ import (
 )
 
 func TestNew_ReturnsClient(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second)
+	c := httpclient.New(10*time.Second, 10*time.Second, false)
 	if c == nil {
 		t.Fatal("New returned nil")
 	}
 }
 
 func TestNew_TimeoutSet(t *testing.T) {
-	c := httpclient.New(5*time.Second, 10*time.Second)
+	c := httpclient.New(5*time.Second, 10*time.Second, false)
 	if c.Timeout != 5*time.Second {
 		t.Errorf("Timeout = %v, want 5s", c.Timeout)
 	}
 }
 
 func TestNew_HasTransport(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second)
+	c := httpclient.New(10*time.Second, 10*time.Second, false)
 	if c.Transport == nil {
 		t.Fatal("Transport is nil; connection pooling will be disabled")
 	}
 }
 
 func TestNew_TransportSettings(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second)
+	c := httpclient.New(10*time.Second, 10*time.Second, false)
 	tr, ok := c.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("Transport is not *http.Transport")
@@ -93,7 +93,7 @@ func TestContentLength_Absent(t *testing.T) {
 }
 
 func TestNew_ConnectTimeout(t *testing.T) {
-	c := httpclient.New(10*time.Second, 50*time.Millisecond)
+	c := httpclient.New(10*time.Second, 50*time.Millisecond, false)
 
 	// Use an unroutable IP address that will time out during TCP connection establishment
 	start := time.Now()
@@ -108,4 +108,41 @@ func TestNew_ConnectTimeout(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Errorf("expected connection attempt to time out quickly, but took %v", elapsed)
 	}
+}
+
+func TestNew_FollowRedirects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			w.Header().Set("Location", "/dest")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Destination"))
+	}))
+	defer srv.Close()
+
+	t.Run("followRedirects=false", func(t *testing.T) {
+		c := httpclient.New(5*time.Second, 5*time.Second, false)
+		resp, err := c.Get(srv.URL + "/redirect")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusFound {
+			t.Errorf("status code = %d, want 302", resp.StatusCode)
+		}
+	})
+
+	t.Run("followRedirects=true", func(t *testing.T) {
+		c := httpclient.New(5*time.Second, 5*time.Second, true)
+		resp, err := c.Get(srv.URL + "/redirect")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status code = %d, want 200", resp.StatusCode)
+		}
+	})
 }

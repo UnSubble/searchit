@@ -10,7 +10,7 @@ import (
 // MaxIdleConns and MaxIdleConnsPerHost are set high to avoid connection
 // starvation across many workers. IdleConnTimeout evicts connections before
 // the server can RST them on reuse.
-func New(timeout time.Duration, connectTimeout time.Duration) *http.Client {
+func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bool) *http.Client {
 	tr := &http.Transport{
 		MaxIdleConns:        1000,
 		MaxIdleConnsPerHost: 100,
@@ -22,8 +22,16 @@ func New(timeout time.Duration, connectTimeout time.Duration) *http.Client {
 		}).DialContext,
 	}
 
+	var checkRedirect func(req *http.Request, via []*http.Request) error
+	if !followRedirects {
+		checkRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+
 	return &http.Client{
-		Transport: tr,
-		Timeout:   timeout,
+		Transport:     tr,
+		Timeout:       timeout,
+		CheckRedirect: checkRedirect,
 	}
 }

@@ -21,9 +21,10 @@ type Config struct {
 	Rate           float64
 	ConnectTimeout time.Duration
 
-	Recursive bool
-	MaxDepth  uint16
-	Strategy  recursion.Strategy
+	Recursive       bool
+	MaxDepth        uint16
+	Strategy        recursion.Strategy
+	FollowRedirects bool
 
 	RecurseOn status.Filters
 

@@ -20,12 +20,11 @@ type Overlay struct {
 	Strategy       *string        `yaml:"strategy"`
 	Delay          *time.Duration `yaml:"delay"`
 	Rate           *float64       `yaml:"rate"`
-	// Format selects the output formatter (text, json, ndjson, csv, markdown).
-	// This replaces the deprecated Output field.
-	Format *string `yaml:"format"`
+	Format         *string        `yaml:"format"`
 	// Output is a deprecated alias for Format. If Format is absent, Output is used.
 	Output          *string   `yaml:"output"`
 	Quiet           *bool     `yaml:"quiet"`
+	FollowRedirects *bool     `yaml:"follow-redirects"`
 	NormalizePaths  *bool     `yaml:"normalize-paths"`
 	CollapseSlashes *bool     `yaml:"collapse-slashes"`
 	ExcludeStatus   *string   `yaml:"exclude-status"`
@@ -52,6 +51,7 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 		Format          *string   `yaml:"format"`
 		Output          *string   `yaml:"output"`
 		Quiet           *bool     `yaml:"quiet"`
+		FollowRedirects *bool     `yaml:"follow-redirects"`
 		NormalizePaths  *bool     `yaml:"normalize-paths"`
 		CollapseSlashes *bool     `yaml:"collapse-slashes"`
 		ExcludeStatus   *string   `yaml:"exclude-status"`
@@ -83,6 +83,7 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	}
 	o.Output = raw.Output
 	o.Quiet = raw.Quiet
+	o.FollowRedirects = raw.FollowRedirects
 	o.NormalizePaths = raw.NormalizePaths
 	o.CollapseSlashes = raw.CollapseSlashes
 	o.ExcludeStatus = raw.ExcludeStatus
