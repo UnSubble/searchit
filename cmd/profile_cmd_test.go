@@ -7,21 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/spf13/pflag"
-	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/editor"
 )
 
-var bootstrapOnce sync.Once
-
 func runProfileCommand(args []string) (string, error) {
-	bootstrapOnce.Do(func() {
-		_ = profile.RegisterBuiltinValidators()
-		_ = profile.RegisterBuiltinDecoders()
-	})
 
 	rootCmd.SetContext(context.Background())
 	profileCmd.SetContext(context.Background())

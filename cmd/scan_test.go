@@ -150,12 +150,12 @@ func TestCLI_Validation(t *testing.T) {
 		},
 		{
 			name:    "output file path is valid",
-			args:    []string{"scan", "-u", "http://localhost", "-o", "/tmp/searchit_test_output.json"},
+			args:    []string{"scan", "-u", "http://localhost", "-o", filepath.Join(t.TempDir(), "searchit_test_output.json")},
 			wantErr: false,
 		},
 		{
 			name:    "output is a directory returns error",
-			args:    []string{"scan", "-u", "http://localhost", "-o", "/tmp"},
+			args:    []string{"scan", "-u", "http://localhost", "-o", t.TempDir()},
 			wantErr: true,
 		},
 		{
