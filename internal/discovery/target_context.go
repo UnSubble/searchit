@@ -6,11 +6,12 @@ import (
 
 // TargetContext isolates the state, discoveries, and signals of a single target host.
 type TargetContext struct {
-	mu          sync.RWMutex
-	Host        string
-	Depth       int
-	Signals     []Signal
-	Discoveries []string // Paths discovered (e.g. "/admin")
+	mu            sync.RWMutex
+	Host          string
+	Depth         int
+	Signals       []Signal
+	Discoveries   []string       // Paths discovered
+	DiscoveryPlan *DiscoveryPlan // The current execution plan
 }
 
 // NewTargetContext initializes an isolated context for a host target.
@@ -43,4 +44,18 @@ func (tc *TargetContext) AddDiscovery(path string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	tc.Discoveries = append(tc.Discoveries, path)
+}
+
+// SetDiscoveryPlan binds a new plan to this target context.
+func (tc *TargetContext) SetDiscoveryPlan(plan *DiscoveryPlan) {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	tc.DiscoveryPlan = plan
+}
+
+// GetDiscoveryPlan retrieves the current plan.
+func (tc *TargetContext) GetDiscoveryPlan() *DiscoveryPlan {
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+	return tc.DiscoveryPlan
 }

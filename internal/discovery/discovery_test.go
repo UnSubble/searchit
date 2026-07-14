@@ -134,7 +134,7 @@ func TestTargetContext_ConcurrencyAndIsolation(t *testing.T) {
 // MockStrategy implements discovery.Strategy interface for testing.
 type MockStrategy struct{}
 
-func (ms MockStrategy) Evaluate(tc *discovery.TargetContext, reg *discovery.Registry) discovery.Decision {
+func (ms MockStrategy) Evaluate(tc *discovery.TargetContext, reg *discovery.Registry) *discovery.DiscoveryPlan {
 	signals := tc.GetSignals()
 	laravelMatched := false
 	for _, sig := range signals {
@@ -146,14 +146,11 @@ func (ms MockStrategy) Evaluate(tc *discovery.TargetContext, reg *discovery.Regi
 
 	if laravelMatched {
 		if tech, ok := reg.Lookup("laravel"); ok {
-			return discovery.Decision{
-				Priority: 100,
-				Paths:    tech.InterestingFiles,
-			}
+			return discovery.NewDiscoveryPlan(tech.InterestingFiles, 100)
 		}
 	}
 
-	return discovery.Decision{Priority: 0}
+	return discovery.NewDiscoveryPlan(nil, 0)
 }
 
 func TestStrategy_Evaluation(t *testing.T) {
@@ -161,10 +158,10 @@ func TestStrategy_Evaluation(t *testing.T) {
 	reg := discovery.NewRegistry()
 	strategy := MockStrategy{}
 
-	// Initial evaluation should return empty/default decision
-	d1 := strategy.Evaluate(tc, reg)
-	if d1.Priority != 0 {
-		t.Errorf("got Priority %d, want 0", d1.Priority)
+	// Initial evaluation should return empty/default plan
+	p1 := strategy.Evaluate(tc, reg)
+	if p1.Priority != 0 {
+		t.Errorf("got Priority %d, want 0", p1.Priority)
 	}
 
 	// Add Laravel signal to trigger Laravel strategy decision
@@ -173,11 +170,18 @@ func TestStrategy_Evaluation(t *testing.T) {
 		Value: "laravel_session",
 	})
 
-	d2 := strategy.Evaluate(tc, reg)
-	if d2.Priority != 100 {
-		t.Errorf("got Priority %d, want 100", d2.Priority)
+	p2 := strategy.Evaluate(tc, reg)
+	if p2.Priority != 100 {
+		t.Errorf("got Priority %d, want 100", p2.Priority)
 	}
-	if len(d2.Paths) != 2 || d2.Paths[0] != ".env" {
-		t.Errorf("got Paths %v, want [.env, artisan]", d2.Paths)
+	if len(p2.Paths) != 2 || p2.Paths[0] != ".env" {
+		t.Errorf("got Paths %v, want [.env, artisan]", p2.Paths)
+	}
+
+	// Bind plan to context and verify retrieval
+	tc.SetDiscoveryPlan(p2)
+	retrieved := tc.GetDiscoveryPlan()
+	if retrieved == nil || retrieved.Priority != 100 {
+		t.Errorf("failed to retrieve bound discovery plan")
 	}
 }

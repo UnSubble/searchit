@@ -1,12 +1,6 @@
 package discovery
 
-// Decision details an execution adjustment decided by a Strategy.
-type Decision struct {
-	Priority int
-	Paths    []string
-}
-
-// Strategy evaluates a target context and returns decisions for future execution.
+// Strategy evaluates a target context and returns an execution DiscoveryPlan.
 type Strategy interface {
-	Evaluate(tc *TargetContext, reg *Registry) Decision
+	Evaluate(tc *TargetContext, reg *Registry) *DiscoveryPlan
 }
