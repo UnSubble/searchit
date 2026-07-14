@@ -45,5 +45,17 @@ func FuzzFormatters(f *testing.F) {
 		ndf := output.NewNDJSONFormatter(&ndjsonBuf)
 		_ = ndf.Print(res)
 		_ = ndf.Close()
+
+		// CSV Formatter
+		var csvBuf bytes.Buffer
+		cf := output.NewCSVFormatter(&csvBuf)
+		_ = cf.Print(res)
+		_ = cf.Close()
+
+		// Markdown Formatter
+		var mdBuf bytes.Buffer
+		mdf := output.NewMarkdownFormatter(&mdBuf)
+		_ = mdf.Print(res)
+		_ = mdf.Close()
 	})
 }

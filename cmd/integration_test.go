@@ -155,7 +155,7 @@ func TestIntegration_Scans(t *testing.T) {
 	})
 
 	t.Run("JSON output multi-target", func(t *testing.T) {
-		out, err := runIntegrationCommand([]string{"scan", "-u", srv.URL + "," + srv.URL, "-w", wordlistPath, "--output", "json"})
+		out, err := runIntegrationCommand([]string{"scan", "-u", srv.URL + "," + srv.URL, "-w", wordlistPath, "--format", "json"})
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
@@ -172,7 +172,7 @@ func TestIntegration_Scans(t *testing.T) {
 	})
 
 	t.Run("NDJSON output multi-target", func(t *testing.T) {
-		out, err := runIntegrationCommand([]string{"scan", "-u", srv.URL + "," + srv.URL, "-w", wordlistPath, "--output", "ndjson"})
+		out, err := runIntegrationCommand([]string{"scan", "-u", srv.URL + "," + srv.URL, "-w", wordlistPath, "--format", "ndjson"})
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
@@ -401,9 +401,9 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 			wantErr: "invalid recurse-on",
 		},
 		{
-			name:    "invalid output format",
-			args:    []string{"scan", "-u", "http://localhost", "--output", "invalid"},
-			wantErr: "invalid output format",
+			name:    "invalid format name",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "invalid"},
+			wantErr: "invalid --format",
 		},
 		{
 			name:    "invalid include size format",

@@ -41,18 +41,21 @@ var (
 	flagRecurseOn       string
 	flagNormalizePaths  bool
 	flagCollapseSlashes bool
-	flagOutput          string
-	flagQuiet           bool
-	flagIncludeSize     string
-	flagExcludeSize     string
-	flagIncludeHeaders  []string
-	flagExcludeHeaders  []string
-	flagDelay           string
-	flagRate            float64
-	flagConnectTimeout  string
-	flagProfiles        []string
-	flagNoProgress      bool
-	flagTech            string
+	// flagOutput is the output file path ("" means stdout).
+	flagOutput string
+	// flagFormat is the explicit output format name.
+	flagFormat         string
+	flagQuiet          bool
+	flagIncludeSize    string
+	flagExcludeSize    string
+	flagIncludeHeaders []string
+	flagExcludeHeaders []string
+	flagDelay          string
+	flagRate           float64
+	flagConnectTimeout string
+	flagProfiles       []string
+	flagNoProgress     bool
+	flagTech           string
 
 	resolvedTargets []string
 
@@ -88,8 +91,18 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		if flagOutput != "text" && flagOutput != "json" && flagOutput != "ndjson" {
-			return fmt.Errorf("invalid output format %q: must be one of text, json, ndjson", flagOutput)
+		// Validate --format if explicitly provided.
+		if cmd.Flags().Changed("format") {
+			if _, err := output.Parse(flagFormat); err != nil {
+				return fmt.Errorf("invalid --format: %w", err)
+			}
+		}
+
+		// --output is a file path; validate that it is not an existing directory.
+		if flagOutput != "" {
+			if fi, err := os.Stat(flagOutput); err == nil && fi.IsDir() {
+				return fmt.Errorf("--output %q is a directory; provide a file path", flagOutput)
+			}
 		}
 
 		if _, err := size.Parse(flagIncludeSize); err != nil {
@@ -230,13 +243,13 @@ var scanCmd = &cobra.Command{
 		// 3. Apply CLI flags (highest priority — only if explicitly changed).
 		applyCLIOverrides(cmd, &cfg)
 
-		if cfg.Output == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {
+		if cfg.OutputFormat == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {
 			fmt.Println("[*] Profiles:")
 			for _, name := range appliedProfiles {
 				fmt.Printf("    %s\n", name)
 			}
 		}
-		if cfg.Output == "text" && !cfg.Quiet && cfg.TechProfile != nil {
+		if cfg.OutputFormat == "text" && !cfg.Quiet && cfg.TechProfile != nil {
 			fmt.Printf("[*] Tech profile: %s\n", cfg.TechProfile.ID)
 		}
 
@@ -258,15 +271,24 @@ var scanCmd = &cobra.Command{
 			reader = wordlist.FileReader{Path: cfg.Wordlist}
 		}
 
-		var fmttr output.Formatter
-		switch cfg.Output {
-		case "json":
-			fmttr = output.NewJSONFormatter(os.Stdout)
-		case "ndjson":
-			fmttr = output.NewNDJSONFormatter(os.Stdout)
-		default:
-			fmttr = output.NewTextFormatter(os.Stdout, cfg.Quiet)
+		// Determine the output writer (file or stdout).
+		outWriter := os.Stdout
+		if cfg.OutputFile != "" {
+			f, err := os.OpenFile(cfg.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if err != nil {
+				return fmt.Errorf("cannot open output file: %w", err)
+			}
+			defer f.Close()
+			outWriter = f
 		}
+
+		// Construct the formatter from the resolved format name.
+		fmt_, err := output.Parse(cfg.OutputFormat)
+		if err != nil {
+			// Fallback — should not happen after validation, but be safe.
+			fmt_ = output.FormatText
+		}
+		fmttr := output.New(fmt_, outWriter, cfg.Quiet)
 		defer fmttr.Close()
 
 		var limiter *rate.Limiter
@@ -275,7 +297,7 @@ var scanCmd = &cobra.Command{
 		}
 
 		for _, targetURL := range cfg.URLs {
-			if cfg.Output == "text" {
+			if cfg.OutputFormat == "text" {
 				fmt.Printf("[*] Target: %s\n", targetURL)
 			}
 
@@ -329,7 +351,7 @@ var scanCmd = &cobra.Command{
 			}
 
 			if cfg.Recursive {
-				if cfg.Output == "text" {
+				if cfg.OutputFormat == "text" {
 					fmt.Println("[*] Recursive scan enabled")
 					fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
 					fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
@@ -478,8 +500,20 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("collapse-slashes") {
 		cfg.Paths.CollapseSlashes = flagCollapseSlashes
 	}
+	// --output is the output file path.
 	if cmd.Flags().Changed("output") {
-		cfg.Output = flagOutput
+		cfg.OutputFile = flagOutput
+	}
+	// --format is the explicit formatter name.
+	// Precedence: explicit --format > auto-detect from extension > default (text).
+	if cmd.Flags().Changed("format") {
+		if f, err := output.Parse(flagFormat); err == nil {
+			cfg.OutputFormat = string(f)
+		}
+	} else if cfg.OutputFile != "" && !cmd.Flags().Changed("format") {
+		// Auto-detect format from file extension when no explicit format is given.
+		detected := output.FormatFromPath(cfg.OutputFile)
+		cfg.OutputFormat = string(detected)
 	}
 	if cmd.Flags().Changed("quiet") {
 		cfg.Quiet = flagQuiet
@@ -607,8 +641,15 @@ func init() {
 		&flagOutput,
 		"output",
 		"o",
+		"",
+		"write results to this file (default: stdout); format auto-detected from extension",
+	)
+
+	scanCmd.Flags().StringVar(
+		&flagFormat,
+		"format",
 		"text",
-		"output format (text, json, ndjson)",
+		fmt.Sprintf("output format (%s)", strings.Join(output.SupportedFormats(), ", ")),
 	)
 
 	scanCmd.Flags().StringVar(
@@ -742,7 +783,7 @@ func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
 	if cfg.Quiet {
 		return false
 	}
-	if cfg.Output == "json" || cfg.Output == "ndjson" {
+	if cfg.OutputFormat == "json" || cfg.OutputFormat == "ndjson" {
 		return false
 	}
 	if !console.IsTerminal(os.Stdout.Fd()) {

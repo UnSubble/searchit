@@ -64,8 +64,8 @@ exclude-headers: ["Server=Apache"]
 				if o.Rate == nil || *o.Rate != 5.5 {
 					t.Errorf("rate = %v, want 5.5", o.Rate)
 				}
-				if o.Output == nil || *o.Output != "json" {
-					t.Errorf("output = %v, want json", o.Output)
+				if o.Format == nil || *o.Format != "json" {
+					t.Errorf("format = %v, want json", o.Format)
 				}
 				if o.Quiet == nil || !*o.Quiet {
 					t.Errorf("quiet = %v, want true", o.Quiet)
@@ -221,7 +221,7 @@ func TestApply(t *testing.T) {
 		Strategy:        &strategyVal,
 		Delay:           &delayVal,
 		Rate:            &rateVal,
-		Output:          &outputVal,
+		Format:          &outputVal,
 		Quiet:           &quietVal,
 		NormalizePaths:  &normalizePathsVal,
 		CollapseSlashes: &collapseSlashesVal,
@@ -262,8 +262,8 @@ func TestApply(t *testing.T) {
 	if cfg.Rate != 12.5 {
 		t.Errorf("Rate = %f", cfg.Rate)
 	}
-	if cfg.Output != "json" {
-		t.Errorf("Output = %s", cfg.Output)
+	if cfg.OutputFormat != "json" {
+		t.Errorf("OutputFormat = %s", cfg.OutputFormat)
 	}
 	if !cfg.Quiet {
 		t.Errorf("Quiet = false")

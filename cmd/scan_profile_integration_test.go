@@ -29,7 +29,8 @@ func runScanProfileTest(args []string, hook func(config.Config)) error {
 	flagRecurseOn = "200,301,302,403"
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
-	flagOutput = "text"
+	flagOutput = ""
+	flagFormat = "text"
 	flagQuiet = false
 	flagIncludeSize = ""
 	flagExcludeSize = ""
@@ -306,7 +307,8 @@ func TestScanProfile_OutputText(t *testing.T) {
 	flagRecurseOn = "200,301,302,403"
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
-	flagOutput = "text"
+	flagOutput = ""
+	flagFormat = "text"
 	flagQuiet = false
 	flagIncludeSize = ""
 	flagExcludeSize = ""
@@ -361,7 +363,8 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 	flagRecurseOn = "200,301,302,403"
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
-	flagOutput = "json"
+	flagOutput = ""
+	flagFormat = "json"
 	flagQuiet = false
 	flagIncludeSize = ""
 	flagExcludeSize = ""
@@ -377,7 +380,7 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 
-	cmd.SetArgs([]string{"scan", "--profile", "scan/quick", "-u", "http://localhost", "--output", "json"})
+	cmd.SetArgs([]string{"scan", "--profile", "scan/quick", "-u", "http://localhost", "--format", "json"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

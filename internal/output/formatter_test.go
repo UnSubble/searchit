@@ -238,3 +238,239 @@ func TestFormatterErrors(t *testing.T) {
 		}
 	})
 }
+
+func TestCSVFormatter(t *testing.T) {
+	r1 := engine.Result{URL: "http://example.com/a", StatusCode: 200, Length: 10, Depth: 1}
+	r2 := engine.Result{URL: "http://example.com/b", StatusCode: 403, Length: 0, Depth: 2}
+
+	t.Run("no output when no Print before close", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewCSVFormatter(&buf)
+		_ = f.Close()
+		if got := buf.String(); got != "" {
+			t.Errorf("expected empty output, got %q", got)
+		}
+	})
+
+	t.Run("header written on first Print", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewCSVFormatter(&buf)
+		_ = f.Print(r1)
+		_ = f.Close()
+		lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 lines (header + 1 row), got %d: %q", len(lines), buf.String())
+		}
+		if lines[0] != "url,status,length,depth" {
+			t.Errorf("header = %q, want %q", lines[0], "url,status,length,depth")
+		}
+	})
+
+	t.Run("multiple results all present", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewCSVFormatter(&buf)
+		_ = f.Print(r1)
+		_ = f.Print(r2)
+		_ = f.Close()
+		lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+		if len(lines) != 3 {
+			t.Fatalf("expected 3 lines, got %d", len(lines))
+		}
+		if lines[1] != "http://example.com/a,200,10,1" {
+			t.Errorf("row 1 = %q", lines[1])
+		}
+		if lines[2] != "http://example.com/b,403,0,2" {
+			t.Errorf("row 2 = %q", lines[2])
+		}
+	})
+
+	t.Run("URL with comma is quoted", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewCSVFormatter(&buf)
+		r := engine.Result{URL: "http://example.com/a,b", StatusCode: 200}
+		_ = f.Print(r)
+		_ = f.Close()
+		if !strings.Contains(buf.String(), `"http://example.com/a,b"`) {
+			t.Errorf("expected quoted URL, got %q", buf.String())
+		}
+	})
+
+	t.Run("streaming: data present before Close", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewCSVFormatter(&buf)
+		_ = f.Print(r1)
+		if buf.String() == "" {
+			t.Error("expected data before Close (streaming)")
+		}
+	})
+}
+
+func TestMarkdownFormatter(t *testing.T) {
+	r1 := engine.Result{URL: "http://example.com/a", StatusCode: 200, Length: 10, Depth: 1}
+	r2 := engine.Result{URL: "http://example.com/b", StatusCode: 403, Length: 0, Depth: 2}
+
+	t.Run("empty output when no Print called", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewMarkdownFormatter(&buf)
+		_ = f.Close()
+		if got := buf.String(); got != "" {
+			t.Errorf("expected empty, got %q", got)
+		}
+	})
+
+	t.Run("header and separator on first Print", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewMarkdownFormatter(&buf)
+		_ = f.Print(r1)
+		_ = f.Close()
+		lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+		if len(lines) != 3 {
+			t.Fatalf("expected 3 lines (header+sep+row), got %d: %q", len(lines), buf.String())
+		}
+		if lines[0] != "| URL | Status | Length | Depth |" {
+			t.Errorf("header = %q", lines[0])
+		}
+		if lines[1] != "| --- | -----: | -----: | ----: |" {
+			t.Errorf("separator = %q", lines[1])
+		}
+	})
+
+	t.Run("multiple results all present", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewMarkdownFormatter(&buf)
+		_ = f.Print(r1)
+		_ = f.Print(r2)
+		_ = f.Close()
+		if !strings.Contains(buf.String(), "http://example.com/a") {
+			t.Error("expected r1 URL in output")
+		}
+		if !strings.Contains(buf.String(), "http://example.com/b") {
+			t.Error("expected r2 URL in output")
+		}
+	})
+
+	t.Run("streaming: data before Close", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewMarkdownFormatter(&buf)
+		_ = f.Print(r1)
+		if buf.String() == "" {
+			t.Error("expected data before Close (streaming)")
+		}
+	})
+}
+
+func TestFormatParse(t *testing.T) {
+	valid := []struct {
+		in   string
+		want output.Format
+	}{
+		{"text", output.FormatText},
+		{"TEXT", output.FormatText},
+		{"json", output.FormatJSON},
+		{"JSON", output.FormatJSON},
+		{"ndjson", output.FormatNDJSON},
+		{"NDJSON", output.FormatNDJSON},
+		{"csv", output.FormatCSV},
+		{"CSV", output.FormatCSV},
+		{"markdown", output.FormatMarkdown},
+		{"MARKDOWN", output.FormatMarkdown},
+	}
+	for _, tc := range valid {
+		f, err := output.Parse(tc.in)
+		if err != nil {
+			t.Errorf("Parse(%q) error = %v", tc.in, err)
+			continue
+		}
+		if f != tc.want {
+			t.Errorf("Parse(%q) = %q, want %q", tc.in, f, tc.want)
+		}
+	}
+
+	invalid := []string{"", "xml", "yaml", "html", "pdf"}
+	for _, s := range invalid {
+		if _, err := output.Parse(s); err == nil {
+			t.Errorf("Parse(%q) expected error, got nil", s)
+		}
+	}
+}
+
+func TestFormatFromExtension(t *testing.T) {
+	tests := []struct {
+		ext  string
+		want output.Format
+	}{
+		{".txt", output.FormatText},
+		{".text", output.FormatText},
+		{".json", output.FormatJSON},
+		{".ndjson", output.FormatNDJSON},
+		{".csv", output.FormatCSV},
+		{".md", output.FormatMarkdown},
+		{".markdown", output.FormatMarkdown},
+		{".xml", output.FormatText},
+		{"", output.FormatText},
+		{".log", output.FormatText},
+	}
+	for _, tc := range tests {
+		got := output.FormatFromExtension(tc.ext)
+		if got != tc.want {
+			t.Errorf("FormatFromExtension(%q) = %q, want %q", tc.ext, got, tc.want)
+		}
+	}
+}
+
+func TestFormatFromPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want output.Format
+	}{
+		{"results.json", output.FormatJSON},
+		{"report.ndjson", output.FormatNDJSON},
+		{"findings.csv", output.FormatCSV},
+		{"report.md", output.FormatMarkdown},
+		{"out.txt", output.FormatText},
+		{"out", output.FormatText},
+		{"out.xml", output.FormatText},
+		{"/tmp/scan.json", output.FormatJSON},
+	}
+	for _, tc := range tests {
+		got := output.FormatFromPath(tc.path)
+		if got != tc.want {
+			t.Errorf("FormatFromPath(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestSupportedFormats(t *testing.T) {
+	supported := output.SupportedFormats()
+	for _, name := range []string{"text", "json", "ndjson", "csv", "markdown"} {
+		found := false
+		for _, s := range supported {
+			if s == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("SupportedFormats() missing %q; got %v", name, supported)
+		}
+	}
+}
+
+func TestNew(t *testing.T) {
+	r := engine.Result{URL: "http://example.com", StatusCode: 200, Length: 1, Depth: 0}
+	for _, f := range []output.Format{output.FormatText, output.FormatJSON, output.FormatNDJSON, output.FormatCSV, output.FormatMarkdown} {
+		var buf bytes.Buffer
+		fmttr := output.New(f, &buf, false)
+		if fmttr == nil {
+			t.Errorf("New(%q) returned nil", f)
+			continue
+		}
+		_ = fmttr.Print(r)
+		if err := fmttr.Close(); err != nil {
+			t.Errorf("New(%q).Close() = %v", f, err)
+		}
+		if buf.Len() == 0 {
+			t.Errorf("New(%q) produced no output", f)
+		}
+	}
+}

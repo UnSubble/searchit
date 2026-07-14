@@ -27,7 +27,8 @@ func resetFlagsForTest() {
 	flagRecurseOn = "200,301,302,403"
 	flagNormalizePaths = false
 	flagCollapseSlashes = false
-	flagOutput = "text"
+	flagOutput = ""
+	flagFormat = "text"
 	flagQuiet = false
 	flagIncludeSize = ""
 	flagExcludeSize = ""
@@ -118,24 +119,44 @@ func TestCLI_Validation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "invalid output mode",
-			args:    []string{"scan", "-u", "http://localhost", "--output", "invalid"},
+			name:    "invalid format name",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "invalid"},
 			wantErr: true,
 		},
 		{
-			name:    "explicit text output",
-			args:    []string{"scan", "-u", "http://localhost", "--output", "text"},
+			name:    "explicit text format",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "text"},
 			wantErr: false,
 		},
 		{
-			name:    "explicit json output",
-			args:    []string{"scan", "-u", "http://localhost", "--output", "json"},
+			name:    "explicit json format",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "json"},
 			wantErr: false,
 		},
 		{
-			name:    "explicit ndjson output",
-			args:    []string{"scan", "-u", "http://localhost", "--output", "ndjson"},
+			name:    "explicit ndjson format",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "ndjson"},
 			wantErr: false,
+		},
+		{
+			name:    "explicit csv format",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "csv"},
+			wantErr: false,
+		},
+		{
+			name:    "explicit markdown format",
+			args:    []string{"scan", "-u", "http://localhost", "--format", "markdown"},
+			wantErr: false,
+		},
+		{
+			name:    "output file path is valid",
+			args:    []string{"scan", "-u", "http://localhost", "-o", "/tmp/searchit_test_output.json"},
+			wantErr: false,
+		},
+		{
+			name:    "output is a directory returns error",
+			args:    []string{"scan", "-u", "http://localhost", "-o", "/tmp"},
+			wantErr: true,
 		},
 		{
 			name:    "invalid include-size format",
@@ -411,7 +432,7 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 		"-d", "5",
 		"-s", "dfs",
 		"-x", "404,500",
-		"-o", "ndjson",
+		"--format", "ndjson",
 		"-H", "Server=nginx",
 		"-H", "X-Header=val",
 	})
@@ -443,8 +464,8 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	if flagExcludeStatus != "404,500" {
 		t.Errorf("expected flagExcludeStatus='404,500', got %q", flagExcludeStatus)
 	}
-	if flagOutput != "ndjson" {
-		t.Errorf("expected flagOutput='ndjson', got %q", flagOutput)
+	if flagFormat != "ndjson" {
+		t.Errorf("expected flagFormat='ndjson', got %q", flagFormat)
 	}
 	if len(flagIncludeHeaders) != 2 || flagIncludeHeaders[0] != "Server=nginx" || flagIncludeHeaders[1] != "X-Header=val" {
 		t.Errorf("expected flagIncludeHeaders=[Server=nginx, X-Header=val], got %v", flagIncludeHeaders)
@@ -552,46 +573,46 @@ func TestCLI_ProgressFlags(t *testing.T) {
 // relevant combinations of flags and terminal state.
 func TestCLI_ProgressActivation(t *testing.T) {
 	tests := []struct {
-		name       string
-		noProgress bool
-		quiet      bool
-		output     string
-		isTerminal bool
-		want       bool
+		name         string
+		noProgress   bool
+		quiet        bool
+		outputFormat string
+		isTerminal   bool
+		want         bool
 	}{
 		{
-			name:       "interactive terminal with text output enables progress",
-			noProgress: false, quiet: false, output: "text", isTerminal: true,
+			name:       "interactive terminal with text format enables progress",
+			noProgress: false, quiet: false, outputFormat: "text", isTerminal: true,
 			want: true,
 		},
 		{
 			name:       "--no-progress disables progress even in terminal",
-			noProgress: true, quiet: false, output: "text", isTerminal: true,
+			noProgress: true, quiet: false, outputFormat: "text", isTerminal: true,
 			want: false,
 		},
 		{
 			name:       "--quiet disables progress",
-			noProgress: false, quiet: true, output: "text", isTerminal: true,
+			noProgress: false, quiet: true, outputFormat: "text", isTerminal: true,
 			want: false,
 		},
 		{
-			name:       "json output disables progress",
-			noProgress: false, quiet: false, output: "json", isTerminal: true,
+			name:       "json format disables progress",
+			noProgress: false, quiet: false, outputFormat: "json", isTerminal: true,
 			want: false,
 		},
 		{
-			name:       "ndjson output disables progress",
-			noProgress: false, quiet: false, output: "ndjson", isTerminal: true,
+			name:       "ndjson format disables progress",
+			noProgress: false, quiet: false, outputFormat: "ndjson", isTerminal: true,
 			want: false,
 		},
 		{
 			name:       "non-TTY stdout (piped/redirected) disables progress",
-			noProgress: false, quiet: false, output: "text", isTerminal: false,
+			noProgress: false, quiet: false, outputFormat: "text", isTerminal: false,
 			want: false,
 		},
 		{
-			name:       "--no-progress with json output stays disabled",
-			noProgress: true, quiet: false, output: "json", isTerminal: true,
+			name:       "--no-progress with json format stays disabled",
+			noProgress: true, quiet: false, outputFormat: "json", isTerminal: true,
 			want: false,
 		},
 	}
@@ -599,8 +620,8 @@ func TestCLI_ProgressActivation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := config.Config{
-				Quiet:  tc.quiet,
-				Output: tc.output,
+				Quiet:        tc.quiet,
+				OutputFormat: tc.outputFormat,
 			}
 			// shouldEnableProgress calls console.IsTerminal(os.Stdout.Fd()).
 			// In tests, stdout is a pipe (not a TTY), so isTerminal will always
@@ -608,8 +629,8 @@ func TestCLI_ProgressActivation(t *testing.T) {
 			// We test the helper with a thin wrapper that accepts isTerminal.
 			got := shouldEnableProgressWith(cfg, tc.noProgress, tc.isTerminal)
 			if got != tc.want {
-				t.Errorf("shouldEnableProgress(noProgress=%v, quiet=%v, output=%q, isTerminal=%v) = %v, want %v",
-					tc.noProgress, tc.quiet, tc.output, tc.isTerminal, got, tc.want)
+				t.Errorf("shouldEnableProgress(noProgress=%v, quiet=%v, outputFormat=%q, isTerminal=%v) = %v, want %v",
+					tc.noProgress, tc.quiet, tc.outputFormat, tc.isTerminal, got, tc.want)
 			}
 		})
 	}
@@ -624,7 +645,7 @@ func shouldEnableProgressWith(cfg config.Config, noProgress bool, isTerminal boo
 	if cfg.Quiet {
 		return false
 	}
-	if cfg.Output == "json" || cfg.Output == "ndjson" {
+	if cfg.OutputFormat == "json" || cfg.OutputFormat == "ndjson" {
 		return false
 	}
 	if !isTerminal {

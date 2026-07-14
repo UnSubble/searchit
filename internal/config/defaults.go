@@ -26,8 +26,9 @@ func Default() Config {
 			NormalizePaths:  false,
 			CollapseSlashes: false,
 		},
-		Output: "text",
-		Quiet:  false,
+		OutputFile:   "",
+		OutputFormat: "text",
+		Quiet:        false,
 		Status: StatusConfig{
 			Exclude: exclude,
 		},

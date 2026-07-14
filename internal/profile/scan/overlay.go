@@ -11,25 +11,29 @@ import (
 // Pointer fields distinguish "not present" (nil) from zero values.
 // Only non-nil fields are applied to the target Config.
 type Overlay struct {
-	Wordlist        *string        `yaml:"wordlist"`
-	Threads         *int           `yaml:"threads"`
-	Timeout         *time.Duration `yaml:"timeout"`
-	ConnectTimeout  *time.Duration `yaml:"connect-timeout"`
-	Recursive       *bool          `yaml:"recursive"`
-	MaxDepth        *uint16        `yaml:"max-depth"`
-	Strategy        *string        `yaml:"strategy"`
-	Delay           *time.Duration `yaml:"delay"`
-	Rate            *float64       `yaml:"rate"`
-	Output          *string        `yaml:"output"`
-	Quiet           *bool          `yaml:"quiet"`
-	NormalizePaths  *bool          `yaml:"normalize-paths"`
-	CollapseSlashes *bool          `yaml:"collapse-slashes"`
-	ExcludeStatus   *string        `yaml:"exclude-status"`
-	RecurseOn       *string        `yaml:"recurse-on"`
-	IncludeSize     *string        `yaml:"include-size"`
-	ExcludeSize     *string        `yaml:"exclude-size"`
-	IncludeHeaders  *[]string      `yaml:"include-headers"`
-	ExcludeHeaders  *[]string      `yaml:"exclude-headers"`
+	Wordlist       *string        `yaml:"wordlist"`
+	Threads        *int           `yaml:"threads"`
+	Timeout        *time.Duration `yaml:"timeout"`
+	ConnectTimeout *time.Duration `yaml:"connect-timeout"`
+	Recursive      *bool          `yaml:"recursive"`
+	MaxDepth       *uint16        `yaml:"max-depth"`
+	Strategy       *string        `yaml:"strategy"`
+	Delay          *time.Duration `yaml:"delay"`
+	Rate           *float64       `yaml:"rate"`
+	// Format selects the output formatter (text, json, ndjson, csv, markdown).
+	// This replaces the deprecated Output field.
+	Format *string `yaml:"format"`
+	// Output is a deprecated alias for Format. If Format is absent, Output is used.
+	Output          *string   `yaml:"output"`
+	Quiet           *bool     `yaml:"quiet"`
+	NormalizePaths  *bool     `yaml:"normalize-paths"`
+	CollapseSlashes *bool     `yaml:"collapse-slashes"`
+	ExcludeStatus   *string   `yaml:"exclude-status"`
+	RecurseOn       *string   `yaml:"recurse-on"`
+	IncludeSize     *string   `yaml:"include-size"`
+	ExcludeSize     *string   `yaml:"exclude-size"`
+	IncludeHeaders  *[]string `yaml:"include-headers"`
+	ExcludeHeaders  *[]string `yaml:"exclude-headers"`
 }
 
 // UnmarshalYAML implements custom unmarshaling to handle durations gracefully.
@@ -45,6 +49,7 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 		Strategy        *string   `yaml:"strategy"`
 		Delay           yaml.Node `yaml:"delay"`
 		Rate            *float64  `yaml:"rate"`
+		Format          *string   `yaml:"format"`
 		Output          *string   `yaml:"output"`
 		Quiet           *bool     `yaml:"quiet"`
 		NormalizePaths  *bool     `yaml:"normalize-paths"`
@@ -70,6 +75,12 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	o.MaxDepth = raw.MaxDepth
 	o.Strategy = raw.Strategy
 	o.Rate = raw.Rate
+	// Prefer the canonical "format" key; fall back to deprecated "output".
+	if raw.Format != nil {
+		o.Format = raw.Format
+	} else {
+		o.Format = raw.Output
+	}
 	o.Output = raw.Output
 	o.Quiet = raw.Quiet
 	o.NormalizePaths = raw.NormalizePaths

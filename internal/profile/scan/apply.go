@@ -41,8 +41,8 @@ func Apply(cfg *config.Config, o Overlay) {
 	if o.Rate != nil {
 		cfg.Rate = *o.Rate
 	}
-	if o.Output != nil {
-		cfg.Output = *o.Output
+	if o.Format != nil {
+		cfg.OutputFormat = *o.Format
 	}
 	if o.Quiet != nil {
 		cfg.Quiet = *o.Quiet

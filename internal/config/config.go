@@ -29,8 +29,9 @@ type Config struct {
 
 	Paths PathConfig
 
-	Output string
-	Quiet  bool
+	OutputFile   string // "" means write to stdout
+	OutputFormat string // "text", "json", "ndjson", "csv", "markdown"
+	Quiet        bool
 
 	IncludeSize size.Filters
 	ExcludeSize size.Filters

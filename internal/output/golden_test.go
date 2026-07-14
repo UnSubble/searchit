@@ -50,6 +50,20 @@ func TestGoldenOutputs(t *testing.T) {
 				return output.NewNDJSONFormatter(buf)
 			},
 		},
+		{
+			name:       "CSV formatter",
+			goldenFile: "csv.golden",
+			setup: func(buf *bytes.Buffer) output.Formatter {
+				return output.NewCSVFormatter(buf)
+			},
+		},
+		{
+			name:       "Markdown formatter",
+			goldenFile: "markdown.golden",
+			setup: func(buf *bytes.Buffer) output.Formatter {
+				return output.NewMarkdownFormatter(buf)
+			},
+		},
 	}
 
 	for _, tc := range tests {

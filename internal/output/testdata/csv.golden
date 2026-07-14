@@ -1,0 +1,4 @@
+url,status,length,depth
+http://example.com/admin,200,1234,0
+http://example.com/login,403,56,1
+http://example.com/api/v1,302,0,2
