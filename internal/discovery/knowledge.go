@@ -1,13 +1,14 @@
 package discovery
 
-// Technology defines static facts and targets related to a web framework/technology.
+// Technology defines static facts about a framework/technology.
 type Technology struct {
 	ID                     string
 	DisplayName            string
 	InterestingFiles       []string
 	InterestingDirectories []string
-	DiscoveryThreshold     float32
-	PriorityWeights        map[string]int
+	InterestingExtensions  []string
+	InterestingHeaders     []string
+	InterestingCookies     []string
 }
 
 // Registry acts as a read-only registry of all technology definitions.
@@ -24,26 +25,18 @@ func NewRegistry() *Registry {
 				DisplayName:            "Laravel",
 				InterestingFiles:       []string{".env", "artisan"},
 				InterestingDirectories: []string{"storage", "bootstrap", "vendor"},
-				DiscoveryThreshold:     0.8,
-				PriorityWeights: map[string]int{
-					".env":      100,
-					"artisan":   80,
-					"storage":   50,
-					"bootstrap": 50,
-				},
+				InterestingExtensions:  []string{".php"},
+				InterestingHeaders:     []string{"X-Powered-By"},
+				InterestingCookies:     []string{"laravel_session"},
 			},
 			"wordpress": {
 				ID:                     "wordpress",
 				DisplayName:            "WordPress",
 				InterestingFiles:       []string{"xmlrpc.php", "wp-login.php"},
 				InterestingDirectories: []string{"wp-admin", "wp-content", "wp-includes"},
-				DiscoveryThreshold:     0.8,
-				PriorityWeights: map[string]int{
-					"wp-login.php": 100,
-					"xmlrpc.php":   60,
-					"wp-admin":     80,
-					"wp-content":   50,
-				},
+				InterestingExtensions:  []string{".php"},
+				InterestingHeaders:     []string{"X-Link"},
+				InterestingCookies:     []string{"wordpress_logged_in"},
 			},
 		},
 	}

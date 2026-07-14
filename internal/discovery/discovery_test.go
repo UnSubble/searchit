@@ -1,6 +1,7 @@
 package discovery_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -57,8 +58,8 @@ func TestRegistry_Lookup(t *testing.T) {
 		if len(tech.InterestingFiles) != 2 {
 			t.Errorf("got %d interesting files, want 2", len(tech.InterestingFiles))
 		}
-		if tech.PriorityWeights[".env"] != 100 {
-			t.Errorf("got .env weight %d, want 100", tech.PriorityWeights[".env"])
+		if len(tech.InterestingCookies) != 1 || tech.InterestingCookies[0] != "laravel_session" {
+			t.Errorf("got InterestingCookies %v, want [laravel_session]", tech.InterestingCookies)
 		}
 	})
 
@@ -76,8 +77,8 @@ func TestRegistry_Lookup(t *testing.T) {
 		if len(tech.InterestingDirectories) != 3 {
 			t.Errorf("got %d interesting directories, want 3", len(tech.InterestingDirectories))
 		}
-		if tech.PriorityWeights["wp-login.php"] != 100 {
-			t.Errorf("got wp-login.php weight %d, want 100", tech.PriorityWeights["wp-login.php"])
+		if len(tech.InterestingHeaders) != 1 || tech.InterestingHeaders[0] != "X-Link" {
+			t.Errorf("got InterestingHeaders %v, want [X-Link]", tech.InterestingHeaders)
 		}
 	})
 
@@ -96,5 +97,87 @@ func TestBarrier_Creation(t *testing.T) {
 
 	if b.Type != discovery.BarrierBootstrap {
 		t.Errorf("got Type %q, want %q", b.Type, discovery.BarrierBootstrap)
+	}
+}
+
+func TestTargetContext_ConcurrencyAndIsolation(t *testing.T) {
+	tc := discovery.NewTargetContext("a.com")
+	if tc.Host != "a.com" {
+		t.Errorf("got Host %q, want %q", tc.Host, "a.com")
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(val int) {
+			defer wg.Done()
+			tc.AddSignal(discovery.Signal{
+				Type:   discovery.SignalCookie,
+				Source: "cookie",
+				Value:  "val",
+			})
+			tc.AddDiscovery("/path")
+		}(i)
+	}
+
+	wg.Wait()
+
+	signals := tc.GetSignals()
+	if len(signals) != 100 {
+		t.Errorf("got %d signals, want 100", len(signals))
+	}
+	if len(tc.Discoveries) != 100 {
+		t.Errorf("got %d discoveries, want 100", len(tc.Discoveries))
+	}
+}
+
+// MockStrategy implements discovery.Strategy interface for testing.
+type MockStrategy struct{}
+
+func (ms MockStrategy) Evaluate(tc *discovery.TargetContext, reg *discovery.Registry) discovery.Decision {
+	signals := tc.GetSignals()
+	laravelMatched := false
+	for _, sig := range signals {
+		if sig.Type == discovery.SignalCookie && sig.Value == "laravel_session" {
+			laravelMatched = true
+			break
+		}
+	}
+
+	if laravelMatched {
+		if tech, ok := reg.Lookup("laravel"); ok {
+			return discovery.Decision{
+				Priority: 100,
+				Paths:    tech.InterestingFiles,
+			}
+		}
+	}
+
+	return discovery.Decision{Priority: 0}
+}
+
+func TestStrategy_Evaluation(t *testing.T) {
+	tc := discovery.NewTargetContext("example.com")
+	reg := discovery.NewRegistry()
+	strategy := MockStrategy{}
+
+	// Initial evaluation should return empty/default decision
+	d1 := strategy.Evaluate(tc, reg)
+	if d1.Priority != 0 {
+		t.Errorf("got Priority %d, want 0", d1.Priority)
+	}
+
+	// Add Laravel signal to trigger Laravel strategy decision
+	tc.AddSignal(discovery.Signal{
+		Type:  discovery.SignalCookie,
+		Value: "laravel_session",
+	})
+
+	d2 := strategy.Evaluate(tc, reg)
+	if d2.Priority != 100 {
+		t.Errorf("got Priority %d, want 100", d2.Priority)
+	}
+	if len(d2.Paths) != 2 || d2.Paths[0] != ".env" {
+		t.Errorf("got Paths %v, want [.env, artisan]", d2.Paths)
 	}
 }
