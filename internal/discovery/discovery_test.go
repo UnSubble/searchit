@@ -146,11 +146,18 @@ func (ms MockStrategy) Evaluate(tc *discovery.TargetContext, reg *discovery.Regi
 
 	if laravelMatched {
 		if tech, ok := reg.Lookup("laravel"); ok {
-			return discovery.NewDiscoveryPlan(tech.InterestingFiles, 100)
+			targets := make([]discovery.DiscoveryTarget, len(tech.InterestingFiles))
+			for i, file := range tech.InterestingFiles {
+				targets[i] = discovery.DiscoveryTarget{
+					Path:   file,
+					Reason: "Laravel interesting file",
+				}
+			}
+			return discovery.NewDiscoveryPlan(targets, "depth-0")
 		}
 	}
 
-	return discovery.NewDiscoveryPlan(nil, 0)
+	return discovery.NewDiscoveryPlan(nil, "bootstrap")
 }
 
 func TestStrategy_Evaluation(t *testing.T) {
@@ -160,8 +167,11 @@ func TestStrategy_Evaluation(t *testing.T) {
 
 	// Initial evaluation should return empty/default plan
 	p1 := strategy.Evaluate(tc, reg)
-	if p1.Priority != 0 {
-		t.Errorf("got Priority %d, want 0", p1.Priority)
+	if len(p1.Targets) != 0 {
+		t.Errorf("got %d targets, want 0", len(p1.Targets))
+	}
+	if p1.Phase != "bootstrap" {
+		t.Errorf("got phase %q, want %q", p1.Phase, "bootstrap")
 	}
 
 	// Add Laravel signal to trigger Laravel strategy decision
@@ -171,17 +181,20 @@ func TestStrategy_Evaluation(t *testing.T) {
 	})
 
 	p2 := strategy.Evaluate(tc, reg)
-	if p2.Priority != 100 {
-		t.Errorf("got Priority %d, want 100", p2.Priority)
+	if len(p2.Targets) != 2 {
+		t.Errorf("got %d targets, want 2", len(p2.Targets))
 	}
-	if len(p2.Paths) != 2 || p2.Paths[0] != ".env" {
-		t.Errorf("got Paths %v, want [.env, artisan]", p2.Paths)
+	if p2.Phase != "depth-0" {
+		t.Errorf("got phase %q, want %q", p2.Phase, "depth-0")
+	}
+	if p2.Targets[0].Path != ".env" || p2.Targets[0].Reason != "Laravel interesting file" {
+		t.Errorf("got Targets[0] %+v, want path=.env reason=Laravel interesting file", p2.Targets[0])
 	}
 
 	// Bind plan to context and verify retrieval
-	tc.SetDiscoveryPlan(p2)
-	retrieved := tc.GetDiscoveryPlan()
-	if retrieved == nil || retrieved.Priority != 100 {
-		t.Errorf("failed to retrieve bound discovery plan")
+	tc.AddDiscoveryPlan(p2)
+	plans := tc.GetDiscoveryPlans()
+	if len(plans) != 1 || plans[0].Phase != "depth-0" {
+		t.Errorf("failed to retrieve bound discovery plans")
 	}
 }

@@ -4,22 +4,23 @@ import (
 	"sync"
 )
 
-// TargetContext isolates the state, discoveries, and signals of a single target host.
+// TargetContext isolates the state, discoveries, plans, and signals of a single target host.
 type TargetContext struct {
-	mu            sync.RWMutex
-	Host          string
-	Depth         int
-	Signals       []Signal
-	Discoveries   []string       // Paths discovered
-	DiscoveryPlan *DiscoveryPlan // The current execution plan
+	mu             sync.RWMutex
+	Host           string
+	Depth          int
+	Signals        []Signal
+	Discoveries    []string
+	DiscoveryPlans []*DiscoveryPlan // Chronological log of intent plans
 }
 
 // NewTargetContext initializes an isolated context for a host target.
 func NewTargetContext(host string) *TargetContext {
 	return &TargetContext{
-		Host:        host,
-		Signals:     make([]Signal, 0),
-		Discoveries: make([]string, 0),
+		Host:           host,
+		Signals:        make([]Signal, 0),
+		Discoveries:    make([]string, 0),
+		DiscoveryPlans: make([]*DiscoveryPlan, 0),
 	}
 }
 
@@ -46,16 +47,18 @@ func (tc *TargetContext) AddDiscovery(path string) {
 	tc.Discoveries = append(tc.Discoveries, path)
 }
 
-// SetDiscoveryPlan binds a new plan to this target context.
-func (tc *TargetContext) SetDiscoveryPlan(plan *DiscoveryPlan) {
+// AddDiscoveryPlan appends a new plan to this target context.
+func (tc *TargetContext) AddDiscoveryPlan(plan *DiscoveryPlan) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
-	tc.DiscoveryPlan = plan
+	tc.DiscoveryPlans = append(tc.DiscoveryPlans, plan)
 }
 
-// GetDiscoveryPlan retrieves the current plan.
-func (tc *TargetContext) GetDiscoveryPlan() *DiscoveryPlan {
+// GetDiscoveryPlans retrieves the chronological slice of plans.
+func (tc *TargetContext) GetDiscoveryPlans() []*DiscoveryPlan {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
-	return tc.DiscoveryPlan
+	out := make([]*DiscoveryPlan, len(tc.DiscoveryPlans))
+	copy(out, tc.DiscoveryPlans)
+	return out
 }
