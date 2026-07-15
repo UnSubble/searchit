@@ -14,6 +14,7 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
@@ -57,6 +58,7 @@ var (
 	flagNoProgress      bool
 	flagTech            string
 	flagFollowRedirects bool
+	flagAdaptive        bool
 
 	resolvedTargets []string
 
@@ -412,6 +414,11 @@ var scanCmd = &cobra.Command{
 					}
 				}
 
+				var fpCache *fingerprint.Cache
+				if cfg.Adaptive {
+					fpCache = appState.FingerprintCache
+				}
+
 				seeds := []string{targetURL}
 				manager := recursion.NewManager(
 					appState.HTTPClient,
@@ -428,7 +435,7 @@ var scanCmd = &cobra.Command{
 					mapHeaders(cfg.ExcludeHeaders),
 					cfg.Delay,
 					limiter,
-					appState.FingerprintCache,
+					fpCache,
 				)
 				manager.SetStats(collector)
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
@@ -595,6 +602,9 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 		if p, ok := lookupTech(flagTech); ok {
 			cfg.TechProfile = &p
 		}
+	}
+	if cmd.Flags().Changed("adaptive") {
+		cfg.Adaptive = flagAdaptive
 	}
 }
 
@@ -800,6 +810,13 @@ func init() {
 		"follow-redirects",
 		false,
 		"follow HTTP redirects",
+	)
+
+	scanCmd.Flags().BoolVar(
+		&flagAdaptive,
+		"adaptive",
+		false,
+		"enable adaptive scanning (technology detection and path injection)",
 	)
 }
 

@@ -33,5 +33,6 @@ func Default() Config {
 		Status: StatusConfig{
 			Exclude: exclude,
 		},
+		Adaptive: false,
 	}
 }

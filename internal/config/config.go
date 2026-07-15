@@ -52,6 +52,9 @@ type Config struct {
 	// TechProfile is the explicitly-selected technology profile (--tech flag).
 	// A nil value means no explicit selection; automatic detection applies.
 	TechProfile *TechProfile
+
+	// Adaptive enables technology detection and adaptive path injection.
+	Adaptive bool
 }
 
 type HeaderFilter struct {

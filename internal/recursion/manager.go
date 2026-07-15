@@ -101,6 +101,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 
 		frontier := NewFrontier(m.strategy)
 		visited := make(map[string]struct{})
+		injectedLaravel := make(map[string]bool)
 
 		for _, u := range seeds {
 			key := normalizeURL(u)
@@ -179,7 +180,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, visited, out)
+					m.handleResult(ctx, result, frontier, visited, injectedLaravel, out)
 				}
 			} else {
 				// Frontier empty but workers still running; block until a result
@@ -204,7 +205,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, visited, out)
+					m.handleResult(ctx, result, frontier, visited, injectedLaravel, out)
 				}
 			}
 		}
@@ -218,7 +219,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			m.handleResult(ctx, result, frontier, visited, out)
+			m.handleResult(ctx, result, frontier, visited, injectedLaravel, out)
 		}
 	}()
 
@@ -232,6 +233,7 @@ func (m *Manager) handleResult(
 	result engine.Result,
 	frontier *Frontier,
 	visited map[string]struct{},
+	injectedLaravel map[string]bool,
 	out chan<- engine.Result,
 ) {
 	if !result.Accepted {
@@ -245,6 +247,52 @@ func (m *Manager) handleResult(
 	case <-ctx.Done():
 		stats.GlobalInstrumentation.LogEvent("context cancellation")
 		return
+	}
+
+	// Laravel detection and path injection
+	if m.fingerprintCache != nil {
+		parsed, err := url.Parse(result.URL)
+		if err == nil {
+			host := parsed.Host
+			if !injectedLaravel[host] {
+				fp := m.fingerprintCache.Get(host)
+				if fp != nil {
+					matcher := fingerprint.NewMatcher()
+					isLaravel := false
+					for _, tech := range matcher.Match(fp) {
+						if tech.Name == "Laravel" {
+							isLaravel = true
+							break
+						}
+					}
+					if isLaravel {
+						injectedLaravel[host] = true
+						laravelPaths := []string{".env", "artisan", "storage/", "bootstrap/", "vendor/"}
+						scheme := "http"
+						if parsed.Scheme != "" {
+							scheme = parsed.Scheme
+						}
+						baseURL := fmt.Sprintf("%s://%s", scheme, host)
+						for _, p := range laravelPaths {
+							childURL, err := wordlist.Join(baseURL, p)
+							if err == nil {
+								key := normalizeURL(childURL)
+								if _, seen := visited[key]; !seen {
+									visited[key] = struct{}{}
+									atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+									atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+									frontier.PushFront(engine.Job{
+										URL:    childURL,
+										Depth:  result.Depth + 1,
+										Origin: "adaptive",
+									})
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	if result.Depth >= m.maxDepth {
