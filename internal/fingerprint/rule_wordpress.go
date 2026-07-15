@@ -3,7 +3,8 @@ package fingerprint
 import "strings"
 
 // matchWordPress evaluates signals for indicators of WordPress.
-func matchWordPress(signals []Signal) (Confidence, bool) {
+// Returns true if any positive indicator is present and no exclusion applies.
+func matchWordPress(signals []Signal) bool {
 	var (
 		hasGeneratorMeta bool
 		hasWpAssets      bool
@@ -39,37 +40,8 @@ func matchWordPress(signals []Signal) (Confidence, bool) {
 
 	// Exclusions
 	if hasExcludeHeader {
-		return 0, false
+		return false
 	}
 
-	// Calculate match indicators count to check for evidence accumulation
-	matches := 0
-	if hasGeneratorMeta {
-		matches++
-	}
-	if hasWpAssets {
-		matches++
-	}
-	if hasWpCookie {
-		matches++
-	}
-
-	if matches == 0 {
-		return 0, false
-	}
-
-	// Deterministic scoring hierarchy
-	switch {
-	case matches >= 2:
-		// Multiple independent indicators promote to certainty
-		return Confidence(1.0), true
-	case hasGeneratorMeta:
-		return Confidence(0.95), true
-	case hasWpAssets:
-		return Confidence(0.90), true
-	case hasWpCookie:
-		return Confidence(0.90), true
-	default:
-		return 0, false
-	}
+	return hasGeneratorMeta || hasWpAssets || hasWpCookie
 }

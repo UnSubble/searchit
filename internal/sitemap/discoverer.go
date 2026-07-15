@@ -116,35 +116,30 @@ func (d *Discoverer) processSitemap(ctx context.Context, sitemapURLStr string, i
 		if fp != nil {
 			if item.IsSitemap {
 				fp.AddSignal(fingerprint.Signal{
-					Source:     "sitemap:index",
-					Value:      resolvedURL.String(),
-					Confidence: fingerprint.Confidence(1.0),
+					Source: "sitemap:index",
+					Value:  resolvedURL.String(),
 				})
 			} else {
 				fp.AddSignal(fingerprint.Signal{
-					Source:     "sitemap:url",
-					Value:      resolvedURL.String(),
-					Confidence: fingerprint.Confidence(1.0),
+					Source: "sitemap:url",
+					Value:  resolvedURL.String(),
 				})
 				if item.LastMod != "" {
 					fp.AddSignal(fingerprint.Signal{
-						Source:     "sitemap:lastmod",
-						Value:      resolvedURL.String() + "|" + item.LastMod,
-						Confidence: fingerprint.Confidence(1.0),
+						Source: "sitemap:lastmod",
+						Value:  resolvedURL.String() + "|" + item.LastMod,
 					})
 				}
 				if item.ChangeFreq != "" {
 					fp.AddSignal(fingerprint.Signal{
-						Source:     "sitemap:changefreq",
-						Value:      resolvedURL.String() + "|" + item.ChangeFreq,
-						Confidence: fingerprint.Confidence(1.0),
+						Source: "sitemap:changefreq",
+						Value:  resolvedURL.String() + "|" + item.ChangeFreq,
 					})
 				}
 				if item.Priority != "" {
 					fp.AddSignal(fingerprint.Signal{
-						Source:     "sitemap:priority",
-						Value:      resolvedURL.String() + "|" + item.Priority,
-						Confidence: fingerprint.Confidence(1.0),
+						Source: "sitemap:priority",
+						Value:  resolvedURL.String() + "|" + item.Priority,
 					})
 				}
 			}

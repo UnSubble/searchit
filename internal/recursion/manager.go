@@ -342,9 +342,8 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 				source = "robots:disallow"
 			}
 			fp.AddSignal(fingerprint.Signal{
-				Source:     source,
-				Value:      dir.Path,
-				Confidence: fingerprint.Confidence(1.0),
+				Source: source,
+				Value:  dir.Path,
 			})
 		}
 

@@ -80,23 +80,20 @@ func detectHTML(ctx *Context, fp *Fingerprint) {
 						v := string(vBytes)
 						if isGeneralAttr {
 							fp.AddSignal(Signal{
-								Source:     "html:attr:" + string(kBytes),
-								Value:      v,
-								Confidence: Confidence(1.0),
+								Source: "html:attr:" + string(kBytes),
+								Value:  v,
 							})
 						} else if isPrefixedAttr {
 							fp.AddSignal(Signal{
-								Source:     "html:attr:" + string(kBytes),
-								Value:      v,
-								Confidence: Confidence(1.0),
+								Source: "html:attr:" + string(kBytes),
+								Value:  v,
 							})
 						} else if isId {
 							vLower := strings.ToLower(strings.TrimSpace(v))
 							if vLower == "app" || vLower == "root" || vLower == "__next" || vLower == "__nuxt" || vLower == "main" {
 								fp.AddSignal(Signal{
-									Source:     "html:id",
-									Value:      v,
-									Confidence: Confidence(1.0),
+									Source: "html:id",
+									Value:  v,
 								})
 							}
 						} else if isMeta {
@@ -138,54 +135,47 @@ func detectHTML(ctx *Context, fp *Fingerprint) {
 			if isMeta {
 				if metaName != "" && metaContent != "" {
 					fp.AddSignal(Signal{
-						Source:     "html:meta:name:" + strings.ToLower(metaName),
-						Value:      metaContent,
-						Confidence: Confidence(1.0),
+						Source: "html:meta:name:" + strings.ToLower(metaName),
+						Value:  metaContent,
 					})
 				}
 				if metaHttpEquiv != "" && metaContent != "" {
 					fp.AddSignal(Signal{
-						Source:     "html:meta:http-equiv:" + strings.ToLower(metaHttpEquiv),
-						Value:      metaContent,
-						Confidence: Confidence(1.0),
+						Source: "html:meta:http-equiv:" + strings.ToLower(metaHttpEquiv),
+						Value:  metaContent,
 					})
 				}
 				if metaProperty != "" && metaContent != "" {
 					fp.AddSignal(Signal{
-						Source:     "html:meta:property:" + strings.ToLower(metaProperty),
-						Value:      metaContent,
-						Confidence: Confidence(1.0),
+						Source: "html:meta:property:" + strings.ToLower(metaProperty),
+						Value:  metaContent,
 					})
 				}
 				if metaCharset != "" {
 					fp.AddSignal(Signal{
-						Source:     "html:meta:charset",
-						Value:      metaCharset,
-						Confidence: Confidence(1.0),
+						Source: "html:meta:charset",
+						Value:  metaCharset,
 					})
 				}
 			} else if isLink {
 				if linkHref != "" && (linkRel == "stylesheet" || linkRel == "icon" || linkRel == "shortcut icon" || linkRel == "preload") {
 					fp.AddSignal(Signal{
-						Source:     "html:link:" + linkRel,
-						Value:      linkHref,
-						Confidence: Confidence(1.0),
+						Source: "html:link:" + linkRel,
+						Value:  linkHref,
 					})
 				}
 			} else if isScript {
 				if scriptSrc != "" {
 					fp.AddSignal(Signal{
-						Source:     "html:script",
-						Value:      scriptSrc,
-						Confidence: Confidence(1.0),
+						Source: "html:script",
+						Value:  scriptSrc,
 					})
 				}
 			} else if isBase {
 				if baseHref != "" {
 					fp.AddSignal(Signal{
-						Source:     "html:base",
-						Value:      baseHref,
-						Confidence: Confidence(1.0),
+						Source: "html:base",
+						Value:  baseHref,
 					})
 				}
 			}
@@ -200,9 +190,8 @@ func detectHTML(ctx *Context, fp *Fingerprint) {
 							commentVal = commentVal[:253] + "..."
 						}
 						fp.AddSignal(Signal{
-							Source:     "html:comment",
-							Value:      commentVal,
-							Confidence: Confidence(1.0),
+							Source: "html:comment",
+							Value:  commentVal,
 						})
 					}
 				}

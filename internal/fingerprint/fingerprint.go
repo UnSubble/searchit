@@ -2,14 +2,6 @@ package fingerprint
 
 import "sync"
 
-// Confidence is a detection confidence score in the range [0, 1].
-// 0 means no evidence; 1 means certain.
-//
-// float32 is used intentionally: sub-percent precision is not meaningful for
-// detection confidence, and the smaller width reduces struct size when many
-// signals accumulate per fingerprint.
-type Confidence float32
-
 // Signal is a single labeled observation contributed by a detector.
 //
 // Source identifies which detector produced the signal, using a colon-separated
@@ -20,15 +12,11 @@ type Confidence float32
 // extracted token). It is stored as-is; normalization is the caller's
 // responsibility.
 //
-// Confidence reflects how certain the detector is that Value indicates the
-// presence of a technology or characteristic.
-//
 // Signal is a value type. It is copied when passed to AddSignal, so callers
 // do not need to retain it after the call.
 type Signal struct {
-	Source     string
-	Value      string
-	Confidence Confidence
+	Source string
+	Value  string
 }
 
 // Fingerprint accumulates observations about a single target over the lifetime

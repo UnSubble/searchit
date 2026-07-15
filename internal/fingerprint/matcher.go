@@ -21,14 +21,14 @@ func (m *Matcher) Match(fp *Fingerprint) []Technology {
 
 	// Statically call each technology rule.
 	// As new rules are added, register them here.
-	if conf, ok := matchLaravel(signals); ok {
-		results = append(results, Technology{Name: "Laravel", Confidence: conf})
+	if matchLaravel(signals) {
+		results = append(results, Technology{Name: "Laravel"})
 	}
-	if conf, ok := matchWordPress(signals); ok {
-		results = append(results, Technology{Name: "WordPress", Confidence: conf})
+	if matchWordPress(signals) {
+		results = append(results, Technology{Name: "WordPress"})
 	}
-	if conf, ok := matchReact(signals); ok {
-		results = append(results, Technology{Name: "React", Confidence: conf})
+	if matchReact(signals) {
+		results = append(results, Technology{Name: "React"})
 	}
 
 	return results

@@ -45,9 +45,8 @@ func TestEngine_Analyze_UsesExistingFingerprint(t *testing.T) {
 
 	fpExisting := cache.GetOrCreate("example.com")
 	fpExisting.AddSignal(fingerprint.Signal{
-		Source:     "test",
-		Value:      "pre-existing",
-		Confidence: fingerprint.Confidence(1.0),
+		Source: "test",
+		Value:  "pre-existing",
 	})
 
 	ctx := &fingerprint.Context{
@@ -87,8 +86,8 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				"X-Powered-By": []string{"PHP/7.4.3"},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "header:Server", Value: "Apache/2.4.41", Confidence: 1.0},
-				{Source: "header:X-Powered-By", Value: "PHP/7.4.3", Confidence: 1.0},
+				{Source: "header:Server", Value: "Apache/2.4.41"},
+				{Source: "header:X-Powered-By", Value: "PHP/7.4.3"},
 			},
 		},
 		{
@@ -98,8 +97,8 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				"x-powered-by": []string{"Next.js"},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "header:Server", Value: "nginx", Confidence: 1.0},
-				{Source: "header:X-Powered-By", Value: "Next.js", Confidence: 1.0},
+				{Source: "header:Server", Value: "nginx"},
+				{Source: "header:X-Powered-By", Value: "Next.js"},
 			},
 		},
 		{
@@ -108,8 +107,8 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				"Via": []string{"1.1 vegur", "1.0 squid"},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "header:Via", Value: "1.1 vegur", Confidence: 1.0},
-				{Source: "header:Via", Value: "1.0 squid", Confidence: 1.0},
+				{Source: "header:Via", Value: "1.1 vegur"},
+				{Source: "header:Via", Value: "1.0 squid"},
 			},
 		},
 		{
@@ -119,7 +118,7 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				"X-Powered-By": []string{"Node.js"},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "header:X-Powered-By", Value: "Node.js", Confidence: 1.0},
+				{Source: "header:X-Powered-By", Value: "Node.js"},
 			},
 		},
 		{
@@ -130,7 +129,7 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				"Content-Length": []string{"42"},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "header:Server", Value: "IIS", Confidence: 1.0},
+				{Source: "header:Server", Value: "IIS"},
 			},
 		},
 		{
@@ -139,7 +138,7 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				"Set-Cookie": []string{"PHPSESSID=abc123xyz"},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "cookie", Value: "PHPSESSID", Confidence: 1.0},
+				{Source: "cookie", Value: "PHPSESSID"},
 			},
 		},
 		{
@@ -151,8 +150,8 @@ func TestEngine_Analyze_Headers(t *testing.T) {
 				},
 			},
 			wantSignals: []fingerprint.Signal{
-				{Source: "cookie", Value: "laravel_session", Confidence: 1.0},
-				{Source: "cookie", Value: "custom_cookie", Confidence: 1.0},
+				{Source: "cookie", Value: "laravel_session"},
+				{Source: "cookie", Value: "custom_cookie"},
 			},
 		},
 	}
@@ -228,7 +227,7 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 			path:        "/home.html",
 			body:        `<meta name="generator" content="WP">`,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:meta:name:generator", Value: "WP", Confidence: 1.0},
+				{Source: "html:meta:name:generator", Value: "WP"},
 			},
 		},
 		{
@@ -253,15 +252,15 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 				</html>
 			`,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:base", Value: "/subpath/", Confidence: 1.0},
-				{Source: "html:meta:name:generator", Value: "Hugo 0.80", Confidence: 1.0},
-				{Source: "html:meta:http-equiv:x-ua-compatible", Value: "IE=7", Confidence: 1.0},
-				{Source: "html:meta:property:og:type", Value: "website", Confidence: 1.0},
-				{Source: "html:meta:charset", Value: "utf-8", Confidence: 1.0},
-				{Source: "html:link:stylesheet", Value: "/style.css", Confidence: 1.0},
-				{Source: "html:link:icon", Value: "/favicon.png", Confidence: 1.0},
-				{Source: "html:script", Value: "/app.js", Confidence: 1.0},
-				{Source: "html:comment", Value: "build version: v1.0.4", Confidence: 1.0},
+				{Source: "html:base", Value: "/subpath/"},
+				{Source: "html:meta:name:generator", Value: "Hugo 0.80"},
+				{Source: "html:meta:http-equiv:x-ua-compatible", Value: "IE=7"},
+				{Source: "html:meta:property:og:type", Value: "website"},
+				{Source: "html:meta:charset", Value: "utf-8"},
+				{Source: "html:link:stylesheet", Value: "/style.css"},
+				{Source: "html:link:icon", Value: "/favicon.png"},
+				{Source: "html:script", Value: "/app.js"},
+				{Source: "html:comment", Value: "build version: v1.0.4"},
 			},
 		},
 		{
@@ -273,8 +272,8 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 				<link rel="icon" href="/icon.png">
 			`,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:meta:name:generator", Value: "Apache CMS", Confidence: 1.0},
-				{Source: "html:script", Value: "/broken.js", Confidence: 1.0},
+				{Source: "html:meta:name:generator", Value: "Apache CMS"},
+				{Source: "html:script", Value: "/broken.js"},
 			},
 		},
 		{
@@ -282,7 +281,7 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 			contentType: "text/html",
 			body:        `  <mEtA   NaMe = "GeNeRaToR"   CoNtEnT = "WordPress" /> `,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:meta:name:generator", Value: "WordPress", Confidence: 1.0},
+				{Source: "html:meta:name:generator", Value: "WordPress"},
 			},
 		},
 		{
@@ -293,8 +292,8 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 				<script src="/b.js"></script>
 			`,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:script", Value: "/a.js", Confidence: 1.0},
-				{Source: "html:script", Value: "/b.js", Confidence: 1.0},
+				{Source: "html:script", Value: "/a.js"},
+				{Source: "html:script", Value: "/b.js"},
 			},
 		},
 		{
@@ -315,8 +314,8 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 				<!-- This generator comment is very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very long -->
 			`,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:comment", Value: "author: John Doe", Confidence: 1.0},
-				{Source: "html:comment", Value: "This generator comment is very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very ve...", Confidence: 1.0},
+				{Source: "html:comment", Value: "author: John Doe"},
+				{Source: "html:comment", Value: "This generator comment is very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very ve..."},
 			},
 		},
 		{
@@ -330,11 +329,11 @@ func TestEngine_Analyze_HTML(t *testing.T) {
 				<main id="__next"></main>
 			`,
 			wantSignals: []fingerprint.Signal{
-				{Source: "html:id", Value: "app", Confidence: 1.0},
-				{Source: "html:attr:ng-version", Value: "12.0.1", Confidence: 1.0},
-				{Source: "html:attr:data-reactroot", Value: "", Confidence: 1.0},
-				{Source: "html:attr:data-v-34e892a", Value: "", Confidence: 1.0},
-				{Source: "html:id", Value: "__next", Confidence: 1.0},
+				{Source: "html:id", Value: "app"},
+				{Source: "html:attr:ng-version", Value: "12.0.1"},
+				{Source: "html:attr:data-reactroot", Value: ""},
+				{Source: "html:attr:data-v-34e892a", Value: ""},
+				{Source: "html:id", Value: "__next"},
 			},
 		},
 	}

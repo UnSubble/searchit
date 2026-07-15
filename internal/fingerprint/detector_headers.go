@@ -62,9 +62,8 @@ func detectHeaders(ctx *Context, fp *Fingerprint) {
 					continue
 				}
 				fp.AddSignal(Signal{
-					Source:     "header:" + h,
-					Value:      val,
-					Confidence: Confidence(1.0),
+					Source: "header:" + h,
+					Value:  val,
 				})
 			}
 		}
@@ -80,9 +79,8 @@ func detectHeaders(ctx *Context, fp *Fingerprint) {
 			cookieName := parseCookieName(val)
 			if cookieName != "" {
 				fp.AddSignal(Signal{
-					Source:     "cookie",
-					Value:      cookieName,
-					Confidence: Confidence(1.0),
+					Source: "cookie",
+					Value:  cookieName,
 				})
 			}
 		}

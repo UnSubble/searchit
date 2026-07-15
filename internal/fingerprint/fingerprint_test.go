@@ -28,8 +28,8 @@ func TestFingerprint_AddSignal_And_Signals(t *testing.T) {
 		t.Fatalf("Signals() len = %d, want 0 on a fresh fingerprint", n)
 	}
 
-	s1 := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.Confidence(0.75)}
-	s2 := fingerprint.Signal{Source: "cookie:name", Value: "PHPSESSID", Confidence: fingerprint.Confidence(0.50)}
+	s1 := fingerprint.Signal{Source: "header:Server", Value: "nginx"}
+	s2 := fingerprint.Signal{Source: "cookie:name", Value: "PHPSESSID"}
 	fp.AddSignal(s1)
 	fp.AddSignal(s2)
 
@@ -48,11 +48,11 @@ func TestFingerprint_AddSignal_And_Signals(t *testing.T) {
 func TestFingerprint_Signals_ReturnsCopy(t *testing.T) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("example.com")
-	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "PHP/8.1", Confidence: fingerprint.Confidence(0.75)})
+	fp.AddSignal(fingerprint.Signal{Source: "header:X-Powered-By", Value: "PHP/8.1"})
 
 	snap := fp.Signals()
 	// Mutate the returned slice; the fingerprint must be unaffected.
-	snap[0] = fingerprint.Signal{Source: "poisoned", Value: "poisoned", Confidence: 0}
+	snap[0] = fingerprint.Signal{Source: "poisoned", Value: "poisoned"}
 
 	after := fp.Signals()
 	if after[0].Source == "poisoned" {
@@ -74,9 +74,8 @@ func TestFingerprint_ConcurrentAddSignal(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < signalsEach; j++ {
 				fp.AddSignal(fingerprint.Signal{
-					Source:     fmt.Sprintf("worker:%d", id),
-					Value:      fmt.Sprintf("val-%d", j),
-					Confidence: fingerprint.Confidence(0.25),
+					Source: fmt.Sprintf("worker:%d", id),
+					Value:  fmt.Sprintf("val-%d", j),
 				})
 			}
 		}(i)
@@ -205,7 +204,7 @@ func TestFingerprint_Robustness(t *testing.T) {
 
 	// 2. Write identical signals repeatedly to ensure stability
 	const repetitions = 200
-	sig := fingerprint.Signal{Source: "test", Value: "duplicate", Confidence: 1.0}
+	sig := fingerprint.Signal{Source: "test", Value: "duplicate"}
 	for i := 0; i < repetitions; i++ {
 		fpEmpty.AddSignal(sig)
 	}
@@ -227,9 +226,8 @@ func TestFingerprint_Robustness(t *testing.T) {
 			for a := 0; a < actions; a++ {
 				fp := cache.GetOrCreate(fmt.Sprintf("host-%d.com", wID%3))
 				fp.AddSignal(fingerprint.Signal{
-					Source:     fmt.Sprintf("source-%d", a),
-					Value:      "value",
-					Confidence: 0.5,
+					Source: fmt.Sprintf("source-%d", a),
+					Value:  "value",
 				})
 			}
 		}(i)
@@ -267,7 +265,7 @@ func BenchmarkCache_GetOrCreate_Existing(b *testing.B) {
 func BenchmarkFingerprint_AddSignal(b *testing.B) {
 	cache := fingerprint.NewCache()
 	fp := cache.GetOrCreate("bench.example.com")
-	s := fingerprint.Signal{Source: "header:Server", Value: "nginx", Confidence: fingerprint.Confidence(0.75)}
+	s := fingerprint.Signal{Source: "header:Server", Value: "nginx"}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		fp.AddSignal(s)

@@ -3,7 +3,8 @@ package fingerprint
 import "strings"
 
 // matchLaravel evaluates signals for indicators of the Laravel framework.
-func matchLaravel(signals []Signal) (Confidence, bool) {
+// Returns true if any positive indicator is present and no exclusion applies.
+func matchLaravel(signals []Signal) bool {
 	var (
 		hasLaravelSession bool
 		hasLivewireScript bool
@@ -36,20 +37,8 @@ func matchLaravel(signals []Signal) (Confidence, bool) {
 
 	// Exclusions
 	if hasASPNetHeader {
-		return 0, false
+		return false
 	}
 
-	// Deterministic scoring hierarchy
-	switch {
-	case hasLaravelSession:
-		return Confidence(1.0), true
-	case hasLivewireScript && hasPHPHeader:
-		return Confidence(0.85), true
-	case hasLivewireScript:
-		return Confidence(0.70), true
-	case hasPHPHeader:
-		return Confidence(0.15), true
-	default:
-		return 0, false
-	}
+	return hasLaravelSession || hasLivewireScript || hasPHPHeader
 }

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
@@ -62,6 +62,45 @@ var (
 
 	testHookConfigApplied func(config.Config)
 )
+
+// techProfiles is the built-in registry of supported technology identifiers.
+// Keys are canonical lowercase IDs; values are human-readable display names.
+// Add new technologies here — no other file needs to change.
+var techProfiles = map[string]string{
+	"angular":   "Angular",
+	"aspnet":    "ASP.NET",
+	"django":    "Django",
+	"express":   "Express",
+	"flask":     "Flask",
+	"go":        "Go",
+	"laravel":   "Laravel",
+	"nextjs":    "Next.js",
+	"nuxt":      "Nuxt",
+	"react":     "React",
+	"spring":    "Spring Boot",
+	"vue":       "Vue",
+	"wordpress": "WordPress",
+}
+
+// lookupTech returns the config.TechProfile for the given ID (case-insensitive).
+func lookupTech(id string) (config.TechProfile, bool) {
+	key := strings.ToLower(strings.TrimSpace(id))
+	name, ok := techProfiles[key]
+	if !ok {
+		return config.TechProfile{}, false
+	}
+	return config.TechProfile{ID: key, DisplayName: name}, true
+}
+
+// supportedTechIDs returns a sorted, comma-separated list of supported tech IDs.
+func supportedTechIDs() string {
+	ids := make([]string, 0, len(techProfiles))
+	for id := range techProfiles {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ", ")
+}
 
 var scanCmd = &cobra.Command{
 	Use:   "scan",
@@ -165,10 +204,10 @@ var scanCmd = &cobra.Command{
 		}
 
 		if flagTech != "" {
-			if _, ok := adaptive.Lookup(flagTech); !ok {
+			if _, ok := lookupTech(flagTech); !ok {
 				return fmt.Errorf(
 					"unknown technology %q; supported values: %s",
-					flagTech, adaptive.SupportedIDs(),
+					flagTech, supportedTechIDs(),
 				)
 			}
 		}
@@ -553,7 +592,7 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 		cfg.ExcludeHeaders = parseHeaderFlags(flagExcludeHeaders)
 	}
 	if flagTech != "" {
-		if p, ok := adaptive.Lookup(flagTech); ok {
+		if p, ok := lookupTech(flagTech); ok {
 			cfg.TechProfile = &p
 		}
 	}
