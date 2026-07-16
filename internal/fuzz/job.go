@@ -8,6 +8,7 @@ type Job struct {
 	Method  string
 	Body    []byte
 	Headers http.Header
+	Cookies []*http.Cookie
 }
 
 // Result carries metadata produced by a fuzzed request execution.

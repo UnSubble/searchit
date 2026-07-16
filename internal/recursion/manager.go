@@ -40,6 +40,20 @@ type Manager struct {
 	limiter          *rate.Limiter
 	stats            *stats.Collector
 	fingerprintCache *fingerprint.Cache
+
+	// Request manipulation fields
+	method  string
+	body    []byte
+	headers http.Header
+	cookies []*http.Cookie
+}
+
+// SetRequestManipulation configures custom outbound request templates for scanning.
+func (m *Manager) SetRequestManipulation(method string, body []byte, headers http.Header, cookies []*http.Cookie) {
+	m.method = method
+	m.body = body
+	m.headers = headers
+	m.cookies = cookies
 }
 
 func NewManager(
@@ -134,6 +148,10 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			workers,
 			m.delay,
 			m.limiter,
+			m.method,
+			m.body,
+			m.headers,
+			m.cookies,
 			jobs,
 			m.stats,
 		)

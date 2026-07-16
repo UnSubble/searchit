@@ -1,8 +1,10 @@
 package httpclient
 
 import (
+	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -10,7 +12,7 @@ import (
 // MaxIdleConns and MaxIdleConnsPerHost are set high to avoid connection
 // starvation across many workers. IdleConnTimeout evicts connections before
 // the server can RST them on reuse.
-func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bool) *http.Client {
+func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, proxyURL string) *http.Client {
 	tr := &http.Transport{
 		MaxIdleConns:        1000,
 		MaxIdleConnsPerHost: 100,
@@ -20,6 +22,16 @@ func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bo
 			Timeout:   connectTimeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
+	}
+
+	if proxyURL != "" {
+		pURL, err := url.Parse(proxyURL)
+		if err != nil {
+			panic(fmt.Sprintf("invalid proxy URL %q: %v", proxyURL, err))
+		}
+		tr.Proxy = http.ProxyURL(pURL)
+	} else {
+		tr.Proxy = http.ProxyFromEnvironment
 	}
 
 	var checkRedirect func(req *http.Request, via []*http.Request) error

@@ -12,7 +12,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Start launches workers goroutines and returns a results channel that is
+// Start launches worker goroutines and returns a results channel that is
 // closed once every worker exits. The caller must close jobs to signal
 // completion and must drain results to avoid blocking workers.
 func Start(
@@ -24,6 +24,10 @@ func Start(
 	workers int,
 	delay time.Duration,
 	limiter *rate.Limiter,
+	method string,
+	body []byte,
+	headers http.Header,
+	cookies []*http.Cookie,
 	jobs <-chan Job,
 	collector *stats.Collector,
 ) <-chan Result {
@@ -35,7 +39,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, limiter, jobs, results, collector)
+			Worker(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, delay, limiter, method, body, headers, cookies, jobs, results, collector)
 		}()
 	}
 

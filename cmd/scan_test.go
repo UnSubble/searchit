@@ -433,8 +433,8 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 		"-s", "dfs",
 		"-x", "404,500",
 		"--format", "ndjson",
-		"-H", "Server=nginx",
-		"-H", "X-Header=val",
+		"--include-header", "Server=nginx",
+		"--include-header", "X-Header=val",
 	})
 
 	buf := new(bytes.Buffer)

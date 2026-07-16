@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -59,6 +61,12 @@ var (
 	flagTech            string
 	flagFollowRedirects bool
 	flagAdaptive        bool
+
+	flagScanMethod  string
+	flagScanData    string
+	flagScanHeaders []string
+	flagScanCookie  string
+	flagScanProxy   string
 
 	resolvedTargets []string
 
@@ -182,6 +190,23 @@ var scanCmd = &cobra.Command{
 		for _, h := range flagExcludeHeaders {
 			if err := validateHeaderFlag(h); err != nil {
 				return fmt.Errorf("invalid exclude-header: %w", err)
+			}
+		}
+
+		for _, h := range flagScanHeaders {
+			idx := strings.Index(h, "=")
+			if idx == -1 {
+				idx = strings.Index(h, ":")
+			}
+			if idx <= 0 || idx == len(h)-1 {
+				return fmt.Errorf("invalid header %q: must be in Name: Value or Name=Value format", h)
+			}
+		}
+
+		if flagScanProxy != "" {
+			// Try parsing as url
+			if _, err := url.Parse(flagScanProxy); err != nil {
+				return fmt.Errorf("invalid proxy URL %q: %w", flagScanProxy, err)
 			}
 		}
 
@@ -346,6 +371,12 @@ var scanCmd = &cobra.Command{
 			limiter = rate.NewLimiter(rate.Limit(cfg.Rate), 1)
 		}
 
+		customHeaders, err := parseFuzzHeaderFlags(cfg.Headers)
+		if err != nil {
+			return err
+		}
+		parsedCookies := parseCookies(cfg.Cookies)
+
 		for _, targetURL := range cfg.URLs {
 			if cfg.OutputFormat == "text" {
 				fmt.Printf("[*] Target: %s\n", targetURL)
@@ -437,6 +468,7 @@ var scanCmd = &cobra.Command{
 					limiter,
 					fpCache,
 				)
+				manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, parsedCookies)
 				manager.SetStats(collector)
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
@@ -461,6 +493,10 @@ var scanCmd = &cobra.Command{
 					cfg.Threads,
 					cfg.Delay,
 					limiter,
+					cfg.Method,
+					[]byte(cfg.Data),
+					customHeaders,
+					parsedCookies,
 					jobs,
 					collector,
 				)
@@ -598,6 +634,21 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("exclude-header") {
 		cfg.ExcludeHeaders = parseHeaderFlags(flagExcludeHeaders)
 	}
+	if cmd.Flags().Changed("method") {
+		cfg.Method = flagScanMethod
+	}
+	if cmd.Flags().Changed("data") {
+		cfg.Data = flagScanData
+	}
+	if cmd.Flags().Changed("header") {
+		cfg.Headers = flagScanHeaders
+	}
+	if cmd.Flags().Changed("cookie") {
+		cfg.Cookies = flagScanCookie
+	}
+	if cmd.Flags().Changed("proxy") {
+		cfg.Proxy = flagScanProxy
+	}
 	if flagTech != "" {
 		if p, ok := lookupTech(flagTech); ok {
 			cfg.TechProfile = &p
@@ -733,10 +784,9 @@ func init() {
 		"comma-separated content sizes to exclude (e.g. 0,123)",
 	)
 
-	scanCmd.Flags().StringSliceVarP(
+	scanCmd.Flags().StringSliceVar(
 		&flagIncludeHeaders,
 		"include-header",
-		"H",
 		nil,
 		"HTTP headers to include (e.g. Server=nginx)",
 	)
@@ -818,6 +868,12 @@ func init() {
 		false,
 		"enable adaptive scanning (technology detection and path injection)",
 	)
+
+	scanCmd.Flags().StringVarP(&flagScanMethod, "method", "X", "GET", "HTTP method to use for requests")
+	scanCmd.Flags().StringVar(&flagScanData, "data", "", "POST data body to use for requests")
+	scanCmd.Flags().StringSliceVarP(&flagScanHeaders, "header", "H", nil, "HTTP request headers to send (e.g. -H 'Authorization: Bearer X')")
+	scanCmd.Flags().StringVarP(&flagScanCookie, "cookie", "b", "", "HTTP request cookies to send (e.g. -b 'session=123')")
+	scanCmd.Flags().StringVar(&flagScanProxy, "proxy", "", "HTTP proxy URL to use for requests")
 }
 
 func validateHeaderFlag(val string) error {
@@ -871,4 +927,13 @@ func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
 		return false
 	}
 	return true
+}
+
+func parseCookies(cookieStr string) []*http.Cookie {
+	if cookieStr == "" {
+		return nil
+	}
+	header := http.Header{"Cookie": []string{cookieStr}}
+	req := &http.Request{Header: header}
+	return req.Cookies()
 }

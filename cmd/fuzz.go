@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -42,6 +43,8 @@ var (
 	flagFuzzQuiet       bool
 	flagFuzzDelay       string
 	flagFuzzRate        float64
+	flagFuzzCookie      string
+	flagFuzzProxy       string
 )
 
 var fuzzCmd = &cobra.Command{
@@ -138,6 +141,12 @@ var fuzzCmd = &cobra.Command{
 			}
 		}
 
+		if flagFuzzProxy != "" {
+			if _, err := url.Parse(flagFuzzProxy); err != nil {
+				return fmt.Errorf("invalid proxy URL %q: %w", flagFuzzProxy, err)
+			}
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -154,6 +163,7 @@ var fuzzCmd = &cobra.Command{
 		cfg.Threads = flagFuzzThreads
 		cfg.Timeout = time.Duration(flagFuzzTimeout) * time.Second
 		cfg.Quiet = flagFuzzQuiet
+		cfg.Proxy = flagFuzzProxy
 
 		if flagFuzzExcludeStat != "" {
 			exclude, _ := status.Parse(flagFuzzExcludeStat)
@@ -249,6 +259,7 @@ var fuzzCmd = &cobra.Command{
 			strings.ToUpper(flagFuzzMethod),
 			flagFuzzData,
 			headers,
+			flagFuzzCookie,
 			fooWords,
 			barWords,
 			buzzWords,
@@ -354,4 +365,6 @@ func init() {
 	fuzzCmd.Flags().BoolVarP(&flagFuzzQuiet, "quiet", "q", false, "disable status prefix printing in stdout")
 	fuzzCmd.Flags().StringVar(&flagFuzzDelay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	fuzzCmd.Flags().Float64Var(&flagFuzzRate, "rate", 0, "maximum requests per second rate limit")
+	fuzzCmd.Flags().StringVarP(&flagFuzzCookie, "cookie", "b", "", "HTTP request cookies with placeholders")
+	fuzzCmd.Flags().StringVar(&flagFuzzProxy, "proxy", "", "HTTP proxy URL to use for requests")
 }

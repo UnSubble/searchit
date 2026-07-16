@@ -12,6 +12,7 @@ type Generator struct {
 	method          string
 	bodyTemplate    string
 	headerTemplates http.Header
+	cookieTemplate  string
 
 	fooWords  []string
 	barWords  []string
@@ -24,6 +25,7 @@ func NewGenerator(
 	method string,
 	bodyTemplate string,
 	headerTemplates http.Header,
+	cookieTemplate string,
 	fooWords []string,
 	barWords []string,
 	buzzWords []string,
@@ -36,10 +38,20 @@ func NewGenerator(
 		method:          method,
 		bodyTemplate:    bodyTemplate,
 		headerTemplates: headerTemplates,
+		cookieTemplate:  cookieTemplate,
 		fooWords:        fooWords,
 		barWords:        barWords,
 		buzzWords:       buzzWords,
 	}
+}
+
+func parseCookies(cookieStr string) []*http.Cookie {
+	if cookieStr == "" {
+		return nil
+	}
+	header := http.Header{"Cookie": []string{cookieStr}}
+	req := &http.Request{Header: header}
+	return req.Cookies()
 }
 
 // Generate streams fuzzed jobs to the jobs channel.
@@ -107,6 +119,12 @@ func (g *Generator) generatePermutations(
 					headers[newK] = newValues
 				}
 
+				var cookies []*http.Cookie
+				if g.cookieTemplate != "" {
+					cookieStr := g.replacePlaceholders(g.cookieTemplate, fuzzVal, fooVal, barVal, buzzVal)
+					cookies = parseCookies(cookieStr)
+				}
+
 				select {
 				case <-ctx.Done():
 					return
@@ -115,6 +133,7 @@ func (g *Generator) generatePermutations(
 					Method:  g.method,
 					Body:    bodyBytes,
 					Headers: headers,
+					Cookies: cookies,
 				}:
 				}
 			}

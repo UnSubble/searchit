@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -48,6 +49,10 @@ func Worker(
 	incHeaders, excHeaders []HeaderFilter,
 	delay time.Duration,
 	limiter *rate.Limiter,
+	method string,
+	body []byte,
+	headers http.Header,
+	cookies []*http.Cookie,
 	jobs <-chan Job,
 	results chan<- Result,
 	collector *stats.Collector,
@@ -72,7 +77,7 @@ func Worker(
 			}
 		}
 
-		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, job, results, collector)
+		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, method, body, headers, cookies, job, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 		if delay > 0 {
@@ -92,6 +97,10 @@ func process(
 	exclude status.Filters,
 	incSize, excSize size.Filters,
 	incHeaders, excHeaders []HeaderFilter,
+	method string,
+	body []byte,
+	headers http.Header,
+	cookies []*http.Cookie,
 	job Job,
 	results chan<- Result,
 	collector *stats.Collector,
@@ -100,7 +109,15 @@ func process(
 		collector.RecordRequestSent()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.URL, nil)
+	if method == "" {
+		method = http.MethodGet
+	}
+	var bodyReader io.Reader
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, job.URL, bodyReader)
 	if err != nil {
 		if collector != nil {
 			collector.RecordRequestFailed()
@@ -114,6 +131,16 @@ func process(
 		})
 		return
 	}
+
+	for k, values := range headers {
+		for _, v := range values {
+			req.Header.Add(k, v)
+		}
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)
 
 	startTime := time.Now()

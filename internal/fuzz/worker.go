@@ -114,6 +114,10 @@ func process(
 		}
 	}
 
+	for _, c := range job.Cookies {
+		req.AddCookie(c)
+	}
+
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)
 
 	startTime := time.Now()

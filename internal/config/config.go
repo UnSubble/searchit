@@ -49,6 +49,13 @@ type Config struct {
 
 	Status StatusConfig
 
+	// Request Manipulation fields
+	Method  string
+	Data    string
+	Headers []string
+	Cookies string
+	Proxy   string
+
 	// TechProfile is the explicitly-selected technology profile (--tech flag).
 	// A nil value means no explicit selection; automatic detection applies.
 	TechProfile *TechProfile
