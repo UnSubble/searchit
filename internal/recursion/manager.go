@@ -249,6 +249,10 @@ func (m *Manager) handleResult(
 		return
 	}
 
+	if result.Depth >= m.maxDepth {
+		return
+	}
+
 	// Laravel detection and path injection
 	if m.fingerprintCache != nil {
 		parsed, err := url.Parse(result.URL)
@@ -295,9 +299,6 @@ func (m *Manager) handleResult(
 		}
 	}
 
-	if result.Depth >= m.maxDepth {
-		return
-	}
 	if !m.recurseOn.Match(result.StatusCode) {
 		return
 	}

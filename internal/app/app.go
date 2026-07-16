@@ -37,15 +37,13 @@ func (f *fingerprintRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 
 	var bodyBytes []byte
 	if resp.Body != nil {
-		// Read up to 4096 bytes for fingerprinting
+		// Read up to 4096 bytes for fingerprinting (ignoring error, just grab what is available)
 		limitReader := io.LimitReader(resp.Body, 4096)
-		bodyBytes, err = io.ReadAll(limitReader)
-		if err == nil {
-			// Restore body so other code can read it from the start
-			resp.Body = &readCloser{
-				Reader: io.MultiReader(bytes.NewReader(bodyBytes), resp.Body),
-				Closer: resp.Body,
-			}
+		bodyBytes, _ = io.ReadAll(limitReader)
+		// Restore body so other code can read it from the start
+		resp.Body = &readCloser{
+			Reader: io.MultiReader(bytes.NewReader(bodyBytes), resp.Body),
+			Closer: resp.Body,
 		}
 	}
 

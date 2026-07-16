@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
@@ -32,7 +33,6 @@ func (r testStaticReader) Read(ctx context.Context, out chan<- string) error {
 }
 
 func TestAdaptive_DisabledByDefault(t *testing.T) {
-	// Start a test server that returns laravel_session cookie on root request
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			w.Header().Add("Set-Cookie", "laravel_session=xyz123abc; Path=/; HttpOnly")
@@ -41,7 +41,6 @@ func TestAdaptive_DisabledByDefault(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	// config.Default() must have Adaptive = false by default
 	cfg := config.Default()
 	cfg.Recursive = true
 	cfg.MaxDepth = 2
@@ -62,7 +61,7 @@ func TestAdaptive_DisabledByDefault(t *testing.T) {
 		nil,
 		0,
 		nil,
-		a.FingerprintCache, // Will be nil since cfg.Adaptive is false
+		a.FingerprintCache,
 	)
 
 	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
@@ -92,7 +91,7 @@ func TestAdaptive_EnabledExplicitly(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := config.Default()
-	cfg.Adaptive = true // Explicitly enabled
+	cfg.Adaptive = true
 	cfg.Recursive = true
 	cfg.MaxDepth = 2
 
@@ -202,10 +201,11 @@ func TestAdaptive_DeduplicationAndDuplicateDiscoveries(t *testing.T) {
 	cfg.MaxDepth = 2
 
 	a := app.New(context.Background(), cfg)
+	// Wordlist has ".env" and "artisan" as duplicates to test deduplication.
 	m := recursion.NewManager(
 		a.HTTPClient,
 		cfg.Status.Exclude,
-		testStaticReader{words: []string{".env", "artisan"}},
+		testStaticReader{words: []string{".env", "artisan", ".env", "artisan"}},
 		recursion.BFS,
 		cfg.MaxDepth,
 		cfg.RecurseOn,
@@ -313,7 +313,8 @@ func TestAdaptive_MultiTargetIsolation(t *testing.T) {
 }
 
 func TestAdaptive_WorkerCountsDeterminism(t *testing.T) {
-	workerCounts := []int{1, 2, 4, 8, 16, 32, 64}
+	// Worker counts: 1, 2, 4, 8, 16, 32, 64, 128
+	workerCounts := []int{1, 2, 4, 8, 16, 32, 64, 128}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
@@ -419,6 +420,372 @@ func TestAdaptive_Redirects(t *testing.T) {
 	}
 }
 
+func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			w.Header().Add("Set-Cookie", "laravel_session=xyz123abc; Path=/; HttpOnly")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	// 1. MaxDepth = 0 boundary check (programmatic edge case)
+	{
+		cfg := config.Default()
+		cfg.Adaptive = true
+		cfg.Recursive = true
+		cfg.MaxDepth = 0
+
+		a := app.New(context.Background(), cfg)
+		m := recursion.NewManager(
+			a.HTTPClient,
+			cfg.Status.Exclude,
+			testStaticReader{words: []string{"somepath"}},
+			recursion.BFS,
+			cfg.MaxDepth,
+			cfg.RecurseOn,
+			false,
+			false,
+			nil,
+			nil,
+			nil,
+			nil,
+			0,
+			nil,
+			a.FingerprintCache,
+		)
+
+		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
+		var results []engine.Result
+		for r := range resChan {
+			results = append(results, r)
+		}
+
+		// With MaxDepth = 0, only the seed URL itself should be scanned.
+		if len(results) != 1 {
+			t.Errorf("Expected exactly 1 result for MaxDepth=0, got %d: %+v", len(results), results)
+		}
+	}
+
+	// 2. MaxDepth = 1 boundary check
+	{
+		cfg := config.Default()
+		cfg.Adaptive = true
+		cfg.Recursive = true
+		cfg.MaxDepth = 1
+
+		a := app.New(context.Background(), cfg)
+		m := recursion.NewManager(
+			a.HTTPClient,
+			cfg.Status.Exclude,
+			testStaticReader{words: []string{"somepath"}},
+			recursion.BFS,
+			cfg.MaxDepth,
+			cfg.RecurseOn,
+			false,
+			false,
+			nil,
+			nil,
+			nil,
+			nil,
+			0,
+			nil,
+			a.FingerprintCache,
+		)
+
+		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
+		var results []engine.Result
+		for r := range resChan {
+			results = append(results, r)
+		}
+
+		// Root (0) + wordlist (1) + 5 injected paths (1) = 7 results.
+		if len(results) != 7 {
+			t.Errorf("Expected exactly 7 results for MaxDepth=1, got %d: %+v", len(results), results)
+		}
+	}
+
+	// 3. MaxDepth = 2 boundary check
+	{
+		cfg := config.Default()
+		cfg.Adaptive = true
+		cfg.Recursive = true
+		cfg.MaxDepth = 2
+
+		a := app.New(context.Background(), cfg)
+		m := recursion.NewManager(
+			a.HTTPClient,
+			cfg.Status.Exclude,
+			testStaticReader{words: []string{"somepath"}},
+			recursion.BFS,
+			cfg.MaxDepth,
+			cfg.RecurseOn,
+			false,
+			false,
+			nil,
+			nil,
+			nil,
+			nil,
+			0,
+			nil,
+			a.FingerprintCache,
+		)
+
+		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
+		var results []engine.Result
+		for r := range resChan {
+			results = append(results, r)
+		}
+
+		// Root (1) + depth-1 wordlist/injected (6) + depth-2 recursion (6) = 13 results.
+		if len(results) != 13 {
+			t.Errorf("Expected exactly 13 results for MaxDepth=2, got %d: %+v", len(results), results)
+		}
+	}
+}
+
+func TestAdaptive_BFS_DFS(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			w.Header().Add("Set-Cookie", "laravel_session=xyz123abc; Path=/; HttpOnly")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	strategies := []recursion.Strategy{recursion.BFS, recursion.DFS}
+	for _, strat := range strategies {
+		cfg := config.Default()
+		cfg.Adaptive = true
+		cfg.Recursive = true
+		cfg.MaxDepth = 1
+
+		a := app.New(context.Background(), cfg)
+		m := recursion.NewManager(
+			a.HTTPClient,
+			cfg.Status.Exclude,
+			testStaticReader{words: []string{"somepath"}},
+			strat,
+			cfg.MaxDepth,
+			cfg.RecurseOn,
+			false,
+			false,
+			nil,
+			nil,
+			nil,
+			nil,
+			0,
+			nil,
+			a.FingerprintCache,
+		)
+
+		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
+		var results []engine.Result
+		for r := range resChan {
+			results = append(results, r)
+		}
+
+		if len(results) != 7 {
+			t.Errorf("Strategy %s: expected 7 results, got %d", strat.String(), len(results))
+		}
+	}
+}
+
+func TestAdaptive_Cancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			w.Header().Add("Set-Cookie", "laravel_session=xyz123abc; Path=/; HttpOnly")
+		}
+		// Slow down response to allow cancellation to intercept
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Adaptive = true
+	cfg.Recursive = true
+	cfg.MaxDepth = 2
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a := app.New(ctx, cfg)
+	m := recursion.NewManager(
+		a.HTTPClient,
+		cfg.Status.Exclude,
+		testStaticReader{words: []string{"path1", "path2", "path3"}},
+		recursion.BFS,
+		cfg.MaxDepth,
+		cfg.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		a.FingerprintCache,
+	)
+
+	resChan := m.Run(ctx, []string{srv.URL}, 4)
+
+	// Trigger cancellation immediately after reading first result
+	var results []engine.Result
+	for r := range resChan {
+		results = append(results, r)
+		cancel() // Cancel context
+	}
+
+	// Verify the scan terminated early and didn't hang
+	if len(results) == 13 {
+		t.Error("Scan did not terminate early despite context cancellation")
+	}
+}
+
+func TestAdaptive_EmptyWordlist(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			w.Header().Add("Set-Cookie", "laravel_session=xyz123abc; Path=/; HttpOnly")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Adaptive = true
+	cfg.Recursive = true
+	cfg.MaxDepth = 2
+
+	a := app.New(context.Background(), cfg)
+	// Empty wordlist
+	m := recursion.NewManager(
+		a.HTTPClient,
+		cfg.Status.Exclude,
+		testStaticReader{words: []string{}},
+		recursion.BFS,
+		cfg.MaxDepth,
+		cfg.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		a.FingerprintCache,
+	)
+
+	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
+	var results []engine.Result
+	for r := range resChan {
+		results = append(results, r)
+	}
+
+	// Should have root (1) + 5 Laravel paths = 6 results (wordlist is empty, so no depth 2 wordlist additions).
+	if len(results) != 6 {
+		t.Errorf("Expected 6 results for empty wordlist adaptive scan, got %d: %+v", len(results), results)
+	}
+}
+
+func TestAdaptive_RobotsSitemapFailures(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/robots.txt" || r.URL.Path == "/sitemap.xml" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.URL.Path == "/" {
+			w.Header().Add("Set-Cookie", "laravel_session=xyz123abc; Path=/; HttpOnly")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Adaptive = true
+	cfg.Recursive = true
+	cfg.MaxDepth = 1
+
+	a := app.New(context.Background(), cfg)
+	m := recursion.NewManager(
+		a.HTTPClient,
+		cfg.Status.Exclude,
+		testStaticReader{words: []string{"somepath"}},
+		recursion.BFS,
+		cfg.MaxDepth,
+		cfg.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		a.FingerprintCache,
+	)
+
+	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
+	var results []engine.Result
+	for r := range resChan {
+		results = append(results, r)
+	}
+
+	// Scan should succeed despite robots/sitemap 500 errors, and still inject Laravel paths (total 7 results).
+	if len(results) != 7 {
+		t.Errorf("Expected 7 results, got %d: %+v", len(results), results)
+	}
+}
+
+func TestAdaptive_SchedulerStarvation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := config.Default()
+	cfg.Adaptive = true
+	cfg.Recursive = true
+	cfg.MaxDepth = 1
+
+	a := app.New(context.Background(), cfg)
+	m := recursion.NewManager(
+		a.HTTPClient,
+		cfg.Status.Exclude,
+		testStaticReader{words: []string{}},
+		recursion.BFS,
+		cfg.MaxDepth,
+		cfg.RecurseOn,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		nil,
+		0,
+		nil,
+		a.FingerprintCache,
+	)
+
+	// Run with 128 workers on empty wordlist. Verify it completes instantly and does not hang.
+	done := make(chan struct{})
+	go func() {
+		resChan := m.Run(context.Background(), []string{srv.URL}, 128)
+		for range resChan {
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Error("Starvation/Hang detected: scan did not complete within 1 second under 128 workers")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
@@ -500,6 +867,56 @@ func BenchmarkAdaptive_PathInjectionOverhead(b *testing.B) {
 					Origin: "adaptive",
 				})
 			}
+		}
+	}
+}
+
+func BenchmarkAdaptive_BFS_Overhead(b *testing.B) {
+	// Compare BFS overhead with adaptive scanning enabled
+	runStrategyBenchmark(b, recursion.BFS, true)
+}
+
+func BenchmarkAdaptive_DFS_Overhead(b *testing.B) {
+	// Compare DFS overhead with adaptive scanning enabled
+	runStrategyBenchmark(b, recursion.DFS, true)
+}
+
+func runStrategyBenchmark(b *testing.B, strategy recursion.Strategy, adaptive bool) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.Adaptive = adaptive
+	cfg.Recursive = true
+	cfg.MaxDepth = 1
+
+	a := app.New(context.Background(), cfg)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		m := recursion.NewManager(
+			a.HTTPClient,
+			cfg.Status.Exclude,
+			testStaticReader{words: []string{"w1", "w2", "w3", "w4", "w5"}},
+			strategy,
+			cfg.MaxDepth,
+			cfg.RecurseOn,
+			false,
+			false,
+			nil,
+			nil,
+			nil,
+			nil,
+			0,
+			nil,
+			a.FingerprintCache,
+		)
+		ch := m.Run(context.Background(), []string{srv.URL}, 4)
+		for range ch {
 		}
 	}
 }
