@@ -1,0 +1,357 @@
+package cmd
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/unsubble/searchit/internal/app"
+	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/fuzz"
+	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/stats"
+	"github.com/unsubble/searchit/internal/status"
+	"github.com/unsubble/searchit/internal/wordlist"
+	"golang.org/x/time/rate"
+)
+
+var (
+	flagFuzzURL         string
+	flagFuzzWordlist    string
+	flagFuzzFoo         string
+	flagFuzzBar         string
+	flagFuzzBuzz        string
+	flagFuzzMethod      string
+	flagFuzzData        string
+	flagFuzzHeaders     []string
+	flagFuzzThreads     int
+	flagFuzzTimeout     int
+	flagFuzzExcludeStat string
+	flagFuzzIncSize     string
+	flagFuzzExcSize     string
+	flagFuzzOutput      string
+	flagFuzzFormat      string
+	flagFuzzQuiet       bool
+	flagFuzzDelay       string
+	flagFuzzRate        float64
+)
+
+var fuzzCmd = &cobra.Command{
+	Use:   "fuzz",
+	Short: "Fuzz parameters, paths, subdomains and bodies",
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if flagFuzzURL == "" {
+			return fmt.Errorf("target URL is required (use -u or --url)")
+		}
+		if flagFuzzThreads < 1 {
+			return fmt.Errorf("threads must be at least 1")
+		}
+
+		// Ensure that at least one placeholder wordlist is provided
+		hasPlaceholder := strings.Contains(flagFuzzURL, "FUZZ") ||
+			strings.Contains(flagFuzzURL, "FOO") ||
+			strings.Contains(flagFuzzURL, "BAR") ||
+			strings.Contains(flagFuzzURL, "BUZZ") ||
+			strings.Contains(flagFuzzData, "FUZZ") ||
+			strings.Contains(flagFuzzData, "FOO") ||
+			strings.Contains(flagFuzzData, "BAR") ||
+			strings.Contains(flagFuzzData, "BUZZ")
+
+		for _, h := range flagFuzzHeaders {
+			if strings.Contains(h, "FUZZ") || strings.Contains(h, "FOO") || strings.Contains(h, "BAR") || strings.Contains(h, "BUZZ") {
+				hasPlaceholder = true
+			}
+		}
+
+		if !hasPlaceholder {
+			return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body or headers")
+		}
+
+		if strings.Contains(flagFuzzURL, "FUZZ") || strings.Contains(flagFuzzData, "FUZZ") {
+			if flagFuzzWordlist == "" {
+				return fmt.Errorf("placeholder FUZZ is used but no primary wordlist provided (use -w or --wordlist)")
+			}
+		}
+
+		if strings.Contains(flagFuzzURL, "FOO") || strings.Contains(flagFuzzData, "FOO") {
+			if flagFuzzFoo == "" {
+				return fmt.Errorf("placeholder FOO is used but no --foo wordlist provided")
+			}
+		}
+
+		if strings.Contains(flagFuzzURL, "BAR") || strings.Contains(flagFuzzData, "BAR") {
+			if flagFuzzBar == "" {
+				return fmt.Errorf("placeholder BAR is used but no --bar wordlist provided")
+			}
+		}
+
+		if strings.Contains(flagFuzzURL, "BUZZ") || strings.Contains(flagFuzzData, "BUZZ") {
+			if flagFuzzBuzz == "" {
+				return fmt.Errorf("placeholder BUZZ is used but no --buzz wordlist provided")
+			}
+		}
+
+		if flagFuzzExcludeStat != "" {
+			if _, err := status.Parse(flagFuzzExcludeStat); err != nil {
+				return fmt.Errorf("invalid exclude-status: %w", err)
+			}
+		}
+
+		if flagFuzzIncSize != "" {
+			if _, err := size.Parse(flagFuzzIncSize); err != nil {
+				return fmt.Errorf("invalid include-size: %w", err)
+			}
+		}
+		if flagFuzzExcSize != "" {
+			if _, err := size.Parse(flagFuzzExcSize); err != nil {
+				return fmt.Errorf("invalid exclude-size: %w", err)
+			}
+		}
+
+		if flagFuzzDelay != "" {
+			if _, err := time.ParseDuration(flagFuzzDelay); err != nil {
+				return fmt.Errorf("invalid delay: %w", err)
+			}
+		}
+
+		if cmd.Flags().Changed("rate") && flagFuzzRate <= 0 {
+			return fmt.Errorf("rate must be greater than 0")
+		}
+
+		if flagFuzzOutput != "" {
+			if fi, err := os.Stat(flagFuzzOutput); err == nil && fi.IsDir() {
+				return fmt.Errorf("--output %q is a directory; provide a file path", flagFuzzOutput)
+			}
+		}
+
+		if cmd.Flags().Changed("format") {
+			if _, err := output.Parse(flagFuzzFormat); err != nil {
+				return fmt.Errorf("invalid --format: %w", err)
+			}
+		}
+
+		return nil
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		stats.GlobalInstrumentation.Reset()
+		atomic.StoreInt32(&stats.GlobalInstrumentation.Enabled, 1)
+
+		ctx := cmd.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		// Initialize default config and HTTP client options
+		cfg := config.Default()
+		cfg.Threads = flagFuzzThreads
+		cfg.Timeout = time.Duration(flagFuzzTimeout) * time.Second
+		cfg.Quiet = flagFuzzQuiet
+
+		if flagFuzzExcludeStat != "" {
+			exclude, _ := status.Parse(flagFuzzExcludeStat)
+			cfg.Status.Exclude = exclude
+		}
+
+		if flagFuzzIncSize != "" {
+			inc, _ := size.Parse(flagFuzzIncSize)
+			cfg.IncludeSize = inc
+		}
+		if flagFuzzExcSize != "" {
+			exc, _ := size.Parse(flagFuzzExcSize)
+			cfg.ExcludeSize = exc
+		}
+
+		var delay time.Duration
+		if flagFuzzDelay != "" {
+			delay, _ = time.ParseDuration(flagFuzzDelay)
+		}
+
+		var limiter *rate.Limiter
+		if flagFuzzRate > 0 {
+			limiter = rate.NewLimiter(rate.Limit(flagFuzzRate), 1)
+		}
+
+		// Load auxiliary wordlists
+		fooWords, err := loadLines(flagFuzzFoo)
+		if err != nil {
+			return fmt.Errorf("failed to load FOO wordlist: %w", err)
+		}
+		barWords, err := loadLines(flagFuzzBar)
+		if err != nil {
+			return fmt.Errorf("failed to load BAR wordlist: %w", err)
+		}
+		buzzWords, err := loadLines(flagFuzzBuzz)
+		if err != nil {
+			return fmt.Errorf("failed to load BUZZ wordlist: %w", err)
+		}
+
+		// Parse custom headers
+		headers, err := parseFuzzHeaderFlags(flagFuzzHeaders)
+		if err != nil {
+			return err
+		}
+
+		// Resolve output format
+		outFormat := output.FormatText
+		if flagFuzzOutput != "" {
+			outFormat = output.FormatFromPath(flagFuzzOutput)
+		}
+		if cmd.Flags().Changed("format") {
+			parsedFormat, _ := output.Parse(flagFuzzFormat)
+			outFormat = parsedFormat
+		}
+
+		outWriter := os.Stdout
+		if flagFuzzOutput != "" {
+			f, err := os.OpenFile(flagFuzzOutput, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if err != nil {
+				return fmt.Errorf("cannot open output file: %w", err)
+			}
+			defer f.Close()
+			outWriter = f
+		}
+
+		fmttr := output.New(outFormat, outWriter, cfg.Quiet)
+		defer fmttr.Close()
+
+		if outFormat == output.FormatText && !cfg.Quiet {
+			fmt.Printf("[*] Fuzzing target: %s\n", flagFuzzURL)
+			if flagFuzzWordlist != "" {
+				fmt.Printf("[*] Primary wordlist: %s\n", flagFuzzWordlist)
+			}
+		}
+
+		// Setup the primary wordlist reader if provided
+		var reader wordlist.Reader
+		var primaryChan chan string
+		if flagFuzzWordlist != "" {
+			reader = wordlist.FileReader{Path: flagFuzzWordlist}
+			primaryChan = make(chan string, 100)
+			go func() {
+				defer close(primaryChan)
+				_ = reader.Read(ctx, primaryChan)
+			}()
+		}
+
+		appState := app.New(ctx, cfg)
+
+		// Start generator
+		generator := fuzz.NewGenerator(
+			flagFuzzURL,
+			strings.ToUpper(flagFuzzMethod),
+			flagFuzzData,
+			headers,
+			fooWords,
+			barWords,
+			buzzWords,
+		)
+
+		jobs := make(chan fuzz.Job, cfg.Threads)
+		go func() {
+			defer close(jobs)
+			generator.Generate(ctx, primaryChan, jobs)
+		}()
+
+		// Start concurrency pool
+		collector := stats.NewCollector()
+		results := fuzz.Start(
+			ctx,
+			appState.HTTPClient,
+			cfg.Status.Exclude,
+			cfg.IncludeSize,
+			cfg.ExcludeSize,
+			cfg.Threads,
+			delay,
+			limiter,
+			jobs,
+			collector,
+		)
+
+		// Stream results to output formatter
+		for r := range results {
+			if r.Accepted {
+				engRes := engine.Result{
+					URL:        r.URL,
+					StatusCode: r.StatusCode,
+					Length:     r.Length,
+					Accepted:   r.Accepted,
+					Err:        r.Err,
+					Origin:     "fuzz",
+				}
+				_ = fmttr.Print(engRes)
+			}
+		}
+
+		return nil
+	},
+}
+
+func loadLines(path string) ([]string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines, scanner.Err()
+}
+
+func parseFuzzHeaderFlags(flags []string) (http.Header, error) {
+	headers := make(http.Header)
+	for _, h := range flags {
+		idx := strings.Index(h, "=")
+		if idx == -1 {
+			idx = strings.Index(h, ":")
+		}
+		if idx <= 0 || idx == len(h)-1 {
+			return nil, fmt.Errorf("header flag %q must be in Name: Value or Name=Value format", h)
+		}
+		name := strings.TrimSpace(h[:idx])
+		val := strings.TrimSpace(h[idx+1:])
+		headers.Add(name, val)
+	}
+	return headers, nil
+}
+
+func init() {
+	rootCmd.AddCommand(fuzzCmd)
+
+	fuzzCmd.Flags().StringVarP(&flagFuzzURL, "url", "u", "", "target URL with placeholders (FUZZ, FOO, BAR, BUZZ)")
+	fuzzCmd.Flags().StringVarP(&flagFuzzWordlist, "wordlist", "w", "", "primary wordlist path (maps to FUZZ)")
+	fuzzCmd.Flags().StringVar(&flagFuzzFoo, "foo", "", "wordlist path for FOO placeholder")
+	fuzzCmd.Flags().StringVar(&flagFuzzBar, "bar", "", "wordlist path for BAR placeholder")
+	fuzzCmd.Flags().StringVar(&flagFuzzBuzz, "buzz", "", "wordlist path for BUZZ placeholder")
+	fuzzCmd.Flags().StringVarP(&flagFuzzMethod, "method", "X", "GET", "HTTP method")
+	fuzzCmd.Flags().StringVarP(&flagFuzzData, "data", "d", "", "POST request data body with placeholders")
+	fuzzCmd.Flags().StringSliceVarP(&flagFuzzHeaders, "header", "H", nil, "custom request headers with placeholders (e.g. -H 'X-Header=FUZZ')")
+	fuzzCmd.Flags().IntVarP(&flagFuzzThreads, "threads", "t", 32, "number of concurrent worker threads")
+	fuzzCmd.Flags().IntVar(&flagFuzzTimeout, "timeout", 10, "request timeout in seconds")
+	fuzzCmd.Flags().StringVarP(&flagFuzzExcludeStat, "exclude-status", "x", "404", "comma-separated status codes to exclude")
+	fuzzCmd.Flags().StringVar(&flagFuzzIncSize, "include-size", "", "comma-separated exact sizes or ranges to include")
+	fuzzCmd.Flags().StringVar(&flagFuzzExcSize, "exclude-size", "", "comma-separated exact sizes or ranges to exclude")
+	fuzzCmd.Flags().StringVarP(&flagFuzzOutput, "output", "o", "", "write results to this file (default: stdout)")
+	fuzzCmd.Flags().StringVar(&flagFuzzFormat, "format", "text", "explicit output format (text, json, ndjson, csv, markdown)")
+	fuzzCmd.Flags().BoolVarP(&flagFuzzQuiet, "quiet", "q", false, "disable status prefix printing in stdout")
+	fuzzCmd.Flags().StringVar(&flagFuzzDelay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
+	fuzzCmd.Flags().Float64Var(&flagFuzzRate, "rate", 0, "maximum requests per second rate limit")
+}
