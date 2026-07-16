@@ -1,22 +1,9 @@
 package fingerprint
 
 import (
-	"io"
 	"net/http"
 	"testing"
 )
-
-type dummyBody struct {
-	content []byte
-}
-
-func (d dummyBody) Read(p []byte) (n int, err error) {
-	return copy(p, d.content), io.EOF
-}
-
-func (d dummyBody) Close() error {
-	return nil
-}
 
 func BenchmarkProfile_HTMLDetector(b *testing.B) {
 	htmlBody := []byte(`
