@@ -22,25 +22,26 @@ Searchit provides a concurrent scanning engine, topological profile dependency r
 ## Installation
 Build from source (requires Go 1.26+):
 
-Using the build script (embeds version details):
+Using the Makefile (recommended):
 ```bash
 git clone https://github.com/unsubble/searchit.git
 cd searchit
-./build.sh
+make build
 ```
 
-Or build using standard Go toolchain directly:
+This compiles the binary to `bin/searchit`. To install it globally to your `GOBIN` path:
 ```bash
-go build ./...
+make install
 ```
 
-The compiled binary is written to `dist/searchit` (when using `./build.sh`) or standard Go locations. You can run it directly:
+Or build manually:
 ```bash
-./dist/searchit --help
+go build -o bin/searchit .
 ```
-Or move it to a directory in your system `PATH` (e.g., `/usr/local/bin`):
+
+You can run the compiled binary directly:
 ```bash
-sudo cp dist/searchit /usr/local/bin/
+./bin/searchit --help
 ```
 
 ## Quick Start

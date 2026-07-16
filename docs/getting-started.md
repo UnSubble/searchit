@@ -10,17 +10,17 @@ Welcome to Searchit, a concurrent, extensible, and profile-based web content dis
 
 Searchit requires Go 1.26 or higher.
 
-To compile from source using the build script:
+To compile from source using the Makefile (recommended):
 ```bash
 git clone https://github.com/unsubble/searchit.git
 cd searchit
-./build.sh
+make build
 ```
-The compiled binary will be placed at `dist/searchit`. You can run it locally as `./dist/searchit` or copy it to `/usr/local/bin` to make it globally accessible.
+The compiled binary will be placed at `bin/searchit`. You can run it locally as `./bin/searchit` or install it globally to your `GOBIN` path using `make install`.
 
 Alternatively, you can compile the codebase directly using standard Go tooling:
 ```bash
-go build ./...
+go build -o bin/searchit .
 ```
 
 ## Quick Start
