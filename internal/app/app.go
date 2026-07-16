@@ -65,6 +65,17 @@ type readCloser struct {
 	io.Closer
 }
 
+// WrapTransport wraps an http.RoundTripper with the fingerprintRoundTripper.
+func WrapTransport(rt http.RoundTripper, cache *fingerprint.Cache) http.RoundTripper {
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	return &fingerprintRoundTripper{
+		underlying: rt,
+		cache:      cache,
+	}
+}
+
 // New creates an App from the given context and config.
 // A nil context is replaced with context.Background().
 func New(ctx context.Context, cfg config.Config) *App {
@@ -77,14 +88,7 @@ func New(ctx context.Context, cfg config.Config) *App {
 	var fpCache *fingerprint.Cache
 	if cfg.Adaptive {
 		fpCache = fingerprint.NewCache()
-		transport := client.Transport
-		if transport == nil {
-			transport = http.DefaultTransport
-		}
-		client.Transport = &fingerprintRoundTripper{
-			underlying: transport,
-			cache:      fpCache,
-		}
+		client.Transport = WrapTransport(client.Transport, fpCache)
 	}
 
 	return &App{
