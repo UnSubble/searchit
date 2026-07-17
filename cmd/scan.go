@@ -25,10 +25,10 @@ import (
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/recursion"
+	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
-	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/targets"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
@@ -366,7 +366,7 @@ var scanCmd = &cobra.Command{
 			}
 			cfg.Method = tmpl.Method
 			cfg.Data = string(tmpl.Body)
-			
+
 			cookies := requesttemplate.ExtractCookiesFromHeaders(tmpl.Headers)
 			if len(cookies) > 0 {
 				var cookiePairs []string

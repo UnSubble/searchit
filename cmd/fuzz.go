@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"regexp"
+
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
@@ -18,13 +20,12 @@ import (
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
-	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
-	"regexp"
 )
 
 var (
