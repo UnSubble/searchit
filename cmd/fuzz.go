@@ -21,6 +21,7 @@ import (
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
+	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
 	"regexp"
@@ -58,14 +59,15 @@ var (
 	flagFuzzFilterContent []string
 	flagFuzzShowHeaders   bool
 	flagFuzzShowTitle     bool
+	flagFuzzRequestFile   string
 )
 
 var fuzzCmd = &cobra.Command{
 	Use:   "fuzz",
 	Short: "Fuzz parameters, paths, subdomains and bodies",
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		if flagFuzzURL == "" {
-			return fmt.Errorf("target URL is required (use -u or --url)")
+		if flagFuzzURL == "" && flagFuzzRequestFile == "" {
+			return fmt.Errorf("target URL is required (use -u or --url) or request template (--request)")
 		}
 		if flagFuzzThreads < 1 {
 			return fmt.Errorf("threads must be at least 1")
@@ -87,29 +89,65 @@ var fuzzCmd = &cobra.Command{
 			}
 		}
 
+		if flagFuzzRequestFile != "" {
+			content, err := os.ReadFile(flagFuzzRequestFile)
+			if err != nil {
+				return fmt.Errorf("failed to read request template file: %w", err)
+			}
+			contentStr := string(content)
+			if strings.Contains(contentStr, "FUZZ") ||
+				strings.Contains(contentStr, "FOO") ||
+				strings.Contains(contentStr, "BAR") ||
+				strings.Contains(contentStr, "BUZZ") {
+				hasPlaceholder = true
+			}
+		}
+
 		if !hasPlaceholder {
 			return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body or headers")
 		}
 
-		if strings.Contains(flagFuzzURL, "FUZZ") || strings.Contains(flagFuzzData, "FUZZ") {
+		usesFUZZ := strings.Contains(flagFuzzURL, "FUZZ") || strings.Contains(flagFuzzData, "FUZZ")
+		usesFOO := strings.Contains(flagFuzzURL, "FOO") || strings.Contains(flagFuzzData, "FOO")
+		usesBAR := strings.Contains(flagFuzzURL, "BAR") || strings.Contains(flagFuzzData, "BAR")
+		usesBUZZ := strings.Contains(flagFuzzURL, "BUZZ") || strings.Contains(flagFuzzData, "BUZZ")
+
+		if flagFuzzRequestFile != "" {
+			content, _ := os.ReadFile(flagFuzzRequestFile)
+			contentStr := string(content)
+			if strings.Contains(contentStr, "FUZZ") {
+				usesFUZZ = true
+			}
+			if strings.Contains(contentStr, "FOO") {
+				usesFOO = true
+			}
+			if strings.Contains(contentStr, "BAR") {
+				usesBAR = true
+			}
+			if strings.Contains(contentStr, "BUZZ") {
+				usesBUZZ = true
+			}
+		}
+
+		if usesFUZZ {
 			if flagFuzzWordlist == "" {
 				return fmt.Errorf("placeholder FUZZ is used but no primary wordlist provided (use -w or --wordlist)")
 			}
 		}
 
-		if strings.Contains(flagFuzzURL, "FOO") || strings.Contains(flagFuzzData, "FOO") {
+		if usesFOO {
 			if flagFuzzFoo == "" {
 				return fmt.Errorf("placeholder FOO is used but no --foo wordlist provided")
 			}
 		}
 
-		if strings.Contains(flagFuzzURL, "BAR") || strings.Contains(flagFuzzData, "BAR") {
+		if usesBAR {
 			if flagFuzzBar == "" {
 				return fmt.Errorf("placeholder BAR is used but no --bar wordlist provided")
 			}
 		}
 
-		if strings.Contains(flagFuzzURL, "BUZZ") || strings.Contains(flagFuzzData, "BUZZ") {
+		if usesBUZZ {
 			if flagFuzzBuzz == "" {
 				return fmt.Errorf("placeholder BUZZ is used but no --buzz wordlist provided")
 			}
@@ -266,10 +304,47 @@ var fuzzCmd = &cobra.Command{
 			return fmt.Errorf("failed to load BUZZ wordlist: %w", err)
 		}
 
-		// Parse custom headers
-		headers, err := parseFuzzHeaderFlags(flagFuzzHeaders)
-		if err != nil {
-			return err
+		var headers http.Header
+		if flagFuzzRequestFile != "" {
+			tmpl, err := requesttemplate.ParseFile(flagFuzzRequestFile, flagFuzzURL)
+			if err != nil {
+				return err
+			}
+			flagFuzzURL = tmpl.URL
+			flagFuzzMethod = tmpl.Method
+			flagFuzzData = string(tmpl.Body)
+
+			headers = make(http.Header)
+			for k, values := range tmpl.Headers {
+				for _, v := range values {
+					headers.Add(k, v)
+				}
+			}
+
+			cliHeaders, err := parseFuzzHeaderFlags(flagFuzzHeaders)
+			if err != nil {
+				return err
+			}
+			for k, values := range cliHeaders {
+				for _, v := range values {
+					headers.Add(k, v)
+				}
+			}
+
+			cookies := requesttemplate.ExtractCookiesFromHeaders(tmpl.Headers)
+			if len(cookies) > 0 {
+				var cookiePairs []string
+				for _, c := range cookies {
+					cookiePairs = append(cookiePairs, c.String())
+				}
+				flagFuzzCookie = strings.Join(cookiePairs, "; ")
+			}
+		} else {
+			cliHeaders, err := parseFuzzHeaderFlags(flagFuzzHeaders)
+			if err != nil {
+				return err
+			}
+			headers = cliHeaders
 		}
 
 		// Resolve output format
@@ -409,9 +484,9 @@ func loadLines(path string) ([]string, error) {
 func parseFuzzHeaderFlags(flags []string) (http.Header, error) {
 	headers := make(http.Header)
 	for _, h := range flags {
-		idx := strings.Index(h, "=")
+		idx := strings.Index(h, ":")
 		if idx == -1 {
-			idx = strings.Index(h, ":")
+			idx = strings.Index(h, "=")
 		}
 		if idx <= 0 || idx == len(h)-1 {
 			return nil, fmt.Errorf("header flag %q must be in Name: Value or Name=Value format", h)
@@ -457,4 +532,5 @@ func init() {
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzFilterContent, "ft", nil, "filter content types")
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowHeaders, "show-headers", false, "show response headers in output")
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowTitle, "show-title", false, "show HTML titles in output")
+	fuzzCmd.Flags().StringVar(&flagFuzzRequestFile, "request", "", "load raw HTTP request template from file")
 }

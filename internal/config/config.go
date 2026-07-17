@@ -72,6 +72,9 @@ type Config struct {
 	// Response Presentation fields
 	ShowHeaders bool
 	ShowTitle   bool
+
+	// HTTP Request Templates
+	RequestFile string
 }
 
 type HeaderFilter struct {

@@ -28,6 +28,7 @@ import (
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
+	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/targets"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
@@ -80,6 +81,7 @@ var (
 	flagFilterContent []string
 	flagShowHeaders   bool
 	flagShowTitle     bool
+	flagRequestFile   string
 
 	resolvedTargets []string
 
@@ -270,7 +272,7 @@ var scanCmd = &cobra.Command{
 			}
 			resolvedTargets = append(resolvedTargets, fileTargets...)
 		}
-		if len(resolvedTargets) == 0 {
+		if len(resolvedTargets) == 0 && flagRequestFile == "" {
 			return fmt.Errorf("at least one target is required")
 		}
 
@@ -351,8 +353,39 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		// 3. Apply CLI flags (highest priority — only if explicitly changed).
 		applyCLIOverrides(cmd, &cfg)
+
+		if cfg.RequestFile != "" {
+			var baseTarget string
+			if len(resolvedTargets) > 0 {
+				baseTarget = resolvedTargets[0]
+			}
+			tmpl, err := requesttemplate.ParseFile(cfg.RequestFile, baseTarget)
+			if err != nil {
+				return err
+			}
+			cfg.Method = tmpl.Method
+			cfg.Data = string(tmpl.Body)
+			
+			cookies := requesttemplate.ExtractCookiesFromHeaders(tmpl.Headers)
+			if len(cookies) > 0 {
+				var cookiePairs []string
+				for _, c := range cookies {
+					cookiePairs = append(cookiePairs, c.String())
+				}
+				cfg.Cookies = strings.Join(cookiePairs, "; ")
+			}
+
+			cfg.Headers = nil
+			for k, values := range tmpl.Headers {
+				for _, v := range values {
+					cfg.Headers = append(cfg.Headers, fmt.Sprintf("%s: %s", k, v))
+				}
+			}
+
+			cfg.URLs = []string{tmpl.URL}
+			resolvedTargets = []string{tmpl.URL}
+		}
 
 		if cfg.OutputFormat == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {
 			fmt.Println("[*] Profiles:")
@@ -751,6 +784,9 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("show-title") {
 		cfg.ShowTitle = flagShowTitle
 	}
+	if cmd.Flags().Changed("request") {
+		cfg.RequestFile = flagRequestFile
+	}
 }
 
 // formatRecurseOn returns a human-readable string for the recurse-on filters.
@@ -979,6 +1015,7 @@ func init() {
 	scanCmd.Flags().StringSliceVar(&flagFilterContent, "ft", nil, "filter content types")
 	scanCmd.Flags().BoolVar(&flagShowHeaders, "show-headers", false, "show response headers in output")
 	scanCmd.Flags().BoolVar(&flagShowTitle, "show-title", false, "show HTML titles in output")
+	scanCmd.Flags().StringVar(&flagRequestFile, "request", "", "load raw HTTP request template from file")
 }
 
 func validateHeaderFlag(val string) error {

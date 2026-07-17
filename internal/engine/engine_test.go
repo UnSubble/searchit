@@ -966,3 +966,44 @@ func TestWorker_ShowPresentation(t *testing.T) {
 		t.Errorf("expected header X-Custom-Server=TestServer, got %q", r.Headers.Get("X-Custom-Server"))
 	}
 }
+
+func TestWorker_RequestTemplate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected Method POST, got %q", r.Method)
+		}
+		if r.Host != "override.local" {
+			t.Errorf("expected Host override.local, got %q", r.Host)
+		}
+		if r.Header.Get("X-Fuzz-Header") != "ScanValue" {
+			t.Errorf("expected X-Fuzz-Header ScanValue, got %q", r.Header.Get("X-Fuzz-Header"))
+		}
+		cookie, _ := r.Cookie("session")
+		if cookie == nil || cookie.Value != "active" {
+			t.Errorf("expected cookie session=active, got %+v", cookie)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newApp(t, "404")
+
+	fs, _ := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
+	jobs := make(chan engine.Job, 1)
+	results := make(chan engine.Result, 1)
+	jobs <- engine.Job{URL: srv.URL}
+	close(jobs)
+
+	// Setup custom headers and cookies faking parser output
+	headers := make(http.Header)
+	headers.Set("Host", "override.local")
+	headers.Set("X-Fuzz-Header", "ScanValue")
+	cookies := []*http.Cookie{{Name: "session", Value: "active"}}
+
+	engine.Worker(context.Background(), a.HTTPClient, fs, nil, nil, 0, nil, "POST", []byte("body"), headers, cookies, jobs, results, nil)
+	r := <-results
+
+	if !r.Accepted {
+		t.Errorf("expected result accepted, got error: %v", r.Err)
+	}
+}

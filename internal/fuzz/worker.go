@@ -110,6 +110,10 @@ func process(
 	}
 
 	for k, values := range job.Headers {
+		if strings.EqualFold(k, "Host") && len(values) > 0 {
+			req.Host = values[0]
+			continue
+		}
 		for _, v := range values {
 			req.Header.Add(k, v)
 		}

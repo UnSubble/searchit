@@ -40,6 +40,9 @@ func resetFlagsForTest() {
 	flagProfiles = nil
 	flagNoProgress = false
 	flagTech = ""
+	flagShowHeaders = false
+	flagShowTitle = false
+	flagRequestFile = ""
 	resolvedTargets = nil
 
 	// Reset silence flags that may have been set by profile-loading failures
