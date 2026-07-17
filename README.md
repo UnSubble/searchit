@@ -66,6 +66,7 @@ Complete guides and documentation are available in the `docs/` directory:
 - [Command Reference](docs/commands/reference.md)
 - [Profiles Guide](docs/profiles/guide.md)
 - [Scan Configuration](docs/scanning/config.md)
+- [Recursion & Determinism Hardening](docs/scanning/recursion.md)
 - [Architecture & Technical Design](docs/architecture/details.md)
 - [Practical Examples](docs/examples/scenarios.md)
 - [Development & Contribution Standards](docs/development/standards.md)
