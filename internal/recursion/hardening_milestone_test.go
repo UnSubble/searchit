@@ -97,58 +97,6 @@ func getLevelConfig(lvl int) levelConfig {
 	}
 }
 
-// Actionable failure reporters
-func reportRecursionFailure(t *testing.T, workerCount int, expected, actual int, dupSuppressedFailed, determinismFailed bool) {
-	dupStatus := "PASSED"
-	if dupSuppressedFailed {
-		dupStatus = "FAILED"
-	}
-	detStatus := "PASSED"
-	if determinismFailed {
-		detStatus = "FAILED"
-	}
-
-	t.Errorf(`FAILED
-
-Recursion Validation
-
-worker count:
-%d
-
-expected:
-%d
-
-actual:
-%d
-
-duplicate suppression:
-%s
-
-determinism:
-%s
-
-status:
-RELEASE BLOCKER`, workerCount, expected, actual, dupStatus, detStatus)
-}
-
-func reportBFSValidationFailure(t *testing.T, expected, actual int, missing int) {
-	t.Errorf(`FAILED
-
-BFS Validation
-
-expected:
-%d URLs
-
-actual:
-%d URLs
-
-missing:
-%d
-
-status:
-RELEASE BLOCKER`, expected, actual, missing)
-}
-
 func reportDeterminismFailure(t *testing.T, w1Count, wNCount int, wN int) {
 	diff := w1Count - wNCount
 	if diff < 0 {
@@ -383,13 +331,14 @@ func runHardeningSizeTest(t *testing.T, baseSize int) {
 
 	// Scale baseSize based on level
 	wordlistSize := baseSize
-	if level == 1 {
+	switch level {
+	case 1:
 		wordlistSize = 5
-	} else if level == 2 {
+	case 2:
 		wordlistSize = 20
-	} else if level == 3 {
+	case 3:
 		wordlistSize = 100
-	} else if level == 4 {
+	case 4:
 		wordlistSize = 500
 	}
 
