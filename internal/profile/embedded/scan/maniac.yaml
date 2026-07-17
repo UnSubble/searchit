@@ -1,18 +1,20 @@
 schema: 1
-name: scan/static
+name: scan/maniac
 tool: scan
-description: Static website scan optimization with recursive crawling
+description: Aggressive, high-concurrency recursive scanning
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
 tags:
-  - static
-  - html
+  - aggressive
+  - maniac
 depends:
   - base
 experimental: false
 config:
+  threads: 128
   recursive: true
-  max-depth: 3
+  max-depth: 5
   strategy: bfs
-  normalize-paths: true
+  timeout: 5
+  connect-timeout: 2

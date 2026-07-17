@@ -1,0 +1,17 @@
+schema: 1
+name: scan-extra/api
+tool: scan
+description: Optimized scan profile for REST APIs with status and size filters
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - api
+  - rest
+depends:
+  - scan/base
+experimental: false
+config:
+  exclude-status: "404,500"
+  include-size: "100-"
+  recurse-on: "200"

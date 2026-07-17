@@ -1,0 +1,17 @@
+schema: 1
+name: scan-extra/dotnet
+tool: scan
+description: .NET web application and IIS scanning defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - dotnet
+  - csharp
+  - iis
+depends:
+  - scan/base
+experimental: false
+config:
+  exclude-status: "404,403"
+  timeout: 12

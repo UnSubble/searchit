@@ -1,0 +1,17 @@
+schema: 1
+name: scan-extra/symfony
+tool: scan
+description: Symfony web framework scanning defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - php
+  - symfony
+  - framework
+depends:
+  - php
+experimental: false
+config:
+  exclude-status: "404,403"
+  collapse-slashes: true

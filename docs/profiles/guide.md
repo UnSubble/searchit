@@ -33,15 +33,26 @@ config:
 | Profile | Tags | Depends On | Threads | Timeout | Purpose |
 |---------|------|------------|--------:|---------|---------|
 | `scan/base` | default | — | 32 | 10s | Balanced profile suitable for most targets. |
+| `scan/default` | general, default | — | 32 | 10s | Sane balanced defaults for general web content scanning. |
 | `scan/quick` | fast | `scan/base` | 64 | 5s | Prioritizes scan speed with reduced request timeout. |
 | `scan/deep` | recursive | `scan/base` | 32 | 15s | Optimized for deep recursive directory enumeration. |
+| `scan/paranoid` | stealthy, slow | `scan/base` | 1 | 20s | Low-footprint scanning to avoid detection and rate limiting. |
+| `scan/maniac` | aggressive | `scan/base` | 128 | 5s | Aggressive, high-concurrency recursive scanning. |
+| `scan/lightspeed` | fast | `scan/base` | 256 | 3s | Extreme throughput scanning with minimal timeouts and high concurrency. |
 | `scan/api` | api, rest | `scan/base` | 32 | 10s | Targets common REST API endpoints and documentation paths. |
+| `scan/graphql` | graphql, api | `scan/base` | 32 | 8s | GraphQL API endpoint scanning defaults. |
 | `scan/php` | php | `scan/base` | 32 | 10s | Focuses on common PHP applications, admin panels, and configuration files. |
 | `scan/wordpress` | wordpress, cms | `scan/php` | 32 | 10s | WordPress-specific paths, plugins, themes, backups, and administrative endpoints. |
 | `scan/laravel` | laravel, php | `scan/php` | 32 | 10s | Laravel framework files, debug endpoints, storage paths, and environment files. |
+| `scan/symfony` | php, symfony | `scan/php` | 32 | 10s | Symfony web framework scanning defaults. |
 | `scan/django` | django, python | `scan/base` | 32 | 10s | Django administration, static assets, media, and common project files. |
+| `scan/rails` | ruby, rails | `scan/base` | 32 | 10s | Ruby on Rails web framework scanning defaults. |
 | `scan/spring` | spring, java | `scan/base` | 32 | 10s | Spring Boot actuator endpoints, documentation, and Java application resources. |
+| `scan/java` | java, jvm | `scan/base` | 32 | 15s | Java web application framework and servlet container scanning defaults. |
+| `scan/dotnet` | dotnet, iis | `scan/base` | 32 | 12s | .NET web application and IIS scanning defaults. |
 | `scan/node` | nodejs, javascript | `scan/base` | 32 | 10s | Common Node.js application files, package metadata, and framework-specific paths. |
+| `scan/nextjs` | nextjs, react | `scan/node` | 32 | 10s | Next.js frontend and API route scanning defaults. |
+| `scan/express` | express, node | `scan/node` | 32 | 10s | Express.js application backend scanning defaults. |
 | `scan/static` | static | `scan/base` | 64 | 5s | Optimized for static websites by focusing on assets and common web resources. |
 
 ## Profile Resolution

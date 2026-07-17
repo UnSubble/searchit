@@ -1,0 +1,17 @@
+schema: 1
+name: scan-extra/rails
+tool: scan
+description: Ruby on Rails web framework scanning defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - ruby
+  - rails
+  - framework
+depends:
+  - scan/base
+experimental: false
+config:
+  exclude-status: "404,422,500"
+  collapse-slashes: true

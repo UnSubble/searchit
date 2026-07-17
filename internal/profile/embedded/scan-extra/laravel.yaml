@@ -1,15 +1,17 @@
 schema: 1
-name: scan/php
+name: scan-extra/laravel
 tool: scan
-description: Optimized scan profile for PHP applications with path normalization
+description: Laravel framework defaults and scan optimizations
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
 tags:
   - php
+  - laravel
+  - framework
 depends:
-  - base
+  - php
 experimental: false
 config:
-  recurse-on: "200,301,302"
+  exclude-status: "404,403"
   normalize-paths: true

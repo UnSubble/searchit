@@ -1,0 +1,16 @@
+schema: 1
+name: scan-extra/node
+tool: scan
+description: Node.js web application defaults and scanning parameters
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - javascript
+  - node
+depends:
+  - scan/base
+experimental: false
+config:
+  threads: 48
+  timeout: 8

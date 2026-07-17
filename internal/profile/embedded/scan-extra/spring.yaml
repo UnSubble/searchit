@@ -1,0 +1,17 @@
+schema: 1
+name: scan-extra/spring
+tool: scan
+description: Spring Boot defaults and custom HTTP application context checking
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - java
+  - spring
+  - framework
+depends:
+  - scan/base
+experimental: false
+config:
+  exclude-status: "404"
+  timeout: 12

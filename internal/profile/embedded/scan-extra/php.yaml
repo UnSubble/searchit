@@ -1,0 +1,15 @@
+schema: 1
+name: scan-extra/php
+tool: scan
+description: Optimized scan profile for PHP applications with path normalization
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - php
+depends:
+  - scan/base
+experimental: false
+config:
+  recurse-on: "200,301,302"
+  normalize-paths: true

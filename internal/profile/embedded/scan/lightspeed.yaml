@@ -1,0 +1,18 @@
+schema: 1
+name: scan/lightspeed
+tool: scan
+description: Extreme throughput scanning with minimal timeouts and high concurrency
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - fast
+  - lightspeed
+depends:
+  - base
+experimental: false
+config:
+  threads: 256
+  timeout: 3
+  connect-timeout: 1
+  recursive: false

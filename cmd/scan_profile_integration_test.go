@@ -124,18 +124,18 @@ func TestScanProfile_MultipleProfiles(t *testing.T) {
 func TestScanProfile_OverlayOrdering(t *testing.T) {
 	var captured config.Config
 	// Reverse order of spring and node (which are independent targets resolving base first)
-	err := runScanProfileTest([]string{"scan", "--profile", "scan/node", "--profile", "scan/spring"}, func(cfg config.Config) {
+	err := runScanProfileTest([]string{"scan", "--profile", "scan-extra/node", "--profile", "scan-extra/spring"}, func(cfg config.Config) {
 		captured = cfg
 	})
 	if err != nil {
 		t.Fatalf("scan command failed: %v", err)
 	}
 
-	// scan/spring should win on timeout
+	// scan-extra/spring should win on timeout
 	if captured.Timeout != 12*time.Second {
 		t.Errorf("expected timeout 12 (from spring overriding node), got %v", captured.Timeout)
 	}
-	// But scan/node's threads setting (since scan/spring doesn't define it) should still be 48!
+	// But scan-extra/node's threads setting (since scan-extra/spring doesn't define it) should still be 48!
 	if captured.Threads != 48 {
 		t.Errorf("expected threads 48 (retained from node because spring is an overlay and does not define it), got %d", captured.Threads)
 	}
@@ -456,4 +456,76 @@ config:
 	if !captured.Recursive {
 		t.Errorf("expected recursive true")
 	}
+}
+
+func TestScanProfile_Newv050Profiles(t *testing.T) {
+	t.Run("scan/default", func(t *testing.T) {
+		var captured config.Config
+		err := runScanProfileTest([]string{"scan", "--profile", "scan/default"}, func(cfg config.Config) {
+			captured = cfg
+		})
+		if err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		if captured.Threads != 32 {
+			t.Errorf("expected threads 32, got %d", captured.Threads)
+		}
+		if captured.Timeout != 10*time.Second {
+			t.Errorf("expected timeout 10s, got %v", captured.Timeout)
+		}
+	})
+
+	t.Run("scan/paranoid", func(t *testing.T) {
+		var captured config.Config
+		err := runScanProfileTest([]string{"scan", "--profile", "scan/paranoid"}, func(cfg config.Config) {
+			captured = cfg
+		})
+		if err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		if captured.Threads != 1 {
+			t.Errorf("expected threads 1, got %d", captured.Threads)
+		}
+		if captured.Delay != 1000*time.Millisecond {
+			t.Errorf("expected delay 1000ms, got %v", captured.Delay)
+		}
+		if captured.Rate != 1.0 {
+			t.Errorf("expected rate 1.0, got %v", captured.Rate)
+		}
+	})
+
+	t.Run("scan/maniac", func(t *testing.T) {
+		var captured config.Config
+		err := runScanProfileTest([]string{"scan", "--profile", "scan/maniac"}, func(cfg config.Config) {
+			captured = cfg
+		})
+		if err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		if captured.Threads != 128 {
+			t.Errorf("expected threads 128, got %d", captured.Threads)
+		}
+		if !captured.Recursive {
+			t.Errorf("expected recursive=true")
+		}
+		if captured.MaxDepth != 5 {
+			t.Errorf("expected max-depth 5, got %d", captured.MaxDepth)
+		}
+	})
+
+	t.Run("scan/lightspeed", func(t *testing.T) {
+		var captured config.Config
+		err := runScanProfileTest([]string{"scan", "--profile", "scan/lightspeed"}, func(cfg config.Config) {
+			captured = cfg
+		})
+		if err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		if captured.Threads != 256 {
+			t.Errorf("expected threads 256, got %d", captured.Threads)
+		}
+		if captured.Timeout != 3*time.Second {
+			t.Errorf("expected timeout 3s, got %v", captured.Timeout)
+		}
+	})
 }

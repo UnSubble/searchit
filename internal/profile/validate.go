@@ -61,7 +61,11 @@ func Validate(p *Profile) error {
 	if err != nil {
 		return fmt.Errorf("invalid profile name: %w", err)
 	}
-	if parsed.Tool != p.Tool {
+	expectedTool := parsed.Tool
+	if expectedTool == "scan-extra" {
+		expectedTool = "scan"
+	}
+	if expectedTool != p.Tool {
 		return fmt.Errorf("profile namespace/tool mismatch: name namespace is %q but tool is %q", parsed.Tool, p.Tool)
 	}
 	// - config node exists

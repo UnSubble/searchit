@@ -1,0 +1,18 @@
+schema: 1
+name: scan-extra/static
+tool: scan
+description: Optimized for static websites by focusing on assets and common web resources
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - static
+  - html
+depends:
+  - scan/base
+experimental: false
+config:
+  threads: 64
+  timeout: 5
+  connect-timeout: 2
+  recursive: false

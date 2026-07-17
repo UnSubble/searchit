@@ -1,0 +1,20 @@
+schema: 1
+name: scan/paranoid
+tool: scan
+description: Low-footprint scanning to avoid detection and rate limiting
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - stealthy
+  - slow
+  - paranoid
+depends:
+  - base
+experimental: false
+config:
+  threads: 1
+  delay: 1000ms
+  rate: 1.0
+  timeout: 20
+  connect-timeout: 10
