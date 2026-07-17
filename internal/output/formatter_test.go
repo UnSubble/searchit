@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 func TestTextFormatter(t *testing.T) {
 	t.Run("identical output formatting", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false)
+		f := output.NewTextFormatter(&buf, false, false, false)
 
 		r := engine.Result{
 			URL:        "http://example.com/admin",
@@ -37,7 +38,7 @@ func TestTextFormatter(t *testing.T) {
 
 	t.Run("empty output", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false)
+		f := output.NewTextFormatter(&buf, false, false, false)
 		if err := f.Close(); err != nil {
 			t.Fatalf("Close failed: %v", err)
 		}
@@ -48,7 +49,7 @@ func TestTextFormatter(t *testing.T) {
 
 	t.Run("quiet mode prints only URL", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, true)
+		f := output.NewTextFormatter(&buf, true, false, false)
 
 		r := engine.Result{
 			URL:        "http://example.com/admin",
@@ -73,7 +74,7 @@ func TestTextFormatter(t *testing.T) {
 func TestJSONFormatter(t *testing.T) {
 	t.Run("empty array", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewJSONFormatter(&buf)
+		f := output.NewJSONFormatter(&buf, false, false)
 		if err := f.Close(); err != nil {
 			t.Fatalf("Close failed: %v", err)
 		}
@@ -86,7 +87,7 @@ func TestJSONFormatter(t *testing.T) {
 
 	t.Run("multiple results pretty printed", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewJSONFormatter(&buf)
+		f := output.NewJSONFormatter(&buf, false, false)
 
 		r1 := engine.Result{URL: "http://example.com/a", StatusCode: 200, Length: 10, Depth: 1}
 		r2 := engine.Result{URL: "http://example.com/b", StatusCode: 403, Length: 0, Depth: 2}
@@ -118,7 +119,7 @@ func TestJSONFormatter(t *testing.T) {
 func TestNDJSONFormatter(t *testing.T) {
 	t.Run("empty output", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewNDJSONFormatter(&buf)
+		f := output.NewNDJSONFormatter(&buf, false, false)
 		_ = f.Close()
 		if got := buf.String(); got != "" {
 			t.Errorf("got %q, want empty", got)
@@ -127,7 +128,7 @@ func TestNDJSONFormatter(t *testing.T) {
 
 	t.Run("streaming and one object per line", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewNDJSONFormatter(&buf)
+		f := output.NewNDJSONFormatter(&buf, false, false)
 
 		r1 := engine.Result{URL: "http://example.com/a", StatusCode: 200, Length: 10, Depth: 1}
 		if err := f.Print(r1); err != nil {
@@ -159,7 +160,7 @@ func TestNDJSONFormatter(t *testing.T) {
 
 func BenchmarkFormatterNDJSON(b *testing.B) {
 	var buf bytes.Buffer
-	f := output.NewNDJSONFormatter(&buf)
+	f := output.NewNDJSONFormatter(&buf, false, false)
 	r := engine.Result{
 		URL:        "http://example.com/admin/login/dashboard/v2/index.html",
 		StatusCode: 200,
@@ -186,7 +187,7 @@ func BenchmarkFormatterJSON(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
-		f := output.NewJSONFormatter(&buf)
+		f := output.NewJSONFormatter(&buf, false, false)
 		_ = f.Print(r)
 		_ = f.Print(r)
 		_ = f.Close()
@@ -203,28 +204,28 @@ func TestFormatterErrors(t *testing.T) {
 	r := engine.Result{URL: "http://example.com", StatusCode: 200}
 
 	t.Run("TextFormatter write error", func(t *testing.T) {
-		f := output.NewTextFormatter(errorWriter{}, false)
+		f := output.NewTextFormatter(errorWriter{}, false, false, false)
 		if err := f.Print(r); err == nil {
 			t.Error("expected print error, got nil")
 		}
 	})
 
 	t.Run("TextFormatter quiet write error", func(t *testing.T) {
-		f := output.NewTextFormatter(errorWriter{}, true)
+		f := output.NewTextFormatter(errorWriter{}, true, false, false)
 		if err := f.Print(r); err == nil {
 			t.Error("expected print error, got nil")
 		}
 	})
 
 	t.Run("NDJSONFormatter write error", func(t *testing.T) {
-		f := output.NewNDJSONFormatter(errorWriter{})
+		f := output.NewNDJSONFormatter(errorWriter{}, false, false)
 		if err := f.Print(r); err == nil {
 			t.Error("expected print error, got nil")
 		}
 	})
 
 	t.Run("JSONFormatter close write error", func(t *testing.T) {
-		f := output.NewJSONFormatter(errorWriter{})
+		f := output.NewJSONFormatter(errorWriter{}, false, false)
 		_ = f.Print(r)
 		if err := f.Close(); err == nil {
 			t.Error("expected close error, got nil")
@@ -232,7 +233,7 @@ func TestFormatterErrors(t *testing.T) {
 	})
 
 	t.Run("JSONFormatter close empty write error", func(t *testing.T) {
-		f := output.NewJSONFormatter(errorWriter{})
+		f := output.NewJSONFormatter(errorWriter{}, false, false)
 		if err := f.Close(); err == nil {
 			t.Error("expected close error, got nil")
 		}
@@ -245,7 +246,7 @@ func TestCSVFormatter(t *testing.T) {
 
 	t.Run("no output when no Print before close", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewCSVFormatter(&buf)
+		f := output.NewCSVFormatter(&buf, false, false)
 		_ = f.Close()
 		if got := buf.String(); got != "" {
 			t.Errorf("expected empty output, got %q", got)
@@ -254,7 +255,7 @@ func TestCSVFormatter(t *testing.T) {
 
 	t.Run("header written on first Print", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewCSVFormatter(&buf)
+		f := output.NewCSVFormatter(&buf, false, false)
 		_ = f.Print(r1)
 		_ = f.Close()
 		lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
@@ -268,7 +269,7 @@ func TestCSVFormatter(t *testing.T) {
 
 	t.Run("multiple results all present", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewCSVFormatter(&buf)
+		f := output.NewCSVFormatter(&buf, false, false)
 		_ = f.Print(r1)
 		_ = f.Print(r2)
 		_ = f.Close()
@@ -286,7 +287,7 @@ func TestCSVFormatter(t *testing.T) {
 
 	t.Run("URL with comma is quoted", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewCSVFormatter(&buf)
+		f := output.NewCSVFormatter(&buf, false, false)
 		r := engine.Result{URL: "http://example.com/a,b", StatusCode: 200}
 		_ = f.Print(r)
 		_ = f.Close()
@@ -297,7 +298,7 @@ func TestCSVFormatter(t *testing.T) {
 
 	t.Run("streaming: data present before Close", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewCSVFormatter(&buf)
+		f := output.NewCSVFormatter(&buf, false, false)
 		_ = f.Print(r1)
 		if buf.String() == "" {
 			t.Error("expected data before Close (streaming)")
@@ -311,7 +312,7 @@ func TestMarkdownFormatter(t *testing.T) {
 
 	t.Run("empty output when no Print called", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewMarkdownFormatter(&buf)
+		f := output.NewMarkdownFormatter(&buf, false, false)
 		_ = f.Close()
 		if got := buf.String(); got != "" {
 			t.Errorf("expected empty, got %q", got)
@@ -320,7 +321,7 @@ func TestMarkdownFormatter(t *testing.T) {
 
 	t.Run("header and separator on first Print", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewMarkdownFormatter(&buf)
+		f := output.NewMarkdownFormatter(&buf, false, false)
 		_ = f.Print(r1)
 		_ = f.Close()
 		lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
@@ -337,7 +338,7 @@ func TestMarkdownFormatter(t *testing.T) {
 
 	t.Run("multiple results all present", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewMarkdownFormatter(&buf)
+		f := output.NewMarkdownFormatter(&buf, false, false)
 		_ = f.Print(r1)
 		_ = f.Print(r2)
 		_ = f.Close()
@@ -351,7 +352,7 @@ func TestMarkdownFormatter(t *testing.T) {
 
 	t.Run("streaming: data before Close", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewMarkdownFormatter(&buf)
+		f := output.NewMarkdownFormatter(&buf, false, false)
 		_ = f.Print(r1)
 		if buf.String() == "" {
 			t.Error("expected data before Close (streaming)")
@@ -460,7 +461,7 @@ func TestNew(t *testing.T) {
 	r := engine.Result{URL: "http://example.com", StatusCode: 200, Length: 1, Depth: 0}
 	for _, f := range []output.Format{output.FormatText, output.FormatJSON, output.FormatNDJSON, output.FormatCSV, output.FormatMarkdown} {
 		var buf bytes.Buffer
-		fmttr := output.New(f, &buf, false)
+		fmttr := output.New(f, &buf, false, false, false)
 		if fmttr == nil {
 			t.Errorf("New(%q) returned nil", f)
 			continue
@@ -473,4 +474,56 @@ func TestNew(t *testing.T) {
 			t.Errorf("New(%q) produced no output", f)
 		}
 	}
+}
+
+func TestFormatters_ShowPresentation(t *testing.T) {
+	headers := make(http.Header)
+	headers.Set("Server", "nginx")
+	headers.Set("Content-Type", "text/html")
+
+	r := engine.Result{
+		URL:        "http://example.com/admin",
+		StatusCode: 200,
+		Length:     512,
+		Title:      "Admin Dashboard",
+		Headers:    headers,
+	}
+
+	t.Run("TextFormatter with show-title and show-headers", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, false, true, true)
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+
+		got := buf.String()
+		want := "200     512B\n\nhttp://example.com/admin\n" +
+			"\nTITLE:\n------\nAdmin Dashboard\n------\n" +
+			"\nHEADERS:\n--------\nContent-Type: text/html\nServer: nginx\n--------\n"
+		if got != want {
+			t.Errorf("got:\n%q\nwant:\n%q", got, want)
+		}
+	})
+
+	t.Run("JSONFormatter with show-title and show-headers", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewJSONFormatter(&buf, true, true)
+		_ = f.Print(r)
+		_ = f.Close()
+
+		var parsed []map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+			t.Fatalf("JSON parse error: %v", err)
+		}
+		if len(parsed) != 1 {
+			t.Fatalf("expected 1 item, got %d", len(parsed))
+		}
+		if parsed[0]["title"] != "Admin Dashboard" {
+			t.Errorf("expected title 'Admin Dashboard', got %v", parsed[0]["title"])
+		}
+		headersMap := parsed[0]["headers"].(map[string]any)
+		if headersMap["Server"].([]any)[0] != "nginx" {
+			t.Errorf("expected header Server: nginx, got %v", headersMap["Server"])
+		}
+	})
 }

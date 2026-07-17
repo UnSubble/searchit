@@ -68,6 +68,10 @@ type Config struct {
 
 	// Adaptive enables technology detection and adaptive path injection.
 	Adaptive bool
+
+	// Response Presentation fields
+	ShowHeaders bool
+	ShowTitle   bool
 }
 
 type HeaderFilter struct {

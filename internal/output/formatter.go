@@ -88,17 +88,17 @@ func FormatFromPath(path string) Format {
 
 // New constructs the appropriate Formatter for fmt, writing to w.
 // For FormatText the quiet flag controls whether the status prefix is omitted.
-func New(f Format, w io.Writer, quiet bool) Formatter {
+func New(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool) Formatter {
 	switch f {
 	case FormatJSON:
-		return NewJSONFormatter(w)
+		return NewJSONFormatter(w, showHeaders, showTitle)
 	case FormatNDJSON:
-		return NewNDJSONFormatter(w)
+		return NewNDJSONFormatter(w, showHeaders, showTitle)
 	case FormatCSV:
-		return NewCSVFormatter(w)
+		return NewCSVFormatter(w, showHeaders, showTitle)
 	case FormatMarkdown:
-		return NewMarkdownFormatter(w)
+		return NewMarkdownFormatter(w, showHeaders, showTitle)
 	default:
-		return NewTextFormatter(w, quiet)
+		return NewTextFormatter(w, quiet, showHeaders, showTitle)
 	}
 }

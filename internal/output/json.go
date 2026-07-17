@@ -3,33 +3,45 @@ package output
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 
 	"github.com/unsubble/searchit/internal/engine"
 )
 
 type JSONFormatter struct {
-	w       io.Writer
-	results []jsonResult
+	w           io.Writer
+	results     []jsonResult
+	showHeaders bool
+	showTitle   bool
 }
 
 type jsonResult struct {
-	URL    string `json:"url"`
-	Status int    `json:"status"`
-	Length int64  `json:"length"`
-	Depth  uint16 `json:"depth"`
+	URL     string      `json:"url"`
+	Status  int         `json:"status"`
+	Length  int64       `json:"length"`
+	Depth   uint16      `json:"depth"`
+	Title   string      `json:"title,omitempty"`
+	Headers http.Header `json:"headers,omitempty"`
 }
 
-func NewJSONFormatter(w io.Writer) *JSONFormatter {
-	return &JSONFormatter{w: w}
+func NewJSONFormatter(w io.Writer, showHeaders bool, showTitle bool) *JSONFormatter {
+	return &JSONFormatter{w: w, showHeaders: showHeaders, showTitle: showTitle}
 }
 
 func (f *JSONFormatter) Print(r engine.Result) error {
-	f.results = append(f.results, jsonResult{
+	jr := jsonResult{
 		URL:    r.URL,
 		Status: r.StatusCode,
 		Length: r.Length,
 		Depth:  r.Depth,
-	})
+	}
+	if f.showTitle && r.Title != "" {
+		jr.Title = r.Title
+	}
+	if f.showHeaders && len(r.Headers) > 0 {
+		jr.Headers = r.Headers
+	}
+	f.results = append(f.results, jr)
 	return nil
 }
 

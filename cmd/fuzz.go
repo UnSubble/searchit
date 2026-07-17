@@ -56,6 +56,8 @@ var (
 	flagFuzzFilterRegex   []string
 	flagFuzzMatchContent  []string
 	flagFuzzFilterContent []string
+	flagFuzzShowHeaders   bool
+	flagFuzzShowTitle     bool
 )
 
 var fuzzCmd = &cobra.Command{
@@ -206,6 +208,8 @@ var fuzzCmd = &cobra.Command{
 		cfg.Timeout = time.Duration(flagFuzzTimeout) * time.Second
 		cfg.Quiet = flagFuzzQuiet
 		cfg.Proxy = flagFuzzProxy
+		cfg.ShowHeaders = flagFuzzShowHeaders
+		cfg.ShowTitle = flagFuzzShowTitle
 
 		if flagFuzzMatchStatus != "" {
 			exclude, _ := status.Parse(flagFuzzMatchStatus)
@@ -288,7 +292,7 @@ var fuzzCmd = &cobra.Command{
 			outWriter = f
 		}
 
-		fmttr := output.New(outFormat, outWriter, cfg.Quiet)
+		fmttr := output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 		defer fmttr.Close()
 
 		if outFormat == output.FormatText && !cfg.Quiet {
@@ -325,6 +329,8 @@ var fuzzCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		fs.ShowHeaders = cfg.ShowHeaders
+		fs.ShowTitle = cfg.ShowTitle
 
 		// Start generator
 		generator := fuzz.NewGenerator(
@@ -367,6 +373,8 @@ var fuzzCmd = &cobra.Command{
 					Accepted:   r.Accepted,
 					Err:        r.Err,
 					Origin:     "fuzz",
+					Title:      r.Title,
+					Headers:    r.Headers,
 				}
 				_ = fmttr.Print(engRes)
 			}
@@ -447,4 +455,6 @@ func init() {
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzFilterRegex, "fr", nil, "filter regex")
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzMatchContent, "mt", nil, "match content types")
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzFilterContent, "ft", nil, "filter content types")
+	fuzzCmd.Flags().BoolVar(&flagFuzzShowHeaders, "show-headers", false, "show response headers in output")
+	fuzzCmd.Flags().BoolVar(&flagFuzzShowTitle, "show-title", false, "show HTML titles in output")
 }

@@ -2,7 +2,11 @@ package output
 
 import (
 	"encoding/csv"
+	"fmt"
 	"io"
+	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/unsubble/searchit/internal/engine"
 )
@@ -10,18 +14,27 @@ import (
 // CSVFormatter writes scan results as RFC 4180 CSV, one row per result.
 // A header row is always written on the first Print call (streaming).
 type CSVFormatter struct {
-	w       *csv.Writer
-	hasRows bool
+	w           *csv.Writer
+	hasRows     bool
+	showHeaders bool
+	showTitle   bool
 }
 
-func NewCSVFormatter(w io.Writer) *CSVFormatter {
+func NewCSVFormatter(w io.Writer, showHeaders bool, showTitle bool) *CSVFormatter {
 	cw := csv.NewWriter(w)
-	return &CSVFormatter{w: cw}
+	return &CSVFormatter{w: cw, showHeaders: showHeaders, showTitle: showTitle}
 }
 
 func (f *CSVFormatter) Print(r engine.Result) error {
 	if !f.hasRows {
-		if err := f.w.Write([]string{"url", "status", "length", "depth"}); err != nil {
+		header := []string{"url", "status", "length", "depth"}
+		if f.showTitle {
+			header = append(header, "title")
+		}
+		if f.showHeaders {
+			header = append(header, "headers")
+		}
+		if err := f.w.Write(header); err != nil {
 			return err
 		}
 		f.hasRows = true
@@ -32,11 +45,32 @@ func (f *CSVFormatter) Print(r engine.Result) error {
 		itoa(r.Length),
 		itoa(int64(r.Depth)),
 	}
+	if f.showTitle {
+		row = append(row, r.Title)
+	}
+	if f.showHeaders {
+		row = append(row, formatCSVHeaders(r.Headers))
+	}
 	if err := f.w.Write(row); err != nil {
 		return err
 	}
 	f.w.Flush()
 	return f.w.Error()
+}
+
+func formatCSVHeaders(h http.Header) string {
+	var parts []string
+	var keys []string
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range h[k] {
+			parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+		}
+	}
+	return strings.Join(parts, "; ")
 }
 
 func (f *CSVFormatter) Close() error {

@@ -206,3 +206,50 @@ func TestFuzz_ResponseFiltering(t *testing.T) {
 		t.Error("expected result to be accepted since body contains 'secret'")
 	}
 }
+
+func TestFuzz_ShowPresentation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("X-Fuzz-Header", "HelloFuzz")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html><head><title>Fuzz App</title></head><body>fuzz</body></html>"))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := &http.Client{}
+	ctx := context.Background()
+
+	primaryChan := make(chan string, 1)
+	primaryChan <- "test"
+	close(primaryChan)
+
+	generator := fuzz.NewGenerator(srv.URL+"/FUZZ", "GET", "", nil, "", nil, nil, nil)
+	jobs := make(chan fuzz.Job, 1)
+	go func() {
+		defer close(jobs)
+		generator.Generate(ctx, primaryChan, jobs)
+	}()
+
+	fs, _ := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
+	fs.ShowHeaders = true
+	fs.ShowTitle = true
+
+	results := fuzz.Start(ctx, client, fs, 1, 0, nil, jobs, nil)
+	var res []fuzz.Result
+	for r := range results {
+		res = append(res, r)
+	}
+
+	if len(res) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(res))
+	}
+	if !res[0].Accepted {
+		t.Error("expected result to be accepted")
+	}
+	if res[0].Title != "Fuzz App" {
+		t.Errorf("expected Title 'Fuzz App', got %q", res[0].Title)
+	}
+	if res[0].Headers.Get("X-Fuzz-Header") != "HelloFuzz" {
+		t.Errorf("expected header X-Fuzz-Header=HelloFuzz, got %q", res[0].Headers.Get("X-Fuzz-Header"))
+	}
+}

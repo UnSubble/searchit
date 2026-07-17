@@ -24,37 +24,37 @@ func FuzzFormatters(f *testing.F) {
 
 		// Text Formatter
 		var textBuf bytes.Buffer
-		tf := output.NewTextFormatter(&textBuf, false)
+		tf := output.NewTextFormatter(&textBuf, false, false, false)
 		_ = tf.Print(res)
 		_ = tf.Close()
 
 		// Quiet Text Formatter
 		var quietBuf bytes.Buffer
-		qtf := output.NewTextFormatter(&quietBuf, true)
+		qtf := output.NewTextFormatter(&quietBuf, true, false, false)
 		_ = qtf.Print(res)
 		_ = qtf.Close()
 
 		// JSON Formatter
 		var jsonBuf bytes.Buffer
-		jf := output.NewJSONFormatter(&jsonBuf)
+		jf := output.NewJSONFormatter(&jsonBuf, false, false)
 		_ = jf.Print(res)
 		_ = jf.Close()
 
 		// NDJSON Formatter
 		var ndjsonBuf bytes.Buffer
-		ndf := output.NewNDJSONFormatter(&ndjsonBuf)
+		ndf := output.NewNDJSONFormatter(&ndjsonBuf, false, false)
 		_ = ndf.Print(res)
 		_ = ndf.Close()
 
 		// CSV Formatter
 		var csvBuf bytes.Buffer
-		cf := output.NewCSVFormatter(&csvBuf)
+		cf := output.NewCSVFormatter(&csvBuf, false, false)
 		_ = cf.Print(res)
 		_ = cf.Close()
 
 		// Markdown Formatter
 		var mdBuf bytes.Buffer
-		mdf := output.NewMarkdownFormatter(&mdBuf)
+		mdf := output.NewMarkdownFormatter(&mdBuf, false, false)
 		_ = mdf.Print(res)
 		_ = mdf.Close()
 	})

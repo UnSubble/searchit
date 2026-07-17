@@ -932,3 +932,37 @@ func TestWorker_ResponseFiltering(t *testing.T) {
 		}
 	})
 }
+
+func TestWorker_ShowPresentation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("X-Custom-Server", "TestServer")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html><head><title>My Awesome App</title></head><body>hello</body></html>"))
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newApp(t, "404")
+
+	fs, _ := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
+	fs.ShowHeaders = true
+	fs.ShowTitle = true
+
+	jobs := make(chan engine.Job, 1)
+	results := make(chan engine.Result, 1)
+	jobs <- engine.Job{URL: srv.URL}
+	close(jobs)
+
+	engine.Worker(context.Background(), a.HTTPClient, fs, nil, nil, 0, nil, "", nil, nil, nil, jobs, results, nil)
+	r := <-results
+
+	if !r.Accepted {
+		t.Fatalf("expected accepted=true, got false")
+	}
+	if r.Title != "My Awesome App" {
+		t.Errorf("expected Title 'My Awesome App', got %q", r.Title)
+	}
+	if r.Headers.Get("X-Custom-Server") != "TestServer" {
+		t.Errorf("expected header X-Custom-Server=TestServer, got %q", r.Headers.Get("X-Custom-Server"))
+	}
+}

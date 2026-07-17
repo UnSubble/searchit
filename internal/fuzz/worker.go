@@ -3,8 +3,11 @@ package fuzz
 import (
 	"bytes"
 	"context"
+	"html"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -202,6 +205,16 @@ func process(
 		resp.Body.Close()
 	}
 
+	var resHeaders http.Header
+	if fs.ShowHeaders {
+		resHeaders = resp.Header
+	}
+
+	var title string
+	if fs.ShowTitle && bodyRead && readErr == nil {
+		title = extractHTMLTitle(bodyBytes)
+	}
+
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, length)
 		collector.RecordRequestSucceeded()
@@ -212,5 +225,17 @@ func process(
 		StatusCode: resp.StatusCode,
 		Length:     length,
 		Accepted:   true,
+		Title:      title,
+		Headers:    resHeaders,
 	})
+}
+
+var titleRx = regexp.MustCompile(`(?i)<title(?:\s+[^>]*)?>([^<]*)</title>`)
+
+func extractHTMLTitle(body []byte) string {
+	m := titleRx.FindSubmatch(body)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(html.UnescapeString(string(m[1])))
 }

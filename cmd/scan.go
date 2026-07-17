@@ -78,6 +78,8 @@ var (
 	flagFilterRegex   []string
 	flagMatchContent  []string
 	flagFilterContent []string
+	flagShowHeaders   bool
+	flagShowTitle     bool
 
 	resolvedTargets []string
 
@@ -405,7 +407,7 @@ var scanCmd = &cobra.Command{
 			// Fallback — should not happen after validation, but be safe.
 			fmt_ = output.FormatText
 		}
-		fmttr := output.New(fmt_, outWriter, cfg.Quiet)
+		fmttr := output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 		defer fmttr.Close()
 
 		var limiter *rate.Limiter
@@ -432,6 +434,8 @@ var scanCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		fs.ShowHeaders = cfg.ShowHeaders
+		fs.ShowTitle = cfg.ShowTitle
 
 		for _, targetURL := range cfg.URLs {
 			if cfg.OutputFormat == "text" {
@@ -741,6 +745,12 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("adaptive") {
 		cfg.Adaptive = flagAdaptive
 	}
+	if cmd.Flags().Changed("show-headers") {
+		cfg.ShowHeaders = flagShowHeaders
+	}
+	if cmd.Flags().Changed("show-title") {
+		cfg.ShowTitle = flagShowTitle
+	}
 }
 
 // formatRecurseOn returns a human-readable string for the recurse-on filters.
@@ -967,6 +977,8 @@ func init() {
 	scanCmd.Flags().StringSliceVar(&flagFilterRegex, "fr", nil, "filter regex")
 	scanCmd.Flags().StringSliceVar(&flagMatchContent, "mt", nil, "match content types")
 	scanCmd.Flags().StringSliceVar(&flagFilterContent, "ft", nil, "filter content types")
+	scanCmd.Flags().BoolVar(&flagShowHeaders, "show-headers", false, "show response headers in output")
+	scanCmd.Flags().BoolVar(&flagShowTitle, "show-title", false, "show HTML titles in output")
 }
 
 func validateHeaderFlag(val string) error {

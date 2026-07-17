@@ -18,4 +18,8 @@ type Result struct {
 	Length     int64
 	Accepted   bool
 	Err        error
+
+	// Presentation metadata
+	Title   string
+	Headers http.Header
 }

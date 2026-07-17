@@ -26,42 +26,42 @@ func TestGoldenOutputs(t *testing.T) {
 			name:       "Text formatter",
 			goldenFile: "text.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewTextFormatter(buf, false)
+				return output.NewTextFormatter(buf, false, false, false)
 			},
 		},
 		{
 			name:       "Quiet Text formatter",
 			goldenFile: "text_quiet.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewTextFormatter(buf, true)
+				return output.NewTextFormatter(buf, true, false, false)
 			},
 		},
 		{
 			name:       "JSON formatter",
 			goldenFile: "json.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewJSONFormatter(buf)
+				return output.NewJSONFormatter(buf, false, false)
 			},
 		},
 		{
 			name:       "NDJSON formatter",
 			goldenFile: "ndjson.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewNDJSONFormatter(buf)
+				return output.NewNDJSONFormatter(buf, false, false)
 			},
 		},
 		{
 			name:       "CSV formatter",
 			goldenFile: "csv.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewCSVFormatter(buf)
+				return output.NewCSVFormatter(buf, false, false)
 			},
 		},
 		{
 			name:       "Markdown formatter",
 			goldenFile: "markdown.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewMarkdownFormatter(buf)
+				return output.NewMarkdownFormatter(buf, false, false)
 			},
 		},
 	}

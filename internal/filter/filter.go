@@ -22,6 +22,10 @@ type FilterSuite struct {
 
 	MatchContentType  []string
 	FilterContentType []string
+
+	// Response Presentation fields
+	ShowHeaders bool
+	ShowTitle   bool
 }
 
 // NewFilterSuite constructs and compiles a FilterSuite.
@@ -92,9 +96,9 @@ func NewFilterSuite(
 	return suite, nil
 }
 
-// RequiresBody returns true if there is at least one regex filter configured.
+// RequiresBody returns true if there is at least one regex filter configured or title extraction is enabled.
 func (fs *FilterSuite) RequiresBody() bool {
-	return len(fs.MatchRegex) > 0 || len(fs.FilterRegex) > 0
+	return len(fs.MatchRegex) > 0 || len(fs.FilterRegex) > 0 || fs.ShowTitle
 }
 
 // MatchHeaders validates status code, content size, and Content-Type header.

@@ -3,8 +3,10 @@ package engine
 import (
 	"bytes"
 	"context"
+	"html"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -252,6 +254,16 @@ func process(
 		resp.Body.Close()
 	}
 
+	var resHeaders http.Header
+	if fs.ShowHeaders {
+		resHeaders = resp.Header
+	}
+
+	var title string
+	if fs.ShowTitle && bodyRead && readErr == nil {
+		title = extractHTMLTitle(bodyBytes)
+	}
+
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, length)
 		collector.RecordRequestSucceeded()
@@ -265,6 +277,8 @@ func process(
 		Depth:      job.Depth,
 		Accepted:   true,
 		Origin:     job.Origin,
+		Title:      title,
+		Headers:    resHeaders,
 	})
 }
 
@@ -294,4 +308,14 @@ func matchHeader(resp *http.Response, name, value string) bool {
 		}
 	}
 	return false
+}
+
+var titleRx = regexp.MustCompile(`(?i)<title(?:\s+[^>]*)?>([^<]*)</title>`)
+
+func extractHTMLTitle(body []byte) string {
+	m := titleRx.FindSubmatch(body)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(html.UnescapeString(string(m[1])))
 }
