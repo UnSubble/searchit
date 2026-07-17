@@ -62,6 +62,7 @@ Performs web content discovery scans to find directories, files, and application
 - `-o, --output <text|json|ndjson>`: Output format (default: `text`).
 - `-q, --quiet`: Print only discovered URLs in text mode. Also suppresses the automatic progress display.
 - `--no-progress`: Disable the live progress display. Progress is enabled automatically when stdout is an interactive terminal; use this flag to suppress it (e.g. in scripts or CI).
+- `--request <string>`: Path to a raw HTTP request template file. Automatically configures method, headers, cookies, body, and target parameters. Supports multi-placeholder fuzzing (`FUZZ`, `FOO`, `BAR`, `BUZZ`).
 
 ## `searchit profile`
 
