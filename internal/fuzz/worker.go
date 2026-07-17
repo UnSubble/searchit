@@ -8,14 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/httpclient"
-	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
-	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
 
 const bodyReadLimit = 4096
+const bodyRegexLimit = 1024 * 1024
 
 func sendResult(results chan<- Result, res Result) {
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsProduced, 1)
@@ -34,8 +34,7 @@ func drainAndClose(body io.ReadCloser) {
 func Worker(
 	ctx context.Context,
 	client *http.Client,
-	exclude status.Filters,
-	incSize, excSize size.Filters,
+	fs *filter.FilterSuite,
 	delay time.Duration,
 	limiter *rate.Limiter,
 	jobs <-chan Job,
@@ -63,7 +62,7 @@ func Worker(
 			}
 		}
 
-		process(ctx, client, exclude, incSize, excSize, job, results, collector)
+		process(ctx, client, fs, job, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 		if delay > 0 {
@@ -80,8 +79,7 @@ func Worker(
 func process(
 	ctx context.Context,
 	client *http.Client,
-	exclude status.Filters,
-	incSize, excSize size.Filters,
+	fs *filter.FilterSuite,
 	job Job,
 	results chan<- Result,
 	collector *stats.Collector,
@@ -140,24 +138,11 @@ func process(
 		collector.RecordLatency(time.Since(startTime))
 	}
 
-	// Filter 1: Status code
-	if exclude.Match(resp.StatusCode) {
-		drainAndClose(resp.Body)
-		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, 0)
-			collector.RecordRequestFiltered()
-		}
-		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
-			Accepted:   false,
-		})
-		return
-	}
-
-	// Filter 2: Content Length
+	contentType := resp.Header.Get("Content-Type")
 	length := httpclient.ContentLength(resp)
-	if !AcceptContentLength(length, incSize, excSize) {
+
+	// Filter 1: Match Headers (Status, Content-Type, Size)
+	if !fs.MatchHeaders(resp.StatusCode, length, contentType) {
 		drainAndClose(resp.Body)
 		if collector != nil {
 			collector.RecordResponseReceived(resp.StatusCode, length)
@@ -172,29 +157,54 @@ func process(
 		return
 	}
 
-	// Read and discard body to keep connection alive
-	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
+	// Filter 2: Match Body (Regex)
+	var bodyBytes []byte
+	bodyRead := false
+	var readErr error
+	if fs.RequiresBody() {
+		bodyBytes, readErr = io.ReadAll(io.LimitReader(resp.Body, bodyRegexLimit))
+		bodyRead = true
 		resp.Body.Close()
-		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, length)
-			collector.RecordRequestSucceeded()
-			collector.RecordDiscovered()
-		}
-		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
-			Length:     length,
-			Accepted:   true,
-			Err:        err,
-		})
-		return
 	}
-	resp.Body.Close()
+
+	if bodyRead {
+		if readErr != nil || !fs.MatchBody(bodyBytes) {
+			if collector != nil {
+				collector.RecordResponseReceived(resp.StatusCode, length)
+				collector.RecordRequestFiltered()
+			}
+			sendResult(results, Result{
+				URL:        job.URL,
+				StatusCode: resp.StatusCode,
+				Length:     length,
+				Accepted:   false,
+				Err:        readErr,
+			})
+			return
+		}
+	} else {
+		// Fast path drainage to keep connection alive
+		if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
+			resp.Body.Close()
+			if collector != nil {
+				collector.RecordResponseReceived(resp.StatusCode, length)
+				collector.RecordRequestSucceeded()
+			}
+			sendResult(results, Result{
+				URL:        job.URL,
+				StatusCode: resp.StatusCode,
+				Length:     length,
+				Accepted:   true,
+				Err:        err,
+			})
+			return
+		}
+		resp.Body.Close()
+	}
 
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, length)
 		collector.RecordRequestSucceeded()
-		collector.RecordDiscovered()
 	}
 
 	sendResult(results, Result{
@@ -203,15 +213,4 @@ func process(
 		Length:     length,
 		Accepted:   true,
 	})
-}
-
-// AcceptContentLength matches size limits.
-func AcceptContentLength(length int64, inc, exc size.Filters) bool {
-	if exc.Match(length) {
-		return false
-	}
-	if len(inc) > 0 && !inc.Match(length) {
-		return false
-	}
-	return true
 }

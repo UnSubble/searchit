@@ -9,14 +9,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/httpclient"
-	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
-	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
 
 const bodyReadLimit = 4096
+const bodyRegexLimit = 1024 * 1024
 
 // HeaderFilter specifies an exact match rule on a case-insensitive header name.
 type HeaderFilter struct {
@@ -44,8 +44,7 @@ func drainAndClose(body io.ReadCloser) {
 func Worker(
 	ctx context.Context,
 	client *http.Client,
-	exclude status.Filters,
-	incSize, excSize size.Filters,
+	fs *filter.FilterSuite,
 	incHeaders, excHeaders []HeaderFilter,
 	delay time.Duration,
 	limiter *rate.Limiter,
@@ -77,7 +76,7 @@ func Worker(
 			}
 		}
 
-		process(ctx, client, exclude, incSize, excSize, incHeaders, excHeaders, method, body, headers, cookies, job, results, collector)
+		process(ctx, client, fs, incHeaders, excHeaders, method, body, headers, cookies, job, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 		if delay > 0 {
@@ -94,8 +93,7 @@ func Worker(
 func process(
 	ctx context.Context,
 	client *http.Client,
-	exclude status.Filters,
-	incSize, excSize size.Filters,
+	fs *filter.FilterSuite,
 	incHeaders, excHeaders []HeaderFilter,
 	method string,
 	body []byte,
@@ -165,16 +163,20 @@ func process(
 		collector.RecordLatency(time.Since(startTime))
 	}
 
-	// Stage 1: Status
-	if exclude.Match(resp.StatusCode) {
+	contentType := resp.Header.Get("Content-Type")
+	length := httpclient.ContentLength(resp)
+
+	// Stage 1: Match Headers (Status, Content-Type, Size)
+	if !fs.MatchHeaders(resp.StatusCode, length, contentType) {
 		drainAndClose(resp.Body)
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, 0)
+			collector.RecordResponseReceived(resp.StatusCode, length)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
 			URL:        job.URL,
 			StatusCode: resp.StatusCode,
+			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
@@ -182,28 +184,10 @@ func process(
 		return
 	}
 
-	// Stage 2: Headers
+	// Stage 2: Headers (General Response HeaderFilter)
 	if !AcceptHeaders(resp, incHeaders, excHeaders) {
 		drainAndClose(resp.Body)
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, 0)
-			collector.RecordRequestFiltered()
-		}
-		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
-			Depth:      job.Depth,
-			Accepted:   false,
-			Origin:     job.Origin,
-		})
-		return
-	}
-
-	// Stage 3: Content-Length
-	length := httpclient.ContentLength(resp)
-	if !AcceptContentLength(length, incSize, excSize) {
-		drainAndClose(resp.Body)
-		if collector != nil {
 			collector.RecordResponseReceived(resp.StatusCode, length)
 			collector.RecordRequestFiltered()
 		}
@@ -218,30 +202,55 @@ func process(
 		return
 	}
 
-	// Stage 4: Body - read at most bodyReadLimit bytes.
-	// Responses larger than this limit will not be fully drained, which
-	// intentionally favors bounded memory usage over maximum keep-alive reuse.
-	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
-		// Body read errors after passing all filters do not discard the result;
-		// the status and headers were already validated. Close and continue.
+	// Stage 3: Match Body (Regex)
+	var bodyBytes []byte
+	bodyRead := false
+	var readErr error
+	if fs.RequiresBody() {
+		bodyBytes, readErr = io.ReadAll(io.LimitReader(resp.Body, bodyRegexLimit))
+		bodyRead = true
 		resp.Body.Close()
-		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, length)
-			collector.RecordRequestSucceeded()
-			collector.RecordDiscovered()
-		}
-		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
-			Length:     length,
-			Depth:      job.Depth,
-			Accepted:   true,
-			Origin:     job.Origin,
-			Err:        err,
-		})
-		return
 	}
-	resp.Body.Close()
+
+	if bodyRead {
+		if readErr != nil || !fs.MatchBody(bodyBytes) {
+			if collector != nil {
+				collector.RecordResponseReceived(resp.StatusCode, length)
+				collector.RecordRequestFiltered()
+			}
+			sendResult(results, Result{
+				URL:        job.URL,
+				StatusCode: resp.StatusCode,
+				Length:     length,
+				Depth:      job.Depth,
+				Accepted:   false,
+				Origin:     job.Origin,
+				Err:        readErr,
+			})
+			return
+		}
+	} else {
+		// Fast path drainage
+		if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
+			resp.Body.Close()
+			if collector != nil {
+				collector.RecordResponseReceived(resp.StatusCode, length)
+				collector.RecordRequestSucceeded()
+				collector.RecordDiscovered()
+			}
+			sendResult(results, Result{
+				URL:        job.URL,
+				StatusCode: resp.StatusCode,
+				Length:     length,
+				Depth:      job.Depth,
+				Accepted:   true,
+				Origin:     job.Origin,
+				Err:        err,
+			})
+			return
+		}
+		resp.Body.Close()
+	}
 
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, length)
@@ -285,15 +294,4 @@ func matchHeader(resp *http.Response, name, value string) bool {
 		}
 	}
 	return false
-}
-
-// AcceptContentLength checks size constraints.
-func AcceptContentLength(length int64, inc, exc size.Filters) bool {
-	if exc.Match(length) {
-		return false
-	}
-	if len(inc) > 0 && !inc.Match(length) {
-		return false
-	}
-	return true
 }

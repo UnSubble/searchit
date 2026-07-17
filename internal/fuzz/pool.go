@@ -6,9 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/stats"
-	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
 
@@ -18,8 +17,7 @@ import (
 func Start(
 	ctx context.Context,
 	client *http.Client,
-	exclude status.Filters,
-	incSize, excSize size.Filters,
+	fs *filter.FilterSuite,
 	workers int,
 	delay time.Duration,
 	limiter *rate.Limiter,
@@ -34,7 +32,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, exclude, incSize, excSize, delay, limiter, jobs, results, collector)
+			Worker(ctx, client, fs, delay, limiter, jobs, results, collector)
 		}()
 	}
 

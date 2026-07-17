@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -78,12 +79,11 @@ func TestWorker_ExecutionAndFiltering(t *testing.T) {
 	}
 	close(jobs)
 
+	fs, _ := filter.NewFilterSuite("", exclude.String(), incSize.String(), excSize.String(), nil, nil, nil, nil)
 	fuzz.Worker(
 		context.Background(),
 		client,
-		exclude,
-		incSize,
-		excSize,
+		fs,
 		0,
 		nil,
 		jobs,
@@ -165,12 +165,11 @@ func TestWorker_DelayCancellation(t *testing.T) {
 
 	// Start worker in goroutine
 	go func() {
+		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
 		fuzz.Worker(
 			ctx,
 			client,
-			nil,
-			nil,
-			nil,
+			fs,
 			100*time.Millisecond, // 100ms delay to allow cancellation
 			nil,
 			jobs,

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 )
 
@@ -64,12 +66,11 @@ func TestFuzz_ConcurrencyAndDeterminism(t *testing.T) {
 				generator.Generate(ctx, nil, jobs)
 			}()
 
+			fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
 			results := fuzz.Start(
 				ctx,
 				client,
-				nil,
-				nil,
-				nil,
+				fs,
 				tc,
 				0,
 				nil,
@@ -140,12 +141,11 @@ func TestFuzz_TimeoutAndCancellation(t *testing.T) {
 		generator.Generate(ctx, primaryChan, jobs)
 	}()
 
+	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
 	results := fuzz.Start(
 		ctx,
 		client,
-		nil,
-		nil,
-		nil,
+		fs,
 		4,
 		0,
 		nil,
@@ -163,5 +163,46 @@ func TestFuzz_TimeoutAndCancellation(t *testing.T) {
 		if !r.Accepted && r.Err == nil {
 			t.Errorf("rejected result without error details: %+v", r)
 		}
+	}
+}
+
+func TestFuzz_ResponseFiltering(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("secret key found"))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := &http.Client{}
+	ctx := context.Background()
+
+	primaryChan := make(chan string, 1)
+	primaryChan <- "test"
+	close(primaryChan)
+
+	generator := fuzz.NewGenerator(srv.URL+"/FUZZ", "GET", "", nil, "", nil, nil, nil)
+	jobs := make(chan fuzz.Job, 1)
+	go func() {
+		defer close(jobs)
+		generator.Generate(ctx, primaryChan, jobs)
+	}()
+
+	fs, err := filter.NewFilterSuite("200", "", "", "", []string{"secret"}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to build FilterSuite: %v", err)
+	}
+
+	results := fuzz.Start(ctx, client, fs, 1, 0, nil, jobs, nil)
+	var res []fuzz.Result
+	for r := range results {
+		res = append(res, r)
+	}
+
+	if len(res) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(res))
+	}
+	if !res[0].Accepted {
+		t.Error("expected result to be accepted since body contains 'secret'")
 	}
 }

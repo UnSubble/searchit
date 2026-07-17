@@ -10,6 +10,7 @@ import (
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/filter"
 )
 
 func benchApp(b *testing.B) *app.App {
@@ -29,7 +30,8 @@ func runBench(b *testing.B, workers int) {
 	defer srv.Close()
 
 	a := benchApp(b)
-	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0, nil)
+	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+	s := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil)
 
 	urls := make([]string, b.N)
 	for i := range urls {
@@ -51,7 +53,8 @@ func BenchmarkWorker_RateLimitZeroOverhead(b *testing.B) {
 	defer srv.Close()
 
 	a := benchApp(b)
-	s := engine.NewScanner(a.HTTPClient, a.Config.Status.Exclude, nil, nil, nil, nil, 0, nil)
+	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+	s := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil)
 
 	urls := make([]string, b.N)
 	for i := range urls {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/robots"
 	"github.com/unsubble/searchit/internal/sitemap"
@@ -25,15 +26,13 @@ import (
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
 	client           *http.Client
-	exclude          status.Filters
+	fs               *filter.FilterSuite
 	reader           wordlist.Reader
 	strategy         Strategy
 	maxDepth         uint16
 	recurseOn        status.Filters
 	normalizePaths   bool
 	collapseSlashes  bool
-	includeSize      size.Filters
-	excludeSize      size.Filters
 	includeHeaders   []engine.HeaderFilter
 	excludeHeaders   []engine.HeaderFilter
 	delay            time.Duration
@@ -56,6 +55,11 @@ func (m *Manager) SetRequestManipulation(method string, body []byte, headers htt
 	m.cookies = cookies
 }
 
+// SetFilterSuite configures response filters.
+func (m *Manager) SetFilterSuite(fs *filter.FilterSuite) {
+	m.fs = fs
+}
+
 func NewManager(
 	client *http.Client,
 	exclude status.Filters,
@@ -73,17 +77,17 @@ func NewManager(
 	limiter *rate.Limiter,
 	fingerprintCache *fingerprint.Cache,
 ) *Manager {
+	fs, _ := filter.NewFilterSuite("", exclude.String(), includeSize.String(), excludeSize.String(), nil, nil, nil, nil)
+
 	return &Manager{
 		client:           client,
-		exclude:          exclude,
+		fs:               fs,
 		reader:           reader,
 		strategy:         strategy,
 		maxDepth:         maxDepth,
 		recurseOn:        recurseOn,
 		normalizePaths:   normalizePaths,
 		collapseSlashes:  collapseSlashes,
-		includeSize:      includeSize,
-		excludeSize:      excludeSize,
 		includeHeaders:   includeHeaders,
 		excludeHeaders:   excludeHeaders,
 		delay:            delay,
@@ -140,9 +144,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		results := engine.Start(
 			ctx,
 			m.client,
-			m.exclude,
-			m.includeSize,
-			m.excludeSize,
+			m.fs,
 			m.includeHeaders,
 			m.excludeHeaders,
 			workers,

@@ -6,9 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/stats"
-	"github.com/unsubble/searchit/internal/status"
 	"golang.org/x/time/rate"
 )
 
@@ -16,9 +15,7 @@ import (
 // Workers and pool management are internal details.
 type Scanner struct {
 	client     *http.Client
-	exclude    status.Filters
-	incSize    size.Filters
-	excSize    size.Filters
+	fs         *filter.FilterSuite
 	incHeaders []HeaderFilter
 	excHeaders []HeaderFilter
 	errors     chan error
@@ -43,17 +40,14 @@ func (s *Scanner) SetRequestManipulation(method string, body []byte, headers htt
 
 func NewScanner(
 	client *http.Client,
-	exclude status.Filters,
-	incSize, excSize size.Filters,
+	fs *filter.FilterSuite,
 	incHeaders, excHeaders []HeaderFilter,
 	delay time.Duration,
 	limiter *rate.Limiter,
 ) *Scanner {
 	return &Scanner{
 		client:     client,
-		exclude:    exclude,
-		incSize:    incSize,
-		excSize:    excSize,
+		fs:         fs,
 		incHeaders: incHeaders,
 		excHeaders: excHeaders,
 		errors:     make(chan error, 1),
@@ -72,7 +66,7 @@ func (s *Scanner) SetStats(c *stats.Collector) {
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.client, s.exclude, s.incSize, s.excSize, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookies, jobs, s.stats)
+	results := Start(ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookies, jobs, s.stats)
 	out := make(chan Result, workers)
 
 	go func() {

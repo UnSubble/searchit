@@ -56,6 +56,12 @@ type Config struct {
 	Cookies string
 	Proxy   string
 
+	// Response Filtering fields
+	MatchRegex    []string
+	FilterRegex   []string
+	MatchContent  []string
+	FilterContent []string
+
 	// TechProfile is the explicitly-selected technology profile (--tech flag).
 	// A nil value means no explicit selection; automatic detection applies.
 	TechProfile *TechProfile

@@ -15,6 +15,7 @@ import (
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/size"
@@ -22,6 +23,7 @@ import (
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
+	"regexp"
 )
 
 var (
@@ -45,6 +47,15 @@ var (
 	flagFuzzRate        float64
 	flagFuzzCookie      string
 	flagFuzzProxy       string
+
+	flagFuzzMatchStatus   string
+	flagFuzzFilterStatus  string
+	flagFuzzMatchSize     string
+	flagFuzzFilterSize    string
+	flagFuzzMatchRegex    []string
+	flagFuzzFilterRegex   []string
+	flagFuzzMatchContent  []string
+	flagFuzzFilterContent []string
 )
 
 var fuzzCmd = &cobra.Command{
@@ -147,6 +158,37 @@ var fuzzCmd = &cobra.Command{
 			}
 		}
 
+		if flagFuzzMatchStatus != "" {
+			if _, err := status.Parse(flagFuzzMatchStatus); err != nil {
+				return fmt.Errorf("invalid match-status (--mc): %w", err)
+			}
+		}
+		if flagFuzzFilterStatus != "" {
+			if _, err := status.Parse(flagFuzzFilterStatus); err != nil {
+				return fmt.Errorf("invalid filter-status (--fc): %w", err)
+			}
+		}
+		if flagFuzzMatchSize != "" {
+			if _, err := size.Parse(flagFuzzMatchSize); err != nil {
+				return fmt.Errorf("invalid match-size (--ms): %w", err)
+			}
+		}
+		if flagFuzzFilterSize != "" {
+			if _, err := size.Parse(flagFuzzFilterSize); err != nil {
+				return fmt.Errorf("invalid filter-size (--fs): %w", err)
+			}
+		}
+		for _, rx := range flagFuzzMatchRegex {
+			if _, err := regexp.Compile(rx); err != nil {
+				return fmt.Errorf("invalid match-regex (--mr) %q: %w", rx, err)
+			}
+		}
+		for _, rx := range flagFuzzFilterRegex {
+			if _, err := regexp.Compile(rx); err != nil {
+				return fmt.Errorf("invalid filter-regex (--fr) %q: %w", rx, err)
+			}
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -165,19 +207,36 @@ var fuzzCmd = &cobra.Command{
 		cfg.Quiet = flagFuzzQuiet
 		cfg.Proxy = flagFuzzProxy
 
-		if flagFuzzExcludeStat != "" {
+		if flagFuzzMatchStatus != "" {
+			exclude, _ := status.Parse(flagFuzzMatchStatus)
+			cfg.Status.Include = exclude
+		}
+		if flagFuzzFilterStatus != "" {
+			exclude, _ := status.Parse(flagFuzzFilterStatus)
+			cfg.Status.Exclude = exclude
+		} else if flagFuzzExcludeStat != "" {
 			exclude, _ := status.Parse(flagFuzzExcludeStat)
 			cfg.Status.Exclude = exclude
 		}
 
-		if flagFuzzIncSize != "" {
+		if flagFuzzMatchSize != "" {
+			inc, _ := size.Parse(flagFuzzMatchSize)
+			cfg.IncludeSize = inc
+		} else if flagFuzzIncSize != "" {
 			inc, _ := size.Parse(flagFuzzIncSize)
 			cfg.IncludeSize = inc
 		}
-		if flagFuzzExcSize != "" {
+		if flagFuzzFilterSize != "" {
+			exc, _ := size.Parse(flagFuzzFilterSize)
+			cfg.ExcludeSize = exc
+		} else if flagFuzzExcSize != "" {
 			exc, _ := size.Parse(flagFuzzExcSize)
 			cfg.ExcludeSize = exc
 		}
+		cfg.MatchRegex = flagFuzzMatchRegex
+		cfg.FilterRegex = flagFuzzFilterRegex
+		cfg.MatchContent = flagFuzzMatchContent
+		cfg.FilterContent = flagFuzzFilterContent
 
 		var delay time.Duration
 		if flagFuzzDelay != "" {
@@ -253,6 +312,20 @@ var fuzzCmd = &cobra.Command{
 
 		appState := app.New(ctx, cfg)
 
+		fs, err := filter.NewFilterSuite(
+			cfg.Status.Include.String(),
+			cfg.Status.Exclude.String(),
+			cfg.IncludeSize.String(),
+			cfg.ExcludeSize.String(),
+			cfg.MatchRegex,
+			cfg.FilterRegex,
+			cfg.MatchContent,
+			cfg.FilterContent,
+		)
+		if err != nil {
+			return err
+		}
+
 		// Start generator
 		generator := fuzz.NewGenerator(
 			flagFuzzURL,
@@ -276,9 +349,7 @@ var fuzzCmd = &cobra.Command{
 		results := fuzz.Start(
 			ctx,
 			appState.HTTPClient,
-			cfg.Status.Exclude,
-			cfg.IncludeSize,
-			cfg.ExcludeSize,
+			fs,
 			cfg.Threads,
 			delay,
 			limiter,
@@ -367,4 +438,13 @@ func init() {
 	fuzzCmd.Flags().Float64Var(&flagFuzzRate, "rate", 0, "maximum requests per second rate limit")
 	fuzzCmd.Flags().StringVarP(&flagFuzzCookie, "cookie", "b", "", "HTTP request cookies with placeholders")
 	fuzzCmd.Flags().StringVar(&flagFuzzProxy, "proxy", "", "HTTP proxy URL to use for requests")
+
+	fuzzCmd.Flags().StringVar(&flagFuzzMatchStatus, "mc", "", "match status codes")
+	fuzzCmd.Flags().StringVar(&flagFuzzFilterStatus, "fc", "", "filter status codes")
+	fuzzCmd.Flags().StringVar(&flagFuzzMatchSize, "ms", "", "match size")
+	fuzzCmd.Flags().StringVar(&flagFuzzFilterSize, "fs", "", "filter size")
+	fuzzCmd.Flags().StringSliceVar(&flagFuzzMatchRegex, "mr", nil, "match regex")
+	fuzzCmd.Flags().StringSliceVar(&flagFuzzFilterRegex, "fr", nil, "filter regex")
+	fuzzCmd.Flags().StringSliceVar(&flagFuzzMatchContent, "mt", nil, "match content types")
+	fuzzCmd.Flags().StringSliceVar(&flagFuzzFilterContent, "ft", nil, "filter content types")
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/profile"
@@ -67,6 +69,15 @@ var (
 	flagScanHeaders []string
 	flagScanCookie  string
 	flagScanProxy   string
+
+	flagMatchStatus   string
+	flagFilterStatus  string
+	flagMatchSize     string
+	flagFilterSize    string
+	flagMatchRegex    []string
+	flagFilterRegex   []string
+	flagMatchContent  []string
+	flagFilterContent []string
 
 	resolvedTargets []string
 
@@ -207,6 +218,37 @@ var scanCmd = &cobra.Command{
 			// Try parsing as url
 			if _, err := url.Parse(flagScanProxy); err != nil {
 				return fmt.Errorf("invalid proxy URL %q: %w", flagScanProxy, err)
+			}
+		}
+
+		if flagMatchStatus != "" {
+			if _, err := status.Parse(flagMatchStatus); err != nil {
+				return fmt.Errorf("invalid match-status (--mc): %w", err)
+			}
+		}
+		if flagFilterStatus != "" {
+			if _, err := status.Parse(flagFilterStatus); err != nil {
+				return fmt.Errorf("invalid filter-status (--fc): %w", err)
+			}
+		}
+		if flagMatchSize != "" {
+			if _, err := size.Parse(flagMatchSize); err != nil {
+				return fmt.Errorf("invalid match-size (--ms): %w", err)
+			}
+		}
+		if flagFilterSize != "" {
+			if _, err := size.Parse(flagFilterSize); err != nil {
+				return fmt.Errorf("invalid filter-size (--fs): %w", err)
+			}
+		}
+		for _, rx := range flagMatchRegex {
+			if _, err := regexp.Compile(rx); err != nil {
+				return fmt.Errorf("invalid match-regex (--mr) %q: %w", rx, err)
+			}
+		}
+		for _, rx := range flagFilterRegex {
+			if _, err := regexp.Compile(rx); err != nil {
+				return fmt.Errorf("invalid filter-regex (--fr) %q: %w", rx, err)
 			}
 		}
 
@@ -377,6 +419,20 @@ var scanCmd = &cobra.Command{
 		}
 		parsedCookies := parseCookies(cfg.Cookies)
 
+		fs, err := filter.NewFilterSuite(
+			cfg.Status.Include.String(),
+			cfg.Status.Exclude.String(),
+			cfg.IncludeSize.String(),
+			cfg.ExcludeSize.String(),
+			cfg.MatchRegex,
+			cfg.FilterRegex,
+			cfg.MatchContent,
+			cfg.FilterContent,
+		)
+		if err != nil {
+			return err
+		}
+
 		for _, targetURL := range cfg.URLs {
 			if cfg.OutputFormat == "text" {
 				fmt.Printf("[*] Target: %s\n", targetURL)
@@ -469,6 +525,7 @@ var scanCmd = &cobra.Command{
 					fpCache,
 				)
 				manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, parsedCookies)
+				manager.SetFilterSuite(fs)
 				manager.SetStats(collector)
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
@@ -485,9 +542,7 @@ var scanCmd = &cobra.Command{
 				results := engine.Start(
 					scanCtx,
 					appState.HTTPClient,
-					appState.Config.Status.Exclude,
-					cfg.IncludeSize,
-					cfg.ExcludeSize,
+					fs,
 					mapHeaders(cfg.IncludeHeaders),
 					mapHeaders(cfg.ExcludeHeaders),
 					cfg.Threads,
@@ -581,7 +636,16 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 			cfg.Strategy = s
 		}
 	}
-	if cmd.Flags().Changed("exclude-status") {
+	if cmd.Flags().Changed("mc") {
+		if f, err := status.Parse(flagMatchStatus); err == nil {
+			cfg.Status.Include = f
+		}
+	}
+	if cmd.Flags().Changed("fc") {
+		if f, err := status.Parse(flagFilterStatus); err == nil {
+			cfg.Status.Exclude = f
+		}
+	} else if cmd.Flags().Changed("exclude-status") {
 		if f, err := status.Parse(flagExcludeStatus); err == nil {
 			cfg.Status.Exclude = f
 		}
@@ -618,15 +682,35 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("follow-redirects") {
 		cfg.FollowRedirects = flagFollowRedirects
 	}
-	if cmd.Flags().Changed("include-size") {
+	if cmd.Flags().Changed("ms") {
+		if f, err := size.Parse(flagMatchSize); err == nil {
+			cfg.IncludeSize = f
+		}
+	} else if cmd.Flags().Changed("include-size") {
 		if f, err := size.Parse(flagIncludeSize); err == nil {
 			cfg.IncludeSize = f
 		}
 	}
-	if cmd.Flags().Changed("exclude-size") {
+	if cmd.Flags().Changed("fs") {
+		if f, err := size.Parse(flagFilterSize); err == nil {
+			cfg.ExcludeSize = f
+		}
+	} else if cmd.Flags().Changed("exclude-size") {
 		if f, err := size.Parse(flagExcludeSize); err == nil {
 			cfg.ExcludeSize = f
 		}
+	}
+	if cmd.Flags().Changed("mr") {
+		cfg.MatchRegex = flagMatchRegex
+	}
+	if cmd.Flags().Changed("fr") {
+		cfg.FilterRegex = flagFilterRegex
+	}
+	if cmd.Flags().Changed("mt") {
+		cfg.MatchContent = flagMatchContent
+	}
+	if cmd.Flags().Changed("ft") {
+		cfg.FilterContent = flagFilterContent
 	}
 	if cmd.Flags().Changed("include-header") {
 		cfg.IncludeHeaders = parseHeaderFlags(flagIncludeHeaders)
@@ -874,6 +958,15 @@ func init() {
 	scanCmd.Flags().StringSliceVarP(&flagScanHeaders, "header", "H", nil, "HTTP request headers to send (e.g. -H 'Authorization: Bearer X')")
 	scanCmd.Flags().StringVarP(&flagScanCookie, "cookie", "b", "", "HTTP request cookies to send (e.g. -b 'session=123')")
 	scanCmd.Flags().StringVar(&flagScanProxy, "proxy", "", "HTTP proxy URL to use for requests")
+
+	scanCmd.Flags().StringVar(&flagMatchStatus, "mc", "", "match status codes")
+	scanCmd.Flags().StringVar(&flagFilterStatus, "fc", "", "filter status codes")
+	scanCmd.Flags().StringVar(&flagMatchSize, "ms", "", "match size")
+	scanCmd.Flags().StringVar(&flagFilterSize, "fs", "", "filter size")
+	scanCmd.Flags().StringSliceVar(&flagMatchRegex, "mr", nil, "match regex")
+	scanCmd.Flags().StringSliceVar(&flagFilterRegex, "fr", nil, "filter regex")
+	scanCmd.Flags().StringSliceVar(&flagMatchContent, "mt", nil, "match content types")
+	scanCmd.Flags().StringSliceVar(&flagFilterContent, "ft", nil, "filter content types")
 }
 
 func validateHeaderFlag(val string) error {
