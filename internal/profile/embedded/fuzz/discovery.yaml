@@ -1,0 +1,16 @@
+schema: 1
+name: fuzz/discovery
+tool: fuzz
+description: Administrative and hidden interface discovery fuzzing
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - discovery
+  - admin
+depends: []
+experimental: false
+config:
+  threads: 32
+  timeout: 8
+  exclude-status: "404"

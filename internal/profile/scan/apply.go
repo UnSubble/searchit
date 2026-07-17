@@ -82,6 +82,22 @@ func Apply(cfg *config.Config, o Overlay) {
 	if o.ExcludeHeaders != nil {
 		cfg.ExcludeHeaders = parseHeaderFlags(*o.ExcludeHeaders)
 	}
+
+	if o.Method != nil {
+		cfg.Method = *o.Method
+	}
+	if o.Data != nil {
+		cfg.Data = *o.Data
+	}
+	if o.Headers != nil {
+		cfg.Headers = *o.Headers
+	}
+	if o.Cookies != nil {
+		cfg.Cookies = *o.Cookies
+	}
+	if o.Request != nil {
+		cfg.RequestFile = *o.Request
+	}
 }
 
 func parseHeaderFlags(flags []string) []config.HeaderFilter {

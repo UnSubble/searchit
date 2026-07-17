@@ -1,0 +1,20 @@
+schema: 1
+name: fuzz-extra/graphql
+tool: fuzz
+description: GraphQL API queries and endpoint fuzzing defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - graphql
+  - api
+depends:
+  - fuzz/scan
+experimental: false
+config:
+  threads: 16
+  timeout: 12
+  method: POST
+  headers:
+    - "Content-Type=application/json"
+  exclude-status: "404,400"

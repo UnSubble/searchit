@@ -20,6 +20,9 @@ import (
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/profile"
+	"github.com/unsubble/searchit/internal/profile/resolver"
+	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
@@ -61,6 +64,7 @@ var (
 	flagFuzzShowHeaders   bool
 	flagFuzzShowTitle     bool
 	flagFuzzRequestFile   string
+	flagFuzzProfiles      []string
 )
 
 var fuzzCmd = &cobra.Command{
@@ -281,13 +285,72 @@ var fuzzCmd = &cobra.Command{
 		cfg.MatchContent = flagFuzzMatchContent
 		cfg.FilterContent = flagFuzzFilterContent
 
+		// Apply profiles if specified
+		if len(flagFuzzProfiles) > 0 {
+			store := profile.NewStore()
+			resolved, err := resolver.New(store).Resolve(flagFuzzProfiles)
+			if err != nil {
+				cmd.SilenceErrors = true
+				cmd.SilenceUsage = true
+				fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profiles: %v\n", err)
+				return fmt.Errorf("load failed")
+			}
+
+			for _, p := range resolved {
+				// Validate (generic)
+				if err := profile.Validate(p); err != nil {
+					cmd.SilenceErrors = true
+					cmd.SilenceUsage = true
+					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+					return fmt.Errorf("validation failed")
+				}
+
+				// Validate (tool-specific)
+				if v := profile.GetValidator(p.Tool); v != nil {
+					if err := v.Validate(p); err != nil {
+						cmd.SilenceErrors = true
+						cmd.SilenceUsage = true
+						fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+						return fmt.Errorf("validation failed")
+					}
+				}
+
+				// Decode and Apply
+				var overlay scanProfile.Overlay
+				if err := p.Decode(&overlay); err != nil {
+					cmd.SilenceErrors = true
+					cmd.SilenceUsage = true
+					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+					return fmt.Errorf("decode failed")
+				}
+				scanProfile.Apply(&cfg, overlay)
+			}
+		}
+
+		// Apply CLI overrides to ensure they take precedence
+		applyFuzzCLIOverrides(cmd, &cfg)
+
+		if testHookConfigApplied != nil {
+			testHookConfigApplied(cfg)
+		}
+
+		// Propagate resolved values to command execution
+		flagFuzzMethod = cfg.Method
+		flagFuzzData = cfg.Data
+		flagFuzzCookie = cfg.Cookies
+		flagFuzzRequestFile = cfg.RequestFile
+
 		var delay time.Duration
-		if flagFuzzDelay != "" {
+		if cfg.Delay > 0 {
+			delay = cfg.Delay
+		} else if flagFuzzDelay != "" {
 			delay, _ = time.ParseDuration(flagFuzzDelay)
 		}
 
 		var limiter *rate.Limiter
-		if flagFuzzRate > 0 {
+		if cfg.Rate > 0 {
+			limiter = rate.NewLimiter(rate.Limit(cfg.Rate), 1)
+		} else if flagFuzzRate > 0 {
 			limiter = rate.NewLimiter(rate.Limit(flagFuzzRate), 1)
 		}
 
@@ -322,7 +385,7 @@ var fuzzCmd = &cobra.Command{
 				}
 			}
 
-			cliHeaders, err := parseFuzzHeaderFlags(flagFuzzHeaders)
+			cliHeaders, err := parseFuzzHeaderFlags(cfg.Headers)
 			if err != nil {
 				return err
 			}
@@ -341,7 +404,7 @@ var fuzzCmd = &cobra.Command{
 				flagFuzzCookie = strings.Join(cookiePairs, "; ")
 			}
 		} else {
-			cliHeaders, err := parseFuzzHeaderFlags(flagFuzzHeaders)
+			cliHeaders, err := parseFuzzHeaderFlags(cfg.Headers)
 			if err != nil {
 				return err
 			}
@@ -499,6 +562,87 @@ func parseFuzzHeaderFlags(flags []string) (http.Header, error) {
 	return headers, nil
 }
 
+func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
+	if cmd.Flags().Changed("threads") {
+		cfg.Threads = flagFuzzThreads
+	}
+	if cmd.Flags().Changed("timeout") {
+		cfg.Timeout = time.Duration(flagFuzzTimeout) * time.Second
+	}
+	if cmd.Flags().Changed("delay") {
+		if d, err := time.ParseDuration(flagFuzzDelay); err == nil {
+			cfg.Delay = d
+		}
+	}
+	if cmd.Flags().Changed("rate") {
+		cfg.Rate = flagFuzzRate
+	}
+	if cmd.Flags().Changed("quiet") {
+		cfg.Quiet = flagFuzzQuiet
+	}
+	if cmd.Flags().Changed("proxy") {
+		cfg.Proxy = flagFuzzProxy
+	}
+	if cmd.Flags().Changed("show-headers") {
+		cfg.ShowHeaders = flagFuzzShowHeaders
+	}
+	if cmd.Flags().Changed("show-title") {
+		cfg.ShowTitle = flagFuzzShowTitle
+	}
+	if cmd.Flags().Changed("request") {
+		cfg.RequestFile = flagFuzzRequestFile
+	}
+	if cmd.Flags().Changed("method") {
+		cfg.Method = flagFuzzMethod
+	}
+	if cmd.Flags().Changed("data") {
+		cfg.Data = flagFuzzData
+	}
+	if cmd.Flags().Changed("cookie") {
+		cfg.Cookies = flagFuzzCookie
+	}
+
+	if cmd.Flags().Changed("mc") {
+		inc, _ := status.Parse(flagFuzzMatchStatus)
+		cfg.Status.Include = inc
+	}
+	if cmd.Flags().Changed("fc") {
+		exc, _ := status.Parse(flagFuzzFilterStatus)
+		cfg.Status.Exclude = exc
+	} else if cmd.Flags().Changed("exclude-status") {
+		exc, _ := status.Parse(flagFuzzExcludeStat)
+		cfg.Status.Exclude = exc
+	}
+
+	if cmd.Flags().Changed("ms") {
+		inc, _ := size.Parse(flagFuzzMatchSize)
+		cfg.IncludeSize = inc
+	} else if cmd.Flags().Changed("include-size") {
+		inc, _ := size.Parse(flagFuzzIncSize)
+		cfg.IncludeSize = inc
+	}
+	if cmd.Flags().Changed("fs") {
+		exc, _ := size.Parse(flagFuzzFilterSize)
+		cfg.ExcludeSize = exc
+	} else if cmd.Flags().Changed("exclude-size") {
+		exc, _ := size.Parse(flagFuzzExcSize)
+		cfg.ExcludeSize = exc
+	}
+
+	if cmd.Flags().Changed("mr") {
+		cfg.MatchRegex = flagFuzzMatchRegex
+	}
+	if cmd.Flags().Changed("fr") {
+		cfg.FilterRegex = flagFuzzFilterRegex
+	}
+	if cmd.Flags().Changed("mt") {
+		cfg.MatchContent = flagFuzzMatchContent
+	}
+	if cmd.Flags().Changed("ft") {
+		cfg.FilterContent = flagFuzzFilterContent
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(fuzzCmd)
 
@@ -534,4 +678,5 @@ func init() {
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowHeaders, "show-headers", false, "show response headers in output")
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowTitle, "show-title", false, "show HTML titles in output")
 	fuzzCmd.Flags().StringVar(&flagFuzzRequestFile, "request", "", "load raw HTTP request template from file")
+	fuzzCmd.Flags().StringSliceVar(&flagFuzzProfiles, "profile", nil, "load one or more predefined fuzz profiles")
 }

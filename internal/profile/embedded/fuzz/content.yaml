@@ -1,0 +1,16 @@
+schema: 1
+name: fuzz/content
+tool: fuzz
+description: Content and static resource fuzzing defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - content
+  - static
+depends: []
+experimental: false
+config:
+  threads: 64
+  timeout: 5
+  exclude-status: "404,403,500"

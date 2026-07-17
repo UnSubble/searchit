@@ -33,6 +33,12 @@ type Overlay struct {
 	ExcludeSize     *string   `yaml:"exclude-size"`
 	IncludeHeaders  *[]string `yaml:"include-headers"`
 	ExcludeHeaders  *[]string `yaml:"exclude-headers"`
+
+	Method  *string   `yaml:"method"`
+	Data    *string   `yaml:"data"`
+	Headers *[]string `yaml:"headers"`
+	Cookies *string   `yaml:"cookies"`
+	Request *string   `yaml:"request"`
 }
 
 // UnmarshalYAML implements custom unmarshaling to handle durations gracefully.
@@ -62,6 +68,12 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 		IncludeHeader   *[]string `yaml:"include-header"`
 		ExcludeHeaders  *[]string `yaml:"exclude-headers"`
 		ExcludeHeader   *[]string `yaml:"exclude-header"`
+
+		Method  *string   `yaml:"method"`
+		Data    *string   `yaml:"data"`
+		Headers *[]string `yaml:"headers"`
+		Cookies *string   `yaml:"cookies"`
+		Request *string   `yaml:"request"`
 	}
 
 	var raw rawOverlay
@@ -90,6 +102,12 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	o.RecurseOn = raw.RecurseOn
 	o.IncludeSize = raw.IncludeSize
 	o.ExcludeSize = raw.ExcludeSize
+
+	o.Method = raw.Method
+	o.Data = raw.Data
+	o.Headers = raw.Headers
+	o.Cookies = raw.Cookies
+	o.Request = raw.Request
 
 	if raw.IncludeHeaders != nil {
 		o.IncludeHeaders = raw.IncludeHeaders

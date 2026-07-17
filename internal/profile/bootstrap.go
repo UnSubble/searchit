@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"github.com/unsubble/searchit/internal/profile/fuzz"
 	"github.com/unsubble/searchit/internal/profile/scan"
 	v1 "github.com/unsubble/searchit/internal/profile/schema/v1"
 )
@@ -9,6 +10,9 @@ import (
 // This must be called explicitly during application startup.
 func RegisterBuiltinValidators() error {
 	if err := Register(scan.NewValidator()); err != nil {
+		return err
+	}
+	if err := Register(fuzz.NewValidator()); err != nil {
 		return err
 	}
 	return nil

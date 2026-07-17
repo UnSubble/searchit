@@ -1,0 +1,20 @@
+schema: 1
+name: fuzz-extra/multipart
+tool: fuzz
+description: Multipart form upload and field parameter fuzzing options
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - multipart
+  - upload
+depends:
+  - fuzz/scan
+experimental: false
+config:
+  threads: 24
+  timeout: 15
+  method: POST
+  headers:
+    - "Content-Type=multipart/form-data"
+  exclude-status: "404"

@@ -38,6 +38,16 @@ func TestBuiltinProfiles(t *testing.T) {
 		"scan-extra/static",
 		"scan-extra/symfony",
 		"scan-extra/wordpress",
+		"fuzz/scan",
+		"fuzz/parameter",
+		"fuzz/content",
+		"fuzz/login",
+		"fuzz/discovery",
+		"fuzz-extra/api",
+		"fuzz-extra/graphql",
+		"fuzz-extra/json",
+		"fuzz-extra/multipart",
+		"fuzz-extra/templates",
 	}
 
 	for _, name := range expectedBuiltins {

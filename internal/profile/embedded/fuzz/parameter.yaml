@@ -1,0 +1,16 @@
+schema: 1
+name: fuzz/parameter
+tool: fuzz
+description: Fuzzing query parameter values or inject parameters
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - parameter
+  - query
+depends: []
+experimental: false
+config:
+  threads: 48
+  timeout: 5
+  exclude-status: "404"

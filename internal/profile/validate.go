@@ -64,6 +64,8 @@ func Validate(p *Profile) error {
 	expectedTool := parsed.Tool
 	if expectedTool == "scan-extra" {
 		expectedTool = "scan"
+	} else if expectedTool == "fuzz-extra" {
+		expectedTool = "fuzz"
 	}
 	if expectedTool != p.Tool {
 		return fmt.Errorf("profile namespace/tool mismatch: name namespace is %q but tool is %q", parsed.Tool, p.Tool)

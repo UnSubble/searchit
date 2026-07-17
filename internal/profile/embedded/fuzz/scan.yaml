@@ -1,0 +1,16 @@
+schema: 1
+name: fuzz/scan
+tool: fuzz
+description: General web page and active folder fuzz scanning defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - general
+  - scan
+depends: []
+experimental: false
+config:
+  threads: 32
+  timeout: 10
+  exclude-status: "404"

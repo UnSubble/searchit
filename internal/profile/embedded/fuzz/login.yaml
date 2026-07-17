@@ -1,0 +1,17 @@
+schema: 1
+name: fuzz/login
+tool: fuzz
+description: Auth login pages and credential guessing fuzz configuration
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - login
+  - authentication
+depends: []
+experimental: false
+config:
+  threads: 16
+  timeout: 15
+  method: POST
+  exclude-status: "404"

@@ -1,0 +1,17 @@
+schema: 1
+name: fuzz-extra/templates
+tool: fuzz
+description: Raw HTTP request template based fuzzing execution defaults
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+tags:
+  - templates
+  - raw-http
+depends:
+  - fuzz/scan
+experimental: false
+config:
+  threads: 32
+  timeout: 10
+  exclude-status: "404"
