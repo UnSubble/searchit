@@ -32,6 +32,7 @@ type Config struct {
 	MaxDepth        uint16
 	Strategy        recursion.Strategy
 	FollowRedirects bool
+	MaxRedirects    int
 
 	RecurseOn status.Filters
 

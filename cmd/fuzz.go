@@ -53,18 +53,20 @@ var (
 	flagFuzzCookie      string
 	flagFuzzProxy       string
 
-	flagFuzzMatchStatus   string
-	flagFuzzFilterStatus  string
-	flagFuzzMatchSize     string
-	flagFuzzFilterSize    string
-	flagFuzzMatchRegex    []string
-	flagFuzzFilterRegex   []string
-	flagFuzzMatchContent  []string
-	flagFuzzFilterContent []string
-	flagFuzzShowHeaders   bool
-	flagFuzzShowTitle     bool
-	flagFuzzRequestFile   string
-	flagFuzzProfiles      []string
+	flagFuzzMatchStatus     string
+	flagFuzzFilterStatus    string
+	flagFuzzMatchSize       string
+	flagFuzzFilterSize      string
+	flagFuzzMatchRegex      []string
+	flagFuzzFilterRegex     []string
+	flagFuzzMatchContent    []string
+	flagFuzzFilterContent   []string
+	flagFuzzShowHeaders     bool
+	flagFuzzShowTitle       bool
+	flagFuzzRequestFile     string
+	flagFuzzProfiles        []string
+	flagFuzzFollowRedirects bool
+	flagFuzzMaxRedirects    int
 )
 
 var fuzzCmd = &cobra.Command{
@@ -232,6 +234,10 @@ var fuzzCmd = &cobra.Command{
 			if _, err := regexp.Compile(rx); err != nil {
 				return fmt.Errorf("invalid filter-regex (--fr) %q: %w", rx, err)
 			}
+		}
+
+		if flagFuzzMaxRedirects < 0 {
+			return fmt.Errorf("max-redirects cannot be negative")
 		}
 
 		return nil
@@ -516,6 +522,13 @@ var fuzzCmd = &cobra.Command{
 					Headers:    r.Headers,
 				}
 				_ = fmttr.Print(engRes)
+			} else if r.Err != nil {
+				errStr := r.Err.Error()
+				if strings.Contains(errStr, "maximum redirect limit exceeded") {
+					fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+				} else if strings.Contains(errStr, "redirect loop detected") {
+					fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+				}
 			}
 		}
 
@@ -641,6 +654,12 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("ft") {
 		cfg.FilterContent = flagFuzzFilterContent
 	}
+	if cmd.Flags().Changed("follow-redirects") {
+		cfg.FollowRedirects = flagFuzzFollowRedirects
+	}
+	if cmd.Flags().Changed("max-redirects") {
+		cfg.MaxRedirects = flagFuzzMaxRedirects
+	}
 }
 
 func init() {
@@ -679,4 +698,6 @@ func init() {
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowTitle, "show-title", false, "show HTML titles in output")
 	fuzzCmd.Flags().StringVar(&flagFuzzRequestFile, "request", "", "load raw HTTP request template from file")
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzProfiles, "profile", nil, "load one or more predefined fuzz profiles")
+	fuzzCmd.Flags().BoolVar(&flagFuzzFollowRedirects, "follow-redirects", false, "follow HTTP redirects")
+	fuzzCmd.Flags().IntVar(&flagFuzzMaxRedirects, "max-redirects", 10, "maximum redirect limit")
 }

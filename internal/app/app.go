@@ -83,7 +83,7 @@ func New(ctx context.Context, cfg config.Config) *App {
 		ctx = context.Background()
 	}
 
-	client := httpclient.New(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, cfg.Proxy)
+	client := httpclient.NewWithMaxRedirects(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, cfg.MaxRedirects, cfg.Proxy)
 
 	var fpCache *fingerprint.Cache
 	if cfg.Adaptive {

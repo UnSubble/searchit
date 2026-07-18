@@ -63,6 +63,7 @@ var (
 	flagNoProgress      bool
 	flagTech            string
 	flagFollowRedirects bool
+	flagMaxRedirects    int
 	flagAdaptive        bool
 
 	flagScanMethod  string
@@ -195,6 +196,10 @@ var scanCmd = &cobra.Command{
 			if ct < 0 {
 				return fmt.Errorf("connect-timeout cannot be negative")
 			}
+		}
+
+		if flagMaxRedirects < 0 {
+			return fmt.Errorf("max-redirects cannot be negative")
 		}
 
 		for _, h := range flagIncludeHeaders {
@@ -572,6 +577,13 @@ var scanCmd = &cobra.Command{
 						} else {
 							_ = fmttr.Print(r)
 						}
+					} else if r.Err != nil {
+						errStr := r.Err.Error()
+						if strings.Contains(errStr, "maximum redirect limit exceeded") {
+							fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+						} else if strings.Contains(errStr, "redirect loop detected") {
+							fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+						}
 					}
 				}
 			} else {
@@ -614,6 +626,14 @@ var scanCmd = &cobra.Command{
 						}
 					} else {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
+						if r.Err != nil {
+							errStr := r.Err.Error()
+							if strings.Contains(errStr, "maximum redirect limit exceeded") {
+								fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+							} else if strings.Contains(errStr, "redirect loop detected") {
+								fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+							}
+						}
 					}
 					collector.DecrementQueuedJobs()
 				}
@@ -718,6 +738,9 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("follow-redirects") {
 		cfg.FollowRedirects = flagFollowRedirects
+	}
+	if cmd.Flags().Changed("max-redirects") {
+		cfg.MaxRedirects = flagMaxRedirects
 	}
 	if cmd.Flags().Changed("ms") {
 		if f, err := size.Parse(flagMatchSize); err == nil {
@@ -990,6 +1013,13 @@ func init() {
 		"follow-redirects",
 		false,
 		"follow HTTP redirects",
+	)
+
+	scanCmd.Flags().IntVar(
+		&flagMaxRedirects,
+		"max-redirects",
+		10,
+		"maximum redirect limit",
 	)
 
 	scanCmd.Flags().BoolVar(

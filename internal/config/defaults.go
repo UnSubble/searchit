@@ -22,6 +22,7 @@ func Default() Config {
 		MaxDepth:        3,
 		Strategy:        recursion.BFS,
 		FollowRedirects: false,
+		MaxRedirects:    10,
 		RecurseOn:       status.MustParse("200,301,302,403"),
 		Paths: PathConfig{
 			NormalizePaths:  false,
