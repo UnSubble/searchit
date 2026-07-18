@@ -141,3 +141,46 @@ func TestGenerator_NoPrimaryWordlist(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerator_WithCookies(t *testing.T) {
+	g := fuzz.NewGenerator(
+		"http://test.com/FUZZ",
+		"GET",
+		"",
+		nil,
+		"sess=FOO; user=john",      // Cookie template containing FOO placeholder
+		[]string{"admin", "guest"}, // fooWords (FOO)
+		nil,
+		nil,
+	)
+
+	primary := make(chan string, 1)
+	primary <- "api"
+	close(primary)
+
+	jobs := make(chan fuzz.Job, 10)
+	g.Generate(context.Background(), primary, jobs)
+	close(jobs)
+
+	var results []fuzz.Job
+	for j := range jobs {
+		results = append(results, j)
+	}
+
+	// Permutations: 1 (fuzz) * 2 (foo) = 2 jobs
+	if len(results) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(results))
+	}
+
+	// Verify cookies are populated
+	c0 := results[0].Cookies
+	if len(c0) != 2 {
+		t.Fatalf("expected 2 cookies, got %d", len(c0))
+	}
+	if c0[0].Name != "sess" || c0[0].Value != "admin" {
+		t.Errorf("unexpected cookie 0: %+v", c0[0])
+	}
+	if c0[1].Name != "user" || c0[1].Value != "john" {
+		t.Errorf("unexpected cookie 1: %+v", c0[1])
+	}
+}

@@ -47,15 +47,17 @@ func (f *fingerprintRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 		}
 	}
 
-	// Analyze the response using the fingerprint engine
-	ctx := &fingerprint.Context{
-		Host:       req.URL.Host,
-		Path:       req.URL.Path,
-		StatusCode: resp.StatusCode,
-		Header:     resp.Header,
-		Body:       bodyBytes,
+	if f.cache != nil {
+		// Analyze the response using the fingerprint engine
+		ctx := &fingerprint.Context{
+			Host:       req.URL.Host,
+			Path:       req.URL.Path,
+			StatusCode: resp.StatusCode,
+			Header:     resp.Header,
+			Body:       bodyBytes,
+		}
+		fingerprint.NewEngine(f.cache).Analyze(ctx)
 	}
-	fingerprint.NewEngine(f.cache).Analyze(ctx)
 
 	return resp, nil
 }

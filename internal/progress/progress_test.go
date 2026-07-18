@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/console"
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/stats"
 )
@@ -403,4 +404,48 @@ func TestNewManager_ZeroInterval(t *testing.T) {
 	if m.Interval != 1*time.Second {
 		t.Errorf("expected interval to fallback to 1s, got %v", m.Interval)
 	}
+}
+
+func TestProgress_StatsViewAndNumberFormatting(t *testing.T) {
+	var buf bytes.Buffer
+	c := stats.NewCollector()
+	c.RecordResponseReceived(200, 1234567) // 1.2M bytes
+
+	snap := c.Snapshot()
+	snap.RequestsSent = 1500000 // 1.5M
+
+	progress.RenderStatsView(&buf, snap, 32, nil)
+	out := buf.String()
+
+	if !strings.Contains(out, "1,500,000") {
+		t.Errorf("expected formatted number 1,500,000 in output, got:\n%s", out)
+	}
+}
+
+func TestProgress_HandleResult(t *testing.T) {
+	c := stats.NewCollector()
+	var buf bytes.Buffer
+	r := progress.NewANSIRenderer(&buf, "http://localhost", nil, "bfs")
+	m := progress.NewManager(c, r, 1*time.Second)
+
+	res := engine.Result{
+		URL:        "http://localhost/admin",
+		StatusCode: 200,
+		Length:     42,
+		Depth:      1,
+	}
+
+	m.HandleResult(res)
+
+	// Since live dashboard is active, result must be routed and output
+	out := buf.String()
+	if !strings.Contains(out, "200") || !strings.Contains(out, "/admin") {
+		t.Errorf("expected result to be printed, got:\n%s", out)
+	}
+}
+
+func TestANSIRenderer_ResetLineCount(t *testing.T) {
+	var buf bytes.Buffer
+	r := progress.NewANSIRenderer(&buf, "http://localhost", nil, "bfs")
+	r.ResetLineCount()
 }

@@ -197,3 +197,89 @@ func TestCounter_GenericCounter(t *testing.T) {
 		t.Errorf("expected counter value 3000, got %d", cnt.Value())
 	}
 }
+
+func TestCollector_ActiveWorkersAndQueuedJobs(t *testing.T) {
+	c := stats.NewCollector()
+	c.SetActiveWorkers(10)
+	c.SetQueuedJobs(50)
+	c.DecrementQueuedJobs()
+
+	snap := c.Snapshot()
+	if snap.ActiveWorkers != 10 {
+		t.Errorf("expected 10 active workers, got %d", snap.ActiveWorkers)
+	}
+	if snap.QueuedJobs != 49 {
+		t.Errorf("expected 49 queued jobs, got %d", snap.QueuedJobs)
+	}
+}
+
+func TestInstrumentation_Reset(t *testing.T) {
+	inst := &stats.Instrumentation{}
+	inst.WordsRead = 5
+	inst.Reset()
+
+	if inst.WordsRead != 0 {
+		t.Errorf("expected WordsRead=0 after reset, got %d", inst.WordsRead)
+	}
+}
+
+func TestInstrumentation_LogEvent(t *testing.T) {
+	inst := &stats.Instrumentation{}
+
+	// Disabled by default
+	inst.LogEvent("event 1")
+	if len(inst.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(inst.Events))
+	}
+
+	// Enable log and trace
+	inst.Enabled = 1
+	inst.Trace = 1
+	inst.LogEvent("event 2")
+	if len(inst.Events) != 1 || inst.Events[0] != "event 2" {
+		t.Errorf("expected [event 2], got %v", inst.Events)
+	}
+}
+
+func TestInstrumentation_PrintReconciliation(t *testing.T) {
+	inst := &stats.Instrumentation{}
+	inst.Enabled = 1
+	inst.Trace = 1
+
+	// Setup mismatches to cover all pipeline stages
+	inst.JobsProduced = 10
+	inst.JobsSubmitted = 9
+	inst.PrintReconciliation() // Mismatch in Producer
+
+	inst.JobsSubmitted = 10
+	inst.WorkerJobsRecv = 9
+	inst.PrintReconciliation() // Mismatch in Channel
+
+	inst.WorkerJobsRecv = 10
+	inst.WorkerJobsComp = 9
+	inst.PrintReconciliation() // Mismatch in Workers
+
+	inst.WorkerJobsComp = 10
+	inst.RequestsBuilt = 9
+	inst.PrintReconciliation() // Mismatch in Request Builder
+
+	inst.RequestsBuilt = 10
+	inst.RequestsSent = 9
+	inst.PrintReconciliation() // Mismatch in HTTP Transmission
+
+	inst.RequestsSent = 10
+	inst.ResponsesReceived = 9
+	inst.PrintReconciliation() // Mismatch in HTTP Response
+
+	inst.ResponsesReceived = 10
+	inst.ResultsProduced = 9
+	inst.PrintReconciliation() // Mismatch in Worker Output
+
+	inst.ResultsProduced = 10
+	inst.ResultsConsumed = 9
+	inst.PrintReconciliation() // Mismatch in Scheduler
+
+	// Reconciled
+	inst.ResultsConsumed = 10
+	inst.PrintReconciliation()
+}

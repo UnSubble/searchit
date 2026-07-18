@@ -526,4 +526,26 @@ func TestFormatters_ShowPresentation(t *testing.T) {
 			t.Errorf("expected header Server: nginx, got %v", headersMap["Server"])
 		}
 	})
+
+	t.Run("CSV and Markdown with show-headers", func(t *testing.T) {
+		// Test CSV with headers
+		var csvBuf bytes.Buffer
+		csvFormatter := output.NewCSVFormatter(&csvBuf, true, true)
+		_ = csvFormatter.Print(r)
+		_ = csvFormatter.Close()
+		csvStr := csvBuf.String()
+		if !strings.Contains(csvStr, "Server") || !strings.Contains(csvStr, "nginx") {
+			t.Errorf("expected CSV headers/values in output, got:\n%s", csvStr)
+		}
+
+		// Test Markdown with headers
+		var mdBuf bytes.Buffer
+		mdFormatter := output.NewMarkdownFormatter(&mdBuf, true, true)
+		_ = mdFormatter.Print(r)
+		_ = mdFormatter.Close()
+		mdStr := mdBuf.String()
+		if !strings.Contains(mdStr, "Server") || !strings.Contains(mdStr, "nginx") {
+			t.Errorf("expected Markdown headers/values in output, got:\n%s", mdStr)
+		}
+	})
 }

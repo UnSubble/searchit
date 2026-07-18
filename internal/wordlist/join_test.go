@@ -129,6 +129,20 @@ func TestCleanWord(t *testing.T) {
 	}
 }
 
+func TestJoin_Errors(t *testing.T) {
+	// 1. Invalid base URL (invalid escape sequence / IPv6 bracket)
+	_, err := wordlist.Join("http://[::1", "admin/login")
+	if err == nil {
+		t.Error("expected error for invalid base URL, got nil")
+	}
+
+	// 2. Invalid candidate path (invalid escape sequence / IPv6 bracket)
+	_, err = wordlist.Join("http://example.com", "http://[::1")
+	if err == nil {
+		t.Error("expected error for invalid candidate path, got nil")
+	}
+}
+
 func FuzzCleanWord(f *testing.F) {
 	f.Add(".", true, true)
 	f.Add("admin//api", false, true)

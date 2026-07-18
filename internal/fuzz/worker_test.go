@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -198,4 +199,118 @@ func TestWorker_DelayCancellation(t *testing.T) {
 	if len(trailing) > 1 {
 		t.Errorf("expected at most 1 result after cancellation, got %d", len(trailing))
 	}
+}
+
+type errorReader struct{}
+
+func (errorReader) Read(p []byte) (n int, err error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (errorReader) Close() error {
+	return nil
+}
+
+func TestWorker_ProcessErrorPaths(t *testing.T) {
+	// 1. Invalid method name (space inside method) triggers NewRequestWithContext error
+	func() {
+		client := &http.Client{}
+		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+		job := fuzz.Job{
+			URL:    "http://localhost",
+			Method: "GE T", // Invalid HTTP method
+		}
+
+		// Run fuzz.Start internally by scheduling the job
+		jobs := make(chan fuzz.Job, 1)
+		jobs <- job
+		close(jobs)
+
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		res := <-resChan
+		if res.Err == nil {
+			t.Error("expected NewRequestWithContext error, got nil")
+		}
+	}()
+
+	// 2. HTTP connection failure (client.Do returns error)
+	func() {
+		rt := &mockRoundTripper{
+			response: func(req *http.Request) (*http.Response, error) {
+				return nil, io.ErrUnexpectedEOF
+			},
+		}
+		client := &http.Client{Transport: rt}
+		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+		jobs := make(chan fuzz.Job, 1)
+		jobs <- fuzz.Job{URL: "http://localhost"}
+		close(jobs)
+
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		res := <-resChan
+		if res.Err == nil || !strings.Contains(res.Err.Error(), io.ErrUnexpectedEOF.Error()) {
+			t.Errorf("expected error containing unexpected EOF, got: %v", res.Err)
+		}
+	}()
+
+	// 3. Host header override and cookie passing
+	func() {
+		var hostOverride string
+		var receivedCookies []*http.Cookie
+		rt := &mockRoundTripper{
+			response: func(req *http.Request) (*http.Response, error) {
+				hostOverride = req.Host
+				receivedCookies = req.Cookies()
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader([]byte("test"))),
+				}, nil
+			},
+		}
+		client := &http.Client{Transport: rt}
+		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+		jobs := make(chan fuzz.Job, 1)
+		jobs <- fuzz.Job{
+			URL:     "http://localhost/path",
+			Method:  "GET",
+			Headers: http.Header{"Host": []string{"custom-host.com"}},
+			Cookies: []*http.Cookie{{Name: "sess", Value: "val"}},
+		}
+		close(jobs)
+
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		<-resChan
+
+		if hostOverride != "custom-host.com" {
+			t.Errorf("expected Host override custom-host.com, got %q", hostOverride)
+		}
+		if len(receivedCookies) != 1 || receivedCookies[0].Name != "sess" {
+			t.Errorf("unexpected cookies: %v", receivedCookies)
+		}
+	}()
+
+	// 4. Response body read error
+	func() {
+		rt := &mockRoundTripper{
+			response: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: 200,
+					Body:       errorReader{},
+				}, nil
+			},
+		}
+		client := &http.Client{Transport: rt}
+		// Require body to trigger body read error by setting MatchRegex
+		fs, _ := filter.NewFilterSuite("", "", "", "", []string{"trigger-requires-body"}, nil, nil, nil)
+
+		jobs := make(chan fuzz.Job, 1)
+		jobs <- fuzz.Job{URL: "http://localhost"}
+		close(jobs)
+
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		res := <-resChan
+		if res.Err == nil {
+			t.Error("expected body read error, got nil")
+		}
+	}()
 }

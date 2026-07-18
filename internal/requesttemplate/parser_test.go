@@ -1,6 +1,8 @@
 package requesttemplate_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/unsubble/searchit/internal/requesttemplate"
@@ -73,4 +75,78 @@ func TestParse(t *testing.T) {
 			t.Error("Cookie header was not deleted from Headers map")
 		}
 	})
+}
+
+func TestParseFile_SuccessAndFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "tmpl.txt")
+
+	tmplStr := "GET /admin HTTP/1.1\r\nHost: example.com\r\n\r\n"
+	if err := os.WriteFile(filePath, []byte(tmplStr), 0600); err != nil {
+		t.Fatalf("failed to write temp template file: %v", err)
+	}
+
+	// Success case
+	tmpl, err := requesttemplate.ParseFile(filePath, "http://example.com")
+	if err != nil {
+		t.Fatalf("unexpected error parsing template file: %v", err)
+	}
+	if tmpl.URL != "http://example.com/admin" {
+		t.Errorf("expected URL http://example.com/admin, got %s", tmpl.URL)
+	}
+
+	// File read failure case
+	_, err = requesttemplate.ParseFile(filePath+"-non-existent", "http://example.com")
+	if err == nil {
+		t.Error("expected error for non-existent file, got nil")
+	}
+}
+
+func TestResolveURL_EdgeCases(t *testing.T) {
+	// Base URL empty, no Host header, raw path is already full URL
+	urlStr, err := requesttemplate.ResolveURL("", "", "http://google.com/test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if urlStr != "http://google.com/test" {
+		t.Errorf("expected http://google.com/test, got %s", urlStr)
+	}
+
+	// Base URL empty, no Host header, not full URL -> error
+	_, err = requesttemplate.ResolveURL("", "", "/path")
+	if err == nil {
+		t.Error("expected error due to missing Host or Base URL, got nil")
+	}
+
+	// Invalid Base URL -> error
+	_, err = requesttemplate.ResolveURL("http://[invalid-ipv6", "", "/path")
+	if err == nil {
+		t.Error("expected error due to invalid base URL, got nil")
+	}
+
+	// Invalid Path URL -> error
+	_, err = requesttemplate.ResolveURL("http://example.com", "", "http://[invalid-path-ipv6")
+	if err == nil {
+		t.Error("expected error due to invalid path URL, got nil")
+	}
+}
+
+func TestParse_FormatErrors(t *testing.T) {
+	// Empty template string
+	_, err := requesttemplate.Parse([]byte(""), "")
+	if err == nil {
+		t.Error("expected error for empty template, got nil")
+	}
+
+	// Missing request line (starts with empty line)
+	_, err = requesttemplate.Parse([]byte("\r\nHost: localhost\r\n\r\n"), "")
+	if err == nil {
+		t.Error("expected error for missing request line, got nil")
+	}
+
+	// Malformed header (missing colon)
+	_, err = requesttemplate.Parse([]byte("GET / HTTP/1.1\r\nHost localhost\r\n\r\n"), "")
+	if err == nil {
+		t.Error("expected error for malformed header block, got nil")
+	}
 }

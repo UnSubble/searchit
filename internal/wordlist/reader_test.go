@@ -388,3 +388,39 @@ func (r customBlockReader) Read(ctx context.Context, out chan<- string) error {
 	}
 	return nil
 }
+
+func TestWordlist_Count(t *testing.T) {
+	// 1. EmbeddedReader
+	er := wordlist.EmbeddedReader{}
+	cnt, err := er.Count()
+	if err != nil {
+		t.Fatalf("EmbeddedReader.Count failed: %v", err)
+	}
+	if cnt <= 0 {
+		t.Errorf("expected count > 0, got %d", cnt)
+	}
+
+	// 2. FileReader success
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "words.txt")
+	content := "admin\n# comment\n\nuser\n"
+	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+
+	fr := wordlist.FileReader{Path: filePath}
+	cnt, err = fr.Count()
+	if err != nil {
+		t.Fatalf("FileReader.Count failed: %v", err)
+	}
+	if cnt != 2 {
+		t.Errorf("expected count 2, got %d", cnt)
+	}
+
+	// 3. FileReader error (missing file)
+	frMissing := wordlist.FileReader{Path: filePath + "-non-existent"}
+	_, err = frMissing.Count()
+	if err == nil {
+		t.Error("expected FileReader.Count error for missing file, got nil")
+	}
+}
