@@ -327,7 +327,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 		{
 			name: "quiet mode with recurse-on prints startup messages",
 			args: []string{"scan", "-u", "http://localhost", "-r", "--quiet"},
-			wantPrints: []string{
+			omitPrints: []string{
 				"[*] Recursive scan enabled",
 				"[*] Strategy: bfs",
 				"[*] Max depth: 3",
@@ -507,8 +507,8 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 	}
 	gotOut := stdoutBuf.String()
 
-	if !strings.Contains(gotOut, "[*] Recursive scan enabled") {
-		t.Error("expected quiet mode to keep recursive scan startup message")
+	if strings.Contains(gotOut, "[*] Recursive scan enabled") {
+		t.Error("expected quiet mode to suppress recursive scan startup message")
 	}
 }
 

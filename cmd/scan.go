@@ -471,7 +471,7 @@ var scanCmd = &cobra.Command{
 		fs.ShowTitle = cfg.ShowTitle
 
 		for _, targetURL := range cfg.URLs {
-			if cfg.OutputFormat == "text" {
+			if cfg.OutputFormat == "text" && !cfg.Quiet {
 				fmt.Printf("[*] Target: %s\n", targetURL)
 			}
 
@@ -528,7 +528,7 @@ var scanCmd = &cobra.Command{
 			}
 
 			if cfg.Recursive {
-				if cfg.OutputFormat == "text" {
+				if cfg.OutputFormat == "text" && !cfg.Quiet {
 					fmt.Println("[*] Recursive scan enabled")
 					fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
 					fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
