@@ -132,7 +132,7 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 	}
 	sortNormalizedResults(expectedResults)
 
-	workerCounts := []int{1, 2, 4, 8, 16, 32, 64, 128}
+	workerCounts := []int{1, 2, 4, 8, 16, 32, 64, 128, 256}
 
 	for _, wc := range workerCounts {
 		t.Run(fmt.Sprintf("Workers-%d", wc), func(t *testing.T) {
