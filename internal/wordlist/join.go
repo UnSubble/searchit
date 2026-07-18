@@ -13,6 +13,32 @@ import (
 // This is enforced because producers use base as a stable origin for recursion;
 // arbitrary query/fragment components would silently corrupt child URLs.
 func Join(base, path string) (string, error) {
+	if strings.Contains(base, "?") || strings.Contains(base, "#") {
+		return "", fmt.Errorf("base URL must not contain a query string or fragment")
+	}
+
+	cleanedPath := strings.TrimLeft(path, "/")
+
+	isSimpleWord := true
+	if cleanedPath == "" || cleanedPath == "." || cleanedPath == ".." {
+		isSimpleWord = false
+	} else {
+		for i := 0; i < len(cleanedPath); i++ {
+			c := cleanedPath[i]
+			if c == '/' || c == '\\' || c == '?' || c == '#' || c == ':' {
+				isSimpleWord = false
+				break
+			}
+		}
+	}
+
+	if isSimpleWord {
+		if strings.HasSuffix(base, "/") {
+			return base + cleanedPath, nil
+		}
+		return base + "/" + cleanedPath, nil
+	}
+
 	u, err := url.Parse(base)
 	if err != nil {
 		return "", fmt.Errorf("invalid base URL: %w", err)
@@ -23,8 +49,6 @@ func Join(base, path string) (string, error) {
 	if u.Fragment != "" {
 		return "", fmt.Errorf("base URL must not contain a fragment: %q", base)
 	}
-
-	cleanedPath := strings.TrimLeft(path, "/")
 
 	rel, err := url.Parse(cleanedPath)
 	if err != nil {

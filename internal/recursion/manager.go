@@ -355,15 +355,32 @@ func (m *Manager) handleResult(
 
 // normalizeURL strips trailing slashes and fragments to normalize directory matches.
 func normalizeURL(u string) string {
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return strings.TrimRight(u, "/")
+	if strings.Contains(u, "?") || strings.Contains(u, "#") {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return strings.TrimRight(u, "/")
+		}
+		parsed.Fragment = ""
+		p := parsed.Path
+		if len(p) > 1 && strings.HasSuffix(p, "/") {
+			p = p[:len(p)-1]
+		}
+		parsed.Path = p
+		return parsed.String()
 	}
-	parsed.Fragment = ""
-	if parsed.Path != "/" {
-		parsed.Path = strings.TrimRight(parsed.Path, "/")
+
+	if strings.HasSuffix(u, "/") {
+		slashes := 0
+		for i := 0; i < len(u); i++ {
+			if u[i] == '/' {
+				slashes++
+			}
+		}
+		if slashes > 3 {
+			return u[:len(u)-1]
+		}
 	}
-	return parsed.String()
+	return u
 }
 
 // discoverRobots downloads, parses, and enqueues robots.txt rules as high-priority seeds.
