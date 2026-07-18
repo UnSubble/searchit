@@ -6,6 +6,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -274,15 +275,42 @@ func process(
 		collector.RecordDiscovered()
 	}
 
+	var redirectURL string
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL := resp.Request.URL.String()
+		if finalURL != job.URL {
+			redirectURL = finalURL
+		}
+	}
+	if redirectURL == "" && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		loc := resp.Header.Get("Location")
+		if loc != "" {
+			if u, err := url.Parse(loc); err == nil && resp.Request != nil && resp.Request.URL != nil {
+				redirectURL = resp.Request.URL.ResolveReference(u).String()
+			}
+		}
+	}
+	if redirectURL != "" && resp.Request != nil && resp.Request.URL != nil {
+		destURL, err2 := url.Parse(redirectURL)
+		if err2 == nil {
+			if resp.Request.URL.Host != destURL.Host {
+				redirectURL = ""
+			}
+		} else {
+			redirectURL = ""
+		}
+	}
+
 	sendResult(results, Result{
-		URL:        job.URL,
-		StatusCode: resp.StatusCode,
-		Length:     length,
-		Depth:      job.Depth,
-		Accepted:   true,
-		Origin:     job.Origin,
-		Title:      title,
-		Headers:    resHeaders,
+		URL:         job.URL,
+		RedirectURL: redirectURL,
+		StatusCode:  resp.StatusCode,
+		Length:      length,
+		Depth:       job.Depth,
+		Accepted:    true,
+		Origin:      job.Origin,
+		Title:       title,
+		Headers:     resHeaders,
 	})
 }
 

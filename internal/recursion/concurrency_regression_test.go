@@ -126,7 +126,6 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 		{URL: srv.URL + "/admin/panel/users", StatusCode: 200, Depth: 3, Accepted: true},
 		{URL: srv.URL + "/health", StatusCode: 200, Depth: 1, Accepted: true},
 		{URL: srv.URL + "/redirect", StatusCode: 200, Depth: 1, Accepted: true},
-		{URL: srv.URL + "/redirect/dest", StatusCode: 200, Depth: 2, Accepted: true},
 		{URL: srv.URL + "/static", StatusCode: 200, Depth: 1, Accepted: true},
 		{URL: srv.URL + "/static/js", StatusCode: 200, Depth: 2, Accepted: true},
 		{URL: srv.URL + "/static/js/app.js", StatusCode: 200, Depth: 3, Accepted: true},

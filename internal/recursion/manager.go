@@ -262,6 +262,29 @@ func (m *Manager) handleResult(
 	}
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 
+	// If it's a redirect response (3xx), enqueue the destination URL to be scanned and return
+	if result.RedirectURL != "" && result.StatusCode >= 300 && result.StatusCode < 400 {
+		select {
+		case out <- result:
+		case <-ctx.Done():
+			stats.GlobalInstrumentation.LogEvent("context cancellation")
+			return
+		}
+
+		if result.Depth >= m.maxDepth {
+			return
+		}
+
+		key := normalizeURL(result.RedirectURL)
+		if _, seen := visited[key]; !seen {
+			visited[key] = struct{}{}
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+			frontier.Push(engine.Job{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"})
+		}
+		return
+	}
+
 	select {
 	case out <- result:
 	case <-ctx.Done():
@@ -273,9 +296,14 @@ func (m *Manager) handleResult(
 		return
 	}
 
+	parentURL := result.URL
+	if result.RedirectURL != "" {
+		parentURL = result.RedirectURL
+	}
+
 	// Laravel detection and path injection
 	if m.fingerprintCache != nil {
-		parsed, err := url.Parse(result.URL)
+		parsed, err := url.Parse(parentURL)
 		if err == nil {
 			host := parsed.Host
 			if !injectedLaravel[host] {
@@ -335,7 +363,7 @@ func (m *Manager) handleResult(
 		if !ok {
 			continue
 		}
-		childURL, err := wordlist.Join(result.URL, cleaned)
+		childURL, err := wordlist.Join(parentURL, cleaned)
 		if err != nil {
 			continue
 		}
