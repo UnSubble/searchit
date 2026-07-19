@@ -159,7 +159,7 @@ func TestStrategies(t *testing.T) {
 		}
 	})
 
-	t.Run("smart strategy", func(t *testing.T) {
+	t.Run("adaptive strategy", func(t *testing.T) {
 		requestedMutex.Lock()
 		requestedPaths = nil
 		requestedMutex.Unlock()
@@ -180,21 +180,22 @@ func TestStrategies(t *testing.T) {
 		}
 
 		var results []fuzz.Result
-		err := r.Run(context.Background(), "smart", nil, func(res fuzz.Result) {
+		err := r.Run(context.Background(), "eager", nil, func(res fuzz.Result) {
 			results = append(results, res)
 		})
 		if err != nil {
-			t.Fatalf("Smart Run failed: %v", err)
+			t.Fatalf("Adaptive Run failed: %v", err)
 		}
 
-		// Smart is BFS, so output order is: /admin, /api, /admin/users
+		// Adaptive sorts by branch first, so all results under /admin (fooIdx 0) come before /api (fooIdx 1).
+		// So order: /admin, /admin/users, /api
 		if len(results) != 3 {
-			t.Fatalf("expected 3 results in Smart, got %d: %v", len(results), results)
+			t.Fatalf("expected 3 results in Adaptive, got %d: %v", len(results), results)
 		}
 		expectedPaths := []string{
 			"/admin",
-			"/api",
 			"/admin/users",
+			"/api",
 		}
 		for i, p := range expectedPaths {
 			if !strings.HasSuffix(results[i].URL, p) {
@@ -254,8 +255,8 @@ func TestStrategies(t *testing.T) {
 		}
 
 		// Since /myfuzz/admin returns 404, len(results) is 0 because of the filter, but the run completes successfully.
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
+		if len(results) != 0 {
+			t.Errorf("expected 0 results, got %d", len(results))
 		}
 	})
 

@@ -44,6 +44,7 @@ func runFuzzProfileTest(args []string, hook func(config.Config)) error {
 	flagFuzzRequestFile = ""
 	flagFuzzProfiles = nil
 	flagFuzzStrategy = ""
+	flagFuzzAdaptive = false
 
 	fuzzCmd.SilenceErrors = false
 	fuzzCmd.SilenceUsage = false
@@ -152,7 +153,7 @@ func TestFuzz_StrategyFlag(t *testing.T) {
 	}
 
 	// 2. Specific strategy
-	for _, strategy := range []string{"eager", "bfs", "dfs", "smart"} {
+	for _, strategy := range []string{"eager", "bfs", "dfs"} {
 		err = runFuzzProfileTest([]string{"fuzz", "-w", "go.mod", "--fuzz-strategy", strategy}, func(cfg config.Config) {
 			captured = cfg
 		})
@@ -170,5 +171,16 @@ func TestFuzz_StrategyFlag(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for invalid strategy, got nil")
+	}
+
+	// 4. Adaptive flag
+	err = runFuzzProfileTest([]string{"fuzz", "-w", "go.mod", "--adaptive"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("fuzz command failed with --adaptive: %v", err)
+	}
+	if !captured.Adaptive {
+		t.Error("expected adaptive true, got false")
 	}
 }

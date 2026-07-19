@@ -68,11 +68,20 @@ func TestStrategies_Determinism(t *testing.T) {
 		t.Fatalf("failed to create FilterSuite: %v", err)
 	}
 
-	strategies := []string{"eager", "bfs", "dfs", "smart"}
+	scenarios := []struct {
+		name     string
+		strategy string
+		adaptive bool
+	}{
+		{"eager", "eager", false},
+		{"bfs", "bfs", false},
+		{"dfs", "dfs", false},
+		{"adaptive", "eager", true},
+	}
 	workerCounts := []int{1, 8, 32, 64, 128}
 
-	for _, strategy := range strategies {
-		t.Run(strategy+" strategy worker counts", func(t *testing.T) {
+	for _, sc := range scenarios {
+		t.Run(sc.name+" strategy worker counts", func(t *testing.T) {
 			var baseline []string
 			var firstRun = true
 
@@ -88,34 +97,34 @@ func TestStrategies_Determinism(t *testing.T) {
 					FS:        fs,
 					Threads:   workers,
 					Collector: stats.NewCollector(),
-					Adaptive:  true,
+					Adaptive:  sc.adaptive,
 					Cache:     cache,
 				}
 
 				var results []string
-				err := runner.Run(context.Background(), strategy, nil, func(res fuzz.Result) {
+				err := runner.Run(context.Background(), sc.strategy, nil, func(res fuzz.Result) {
 					results = append(results, strings.TrimPrefix(res.URL, srv.URL))
 				})
 				if err != nil {
-					t.Fatalf("strategy %s failed for workers %d: %v", strategy, workers, err)
+					t.Fatalf("strategy %s failed for workers %d: %v", sc.name, workers, err)
 				}
 
 				if firstRun {
 					baseline = results
 					firstRun = false
 					if len(baseline) == 0 {
-						t.Fatalf("strategy %s generated 0 results, check mock server URLs", strategy)
+						t.Fatalf("strategy %s generated 0 results, check mock server URLs", sc.name)
 					}
 				} else {
 					if !reflect.DeepEqual(baseline, results) {
 						t.Errorf("determinism violation for strategy %s between worker count 1 and %d\nBaseline: %v\nGot:      %v",
-							strategy, workers, baseline, results)
+							sc.name, workers, baseline, results)
 					}
 				}
 			}
 		})
 
-		t.Run(strategy+" strategy consecutive runs", func(t *testing.T) {
+		t.Run(sc.name+" strategy consecutive runs", func(t *testing.T) {
 			var firstResults []string
 			runs := 50
 			workers := 32
@@ -132,27 +141,27 @@ func TestStrategies_Determinism(t *testing.T) {
 					FS:        fs,
 					Threads:   workers,
 					Collector: stats.NewCollector(),
-					Adaptive:  true,
+					Adaptive:  sc.adaptive,
 					Cache:     cache,
 				}
 
 				var results []string
-				err := runner.Run(context.Background(), strategy, nil, func(res fuzz.Result) {
+				err := runner.Run(context.Background(), sc.strategy, nil, func(res fuzz.Result) {
 					results = append(results, strings.TrimPrefix(res.URL, srv.URL))
 				})
 				if err != nil {
-					t.Fatalf("strategy %s run %d failed: %v", strategy, run, err)
+					t.Fatalf("strategy %s run %d failed: %v", sc.name, run, err)
 				}
 
 				if run == 0 {
 					firstResults = results
 					if len(firstResults) == 0 {
-						t.Fatalf("strategy %s first run generated 0 results", strategy)
+						t.Fatalf("strategy %s first run generated 0 results", sc.name)
 					}
 				} else {
 					if !reflect.DeepEqual(firstResults, results) {
 						t.Fatalf("consecutive run %d for strategy %s produced different results\nRun 0: %v\nRun %d: %v",
-							run, strategy, firstResults, run, results)
+							run, sc.name, firstResults, run, results)
 					}
 				}
 			}

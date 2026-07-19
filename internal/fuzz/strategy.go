@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/unsubble/searchit/internal/adaptive"
+	"github.com/unsubble/searchit/internal/adaptive/types"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
-	"github.com/unsubble/searchit/internal/robots"
-	"github.com/unsubble/searchit/internal/sitemap"
 	"github.com/unsubble/searchit/internal/stats"
 	"golang.org/x/time/rate"
 )
@@ -199,13 +200,15 @@ func (r *Runner) Run(ctx context.Context, strategy string, primaryChan <-chan st
 		return r.runEager(ctx, e, primaryChan, yield)
 	}
 
+	if r.Adaptive {
+		return r.runAdaptive(ctx, e, yield)
+	}
+
 	switch strings.ToLower(strategy) {
 	case "bfs":
 		return r.runBFS(ctx, e, yield)
 	case "dfs":
 		return r.runDFS(ctx, e, yield)
-	case "smart":
-		return r.runSmart(ctx, e, yield)
 	case "eager":
 		return r.runEager(ctx, e, primaryChan, yield)
 	default:
@@ -586,69 +589,43 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 	return nil
 }
 
-func (r *Runner) runSmart(ctx context.Context, e *Executor, yield ResultCallback) error {
-	maxDepth := GetTargetDepth(r.TargetURL)
-	if maxDepth == 0 {
-		return r.runEager(ctx, e, nil, yield)
-	}
-
-	u, err := url.Parse(r.TargetURL)
-	if err != nil {
+func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallback) error {
+	engine := adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
+	if err := engine.Discover(ctx); err != nil {
 		return err
 	}
-	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 
-	var robotsDirectives []string
-	robotsBody, _, err := robots.Download(ctx, r.Client, hostRoot)
-	if err == nil {
-		if directives, err := robots.Parse(robotsBody); err == nil {
-			for _, d := range directives {
-				if d.Path != "" {
-					robotsDirectives = append(robotsDirectives, d.Path)
-				}
-			}
+	if !r.Quiet {
+		fmt.Fprint(os.Stdout, "\nPriority scores:\n\n")
+		type scoredItem struct {
+			word  string
+			score int
 		}
-		robotsBody.Close()
-	}
-
-	var sitemapPaths []string
-	disc, err := sitemap.NewDiscoverer(r.Client, r.Cache, hostRoot)
-	if err == nil {
-		disc.Discover(ctx, []string{hostRoot + "/sitemap.xml"}, func(path string, origin string) {
-			sitemapPaths = append(sitemapPaths, path)
+		var scoredItems []scoredItem
+		for _, w := range r.FooWords {
+			score := engine.GetScore(w, nil, 1, "")
+			scoredItems = append(scoredItems, scoredItem{word: w, score: score})
+		}
+		sort.Slice(scoredItems, func(i, j int) bool {
+			return scoredItems[i].score > scoredItems[j].score
 		})
-	}
-
-	prioritizedSegments := make(map[string]bool)
-	prioritizedFullPaths := make(map[string]bool)
-
-	for _, p := range robotsDirectives {
-		prioritizedFullPaths[strings.Trim(p, "/")] = true
-		parts := strings.Split(p, "/")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				prioritizedSegments[strings.ToLower(part)] = true
+		for _, item := range scoredItems {
+			dots := strings.Repeat(".", 15-len(item.word))
+			if len(dots) < 3 {
+				dots = "..."
 			}
+			fmt.Printf("    %s %s %d\n", item.word, dots, item.score)
 		}
+		fmt.Fprint(os.Stdout, "\nTraversal decisions:\n\n")
 	}
 
-	for _, p := range sitemapPaths {
-		prioritizedFullPaths[strings.Trim(p, "/")] = true
-		parts := strings.Split(p, "/")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				prioritizedSegments[strings.ToLower(part)] = true
-			}
-		}
-	}
-
-	// Level 1: Fuzz FOO
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
-	var foundFOO []string
 
-	sortedFoo := sortWordsByPriority(r.FooWords, nil, 1, r, nil, prioritizedSegments, prioritizedFullPaths)
+	sortedFoo := make([]string, len(r.FooWords))
+	copy(sortedFoo, r.FooWords)
+	sort.SliceStable(sortedFoo, func(i, j int) bool {
+		return engine.GetScore(sortedFoo[i], nil, 1, "") > engine.GetScore(sortedFoo[j], nil, 1, "")
+	})
 
 	sortedIndices := make(map[string]int)
 	for i, w := range sortedFoo {
@@ -657,7 +634,6 @@ func (r *Runner) runSmart(ctx context.Context, e *Executor, yield ResultCallback
 
 	results1 := make([]Result, len(r.FooWords))
 	var wg sync.WaitGroup
-
 	for _, word := range sortedFoo {
 		wg.Add(1)
 		go func(w string) {
@@ -687,180 +663,412 @@ func (r *Runner) runSmart(ctx context.Context, e *Executor, yield ResultCallback
 			orderedRes1 = append(orderedRes1, orderedResult{res: res, index: originalFooIndices[w]})
 		}
 	}
-
 	sort.Slice(orderedRes1, func(i, j int) bool {
 		return orderedRes1[i].index < orderedRes1[j].index
 	})
 
+	type branchDecision struct {
+		foo        string
+		res        Result
+		policy     types.Policy
+		policyRule string
+		score      int
+	}
+	var decisions []branchDecision
+
 	for _, or := range orderedRes1 {
-		yield(or.res)
 		parts := strings.Split(strings.TrimRight(or.res.URL, "/"), "/")
 		if len(parts) > 0 {
-			foundFOO = append(foundFOO, parts[len(parts)-1])
+			fooVal := parts[len(parts)-1]
+			ct := or.res.Headers.Get("Content-Type")
+			sigs := engine.GetSignals(fooVal, nil, 1, ct)
+			score := engine.GetScore(fooVal, nil, 1, ct)
+			dec := engine.SelectTraversal(sigs)
+
+			engine.Summary.RecordTraversal(dec.Policy)
+
+			if !r.Quiet {
+				dots := strings.Repeat(".", 12-len(fooVal))
+				if len(dots) < 3 {
+					dots = "..."
+				}
+				fmt.Printf("    /%s %s %s (rule: %s)\n", fooVal, dots, dec.Policy, dec.Rule)
+			}
+
+			decisions = append(decisions, branchDecision{
+				foo:        fooVal,
+				res:        or.res,
+				policy:     dec.Policy,
+				policyRule: dec.Rule,
+				score:      score,
+			})
 		}
 	}
 
-	if len(foundFOO) == 0 || maxDepth < 2 {
-		return nil
-	}
-
-	// Level 2: Fuzz BAR
-	tmpl2 := TruncateTemplate(r.TargetURL, 2)
-	var foundBAR []struct {
-		foo string
-		bar string
-	}
-
-	type barJobInfo struct {
-		foo      string
-		bar      string
-		priority int
-		origIdx  int
-	}
-	var barJobs []barJobInfo
-	origIdx := 0
-
-	for _, fooVal := range foundFOO {
-		var parentRes *Result
+	maxDepth := GetTargetDepth(r.TargetURL)
+	if maxDepth < 2 || len(decisions) == 0 {
 		for _, or := range orderedRes1 {
-			if strings.HasSuffix(strings.TrimRight(or.res.URL, "/"), "/"+fooVal) {
-				parentRes = &or.res
-				break
-			}
+			yield(or.res)
 		}
-
-		sortedBar := sortWordsByPriority(r.BarWords, []string{fooVal}, 2, r, parentRes, prioritizedSegments, prioritizedFullPaths)
-
-		for _, barVal := range sortedBar {
-			barJobs = append(barJobs, barJobInfo{
-				foo:      fooVal,
-				bar:      barVal,
-				priority: getPriorityScore(barVal, []string{fooVal}, 2, r, parentRes, prioritizedSegments, prioritizedFullPaths),
-				origIdx:  origIdx,
-			})
-			origIdx++
+		if !r.Quiet {
+			engine.Summary.RecordFindings(len(orderedRes1))
+			engine.Summary.Print(os.Stdout)
 		}
-	}
-
-	sort.SliceStable(barJobs, func(i, j int) bool {
-		return barJobs[i].priority > barJobs[j].priority
-	})
-
-	results2 := make([]Result, len(barJobs))
-	for i, bj := range barJobs {
-		wg.Add(1)
-		go func(idx int, info barJobInfo) {
-			defer wg.Done()
-			job := r.buildJob(tmpl2, info.foo, info.bar, "")
-			res, err := e.Execute(job)
-			if err == nil {
-				results2[idx] = res
-			}
-		}(i, bj)
-	}
-	wg.Wait()
-
-	type orderedBarResult struct {
-		res     Result
-		origIdx int
-		foo     string
-		bar     string
-	}
-	var orderedRes2 []orderedBarResult
-	for i, bj := range barJobs {
-		res := results2[i]
-		if res.Accepted {
-			orderedRes2 = append(orderedRes2, orderedBarResult{
-				res:     res,
-				origIdx: bj.origIdx,
-				foo:     bj.foo,
-				bar:     bj.bar,
-			})
-		}
-	}
-
-	sort.Slice(orderedRes2, func(i, j int) bool {
-		return orderedRes2[i].origIdx < orderedRes2[j].origIdx
-	})
-
-	for _, or := range orderedRes2 {
-		yield(or.res)
-		foundBAR = append(foundBAR, struct{ foo, bar string }{or.foo, or.bar})
-	}
-
-	if len(foundBAR) == 0 || maxDepth < 3 {
 		return nil
 	}
 
-	// Level 3: Fuzz BUZZ
-	type buzzJobInfo struct {
-		foo      string
-		bar      string
-		buzz     string
-		priority int
-		origIdx  int
+	type adaptiveResult struct {
+		res     Result
+		fooIdx  int
+		barIdx  int
+		buzzIdx int
+		depth   int
 	}
-	var buzzJobs []buzzJobInfo
-	origIdx = 0
+	var allResults []adaptiveResult
+	var arMutex sync.Mutex
 
-	for _, parent := range foundBAR {
-		var parentRes *Result
-		for _, or := range orderedRes2 {
-			if or.foo == parent.foo && or.bar == parent.bar {
-				parentRes = &or.res
+	for _, or := range orderedRes1 {
+		allResults = append(allResults, adaptiveResult{
+			res:     or.res,
+			fooIdx:  or.index,
+			barIdx:  -1,
+			buzzIdx: -1,
+			depth:   1,
+		})
+	}
+
+	tmpl2 := TruncateTemplate(r.TargetURL, 2)
+	var branchWg sync.WaitGroup
+
+	for _, dec := range decisions {
+		branchWg.Add(1)
+		go func(d branchDecision) {
+			defer branchWg.Done()
+
+			if d.policy == types.PolicyEager {
+				// Run Eager cartesian fuzzing under this parent branch
+				if maxDepth == 2 {
+					var eagerWg sync.WaitGroup
+					results := make([]Result, len(r.BarWords))
+					for idx, barVal := range r.BarWords {
+						eagerWg.Add(1)
+						go func(i int, bVal string) {
+							defer eagerWg.Done()
+							job := r.buildJob(tmpl2, d.foo, bVal, "")
+							res, err := e.Execute(job)
+							if err == nil {
+								results[i] = res
+							}
+						}(idx, barVal)
+					}
+					eagerWg.Wait()
+
+					for barIdx, res := range results {
+						if res.Accepted {
+							arMutex.Lock()
+							allResults = append(allResults, adaptiveResult{
+								res:     res,
+								fooIdx:  originalFooIndices[d.foo],
+								barIdx:  barIdx,
+								buzzIdx: -1,
+								depth:   2,
+							})
+							arMutex.Unlock()
+						}
+					}
+				} else if maxDepth >= 3 {
+					type eagerJob struct {
+						bar     string
+						buzz    string
+						barIdx  int
+						buzzIdx int
+					}
+					var jobs []eagerJob
+					for barIdx, barVal := range r.BarWords {
+						for buzzIdx, buzzVal := range r.BuzzWords {
+							jobs = append(jobs, eagerJob{
+								bar:     barVal,
+								buzz:    buzzVal,
+								barIdx:  barIdx,
+								buzzIdx: buzzIdx,
+							})
+						}
+					}
+
+					results := make([]Result, len(jobs))
+					var eagerWg sync.WaitGroup
+					for idx, jobInfo := range jobs {
+						eagerWg.Add(1)
+						go func(i int, info eagerJob) {
+							defer eagerWg.Done()
+							job := r.buildJob(r.TargetURL, d.foo, info.bar, info.buzz)
+							res, err := e.Execute(job)
+							if err == nil {
+								results[i] = res
+							}
+						}(idx, jobInfo)
+					}
+					eagerWg.Wait()
+
+					for idx, res := range results {
+						if res.Accepted {
+							arMutex.Lock()
+							allResults = append(allResults, adaptiveResult{
+								res:     res,
+								fooIdx:  originalFooIndices[d.foo],
+								barIdx:  jobs[idx].barIdx,
+								buzzIdx: jobs[idx].buzzIdx,
+								depth:   3,
+							})
+							arMutex.Unlock()
+						}
+					}
+				}
+				return
+			}
+
+			// BFS or DFS policies
+			sortedBar := make([]string, len(r.BarWords))
+			copy(sortedBar, r.BarWords)
+			sort.SliceStable(sortedBar, func(i, j int) bool {
+				ct := d.res.Headers.Get("Content-Type")
+				return engine.GetScore(sortedBar[i], []string{d.foo}, 2, ct) > engine.GetScore(sortedBar[j], []string{d.foo}, 2, ct)
+			})
+
+			sortedBarIndices := make(map[string]int)
+			for i, w := range sortedBar {
+				sortedBarIndices[w] = i
+			}
+
+			barResults := make([]Result, len(r.BarWords))
+			var innerWg sync.WaitGroup
+			for _, barVal := range sortedBar {
+				innerWg.Add(1)
+				go func(bVal string) {
+					defer innerWg.Done()
+					job := r.buildJob(tmpl2, d.foo, bVal, "")
+					res, err := e.Execute(job)
+					if err == nil {
+						barResults[sortedBarIndices[bVal]] = res
+					}
+				}(barVal)
+			}
+			innerWg.Wait()
+
+			originalBarIndices := make(map[string]int)
+			for i, w := range r.BarWords {
+				originalBarIndices[w] = i
+			}
+
+			for _, barVal := range sortedBar {
+				res := barResults[sortedBarIndices[barVal]]
+				if res.Accepted {
+					fooIdx := originalFooIndices[d.foo]
+					barIdx := originalBarIndices[barVal]
+
+					arMutex.Lock()
+					allResults = append(allResults, adaptiveResult{
+						res:     res,
+						fooIdx:  fooIdx,
+						barIdx:  barIdx,
+						buzzIdx: -1,
+						depth:   2,
+					})
+					arMutex.Unlock()
+
+					if d.policy == types.PolicyDFS && maxDepth >= 3 {
+						sortedBuzz := make([]string, len(r.BuzzWords))
+						copy(sortedBuzz, r.BuzzWords)
+						sort.SliceStable(sortedBuzz, func(i, j int) bool {
+							ct := res.Headers.Get("Content-Type")
+							return engine.GetScore(sortedBuzz[i], []string{d.foo, barVal}, 3, ct) > engine.GetScore(sortedBuzz[j], []string{d.foo, barVal}, 3, ct)
+						})
+
+						sortedBuzzIndices := make(map[string]int)
+						for i, w := range sortedBuzz {
+							sortedBuzzIndices[w] = i
+						}
+
+						buzzResults := make([]Result, len(r.BuzzWords))
+						var leafWg sync.WaitGroup
+						for _, buzzVal := range sortedBuzz {
+							leafWg.Add(1)
+							go func(bzVal string) {
+								defer leafWg.Done()
+								job := r.buildJob(r.TargetURL, d.foo, barVal, bzVal)
+								r3, err := e.Execute(job)
+								if err == nil {
+									buzzResults[sortedBuzzIndices[bzVal]] = r3
+								}
+							}(buzzVal)
+						}
+						leafWg.Wait()
+
+						originalBuzzIndices := make(map[string]int)
+						for i, w := range r.BuzzWords {
+							originalBuzzIndices[w] = i
+						}
+
+						for _, buzzVal := range sortedBuzz {
+							r3 := buzzResults[sortedBuzzIndices[buzzVal]]
+							if r3.Accepted {
+								buzzIdx := originalBuzzIndices[buzzVal]
+								arMutex.Lock()
+								allResults = append(allResults, adaptiveResult{
+									res:     r3,
+									fooIdx:  fooIdx,
+									barIdx:  barIdx,
+									buzzIdx: buzzIdx,
+									depth:   3,
+								})
+								arMutex.Unlock()
+							}
+						}
+					}
+				}
+			}
+		}(dec)
+	}
+	branchWg.Wait()
+
+	if maxDepth >= 3 {
+		var bfsLevel2Nodes []adaptiveResult
+		arMutex.Lock()
+		for _, ar := range allResults {
+			if ar.depth == 2 {
+				parentFoo := r.FooWords[ar.fooIdx]
+				var policy types.Policy
+				for _, dec := range decisions {
+					if dec.foo == parentFoo {
+						policy = dec.policy
+						break
+					}
+				}
+				if policy == types.PolicyBFS {
+					bfsLevel2Nodes = append(bfsLevel2Nodes, ar)
+				}
+			}
+		}
+		arMutex.Unlock()
+
+		if len(bfsLevel2Nodes) > 0 {
+			var bfs3Wg sync.WaitGroup
+			for _, node := range bfsLevel2Nodes {
+				bfs3Wg.Add(1)
+				go func(n adaptiveResult) {
+					defer bfs3Wg.Done()
+
+					fooVal := r.FooWords[n.fooIdx]
+					barVal := r.BarWords[n.barIdx]
+
+					sortedBuzz := make([]string, len(r.BuzzWords))
+					copy(sortedBuzz, r.BuzzWords)
+					sort.SliceStable(sortedBuzz, func(i, j int) bool {
+						ct := n.res.Headers.Get("Content-Type")
+						return engine.GetScore(sortedBuzz[i], []string{fooVal, barVal}, 3, ct) > engine.GetScore(sortedBuzz[j], []string{fooVal, barVal}, 3, ct)
+					})
+
+					sortedBuzzIndices := make(map[string]int)
+					for i, w := range sortedBuzz {
+						sortedBuzzIndices[w] = i
+					}
+
+					buzzResults := make([]Result, len(r.BuzzWords))
+					var leafWg sync.WaitGroup
+					for _, buzzVal := range sortedBuzz {
+						leafWg.Add(1)
+						go func(bzVal string) {
+							defer leafWg.Done()
+							job := r.buildJob(r.TargetURL, fooVal, barVal, bzVal)
+							r3, err := e.Execute(job)
+							if err == nil {
+								buzzResults[sortedBuzzIndices[bzVal]] = r3
+							}
+						}(buzzVal)
+					}
+					leafWg.Wait()
+
+					originalBuzzIndices := make(map[string]int)
+					for i, w := range r.BuzzWords {
+						originalBuzzIndices[w] = i
+					}
+
+					for _, buzzVal := range sortedBuzz {
+						r3 := buzzResults[sortedBuzzIndices[buzzVal]]
+						if r3.Accepted {
+							buzzIdx := originalBuzzIndices[buzzVal]
+							arMutex.Lock()
+							allResults = append(allResults, adaptiveResult{
+								res:     r3,
+								fooIdx:  n.fooIdx,
+								barIdx:  n.barIdx,
+								buzzIdx: buzzIdx,
+								depth:   3,
+							})
+							arMutex.Unlock()
+						}
+					}
+				}(node)
+			}
+			bfs3Wg.Wait()
+		}
+	}
+
+	sort.SliceStable(allResults, func(i, j int) bool {
+		A := allResults[i]
+		B := allResults[j]
+
+		if A.fooIdx != B.fooIdx {
+			return A.fooIdx < B.fooIdx
+		}
+
+		parentFoo := r.FooWords[A.fooIdx]
+		var policy types.Policy
+		for _, dec := range decisions {
+			if dec.foo == parentFoo {
+				policy = dec.policy
 				break
 			}
 		}
 
-		sortedBuzz := sortWordsByPriority(r.BuzzWords, []string{parent.foo, parent.bar}, 3, r, parentRes, prioritizedSegments, prioritizedFullPaths)
-
-		for _, buzzVal := range sortedBuzz {
-			buzzJobs = append(buzzJobs, buzzJobInfo{
-				foo:      parent.foo,
-				bar:      parent.bar,
-				buzz:     buzzVal,
-				priority: getPriorityScore(buzzVal, []string{parent.foo, parent.bar}, 3, r, parentRes, prioritizedSegments, prioritizedFullPaths),
-				origIdx:  origIdx,
-			})
-			origIdx++
-		}
-	}
-
-	sort.SliceStable(buzzJobs, func(i, j int) bool {
-		return buzzJobs[i].priority > buzzJobs[j].priority
-	})
-
-	results3 := make([]Result, len(buzzJobs))
-	for i, bj := range buzzJobs {
-		wg.Add(1)
-		go func(idx int, info buzzJobInfo) {
-			defer wg.Done()
-			job := r.buildJob(r.TargetURL, info.foo, info.bar, info.buzz)
-			res, err := e.Execute(job)
-			if err == nil {
-				results3[idx] = res
+		if policy == types.PolicyDFS {
+			if A.barIdx != B.barIdx {
+				if A.barIdx == -1 {
+					return true
+				}
+				if B.barIdx == -1 {
+					return false
+				}
+				return A.barIdx < B.barIdx
 			}
-		}(i, bj)
-	}
-	wg.Wait()
-
-	var orderedRes3 []orderedResult
-	for i, bj := range buzzJobs {
-		res := results3[i]
-		if res.Accepted {
-			orderedRes3 = append(orderedRes3, orderedResult{
-				res:   res,
-				index: bj.origIdx,
-			})
+			if A.buzzIdx != B.buzzIdx {
+				if A.buzzIdx == -1 {
+					return true
+				}
+				if B.buzzIdx == -1 {
+					return false
+				}
+				return A.buzzIdx < B.buzzIdx
+			}
+			return false
+		} else {
+			if A.depth != B.depth {
+				return A.depth < B.depth
+			}
+			if A.barIdx != B.barIdx {
+				return A.barIdx < B.barIdx
+			}
+			return A.buzzIdx < B.buzzIdx
 		}
-	}
-
-	sort.Slice(orderedRes3, func(i, j int) bool {
-		return orderedRes3[i].index < orderedRes3[j].index
 	})
 
-	for _, or := range orderedRes3 {
-		yield(or.res)
+	for _, ar := range allResults {
+		yield(ar.res)
+	}
+
+	if !r.Quiet {
+		engine.Summary.RecordFindings(len(allResults))
+		engine.Summary.Print(os.Stdout)
 	}
 
 	return nil

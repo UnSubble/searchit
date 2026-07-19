@@ -53,6 +53,7 @@ var (
 	flagFuzzCookie      string
 	flagFuzzProxy       string
 	flagFuzzStrategy    string
+	flagFuzzAdaptive    bool
 
 	flagFuzzMatchStatus     string
 	flagFuzzFilterStatus    string
@@ -243,8 +244,8 @@ var fuzzCmd = &cobra.Command{
 
 		if flagFuzzStrategy != "" {
 			strategyLower := strings.ToLower(flagFuzzStrategy)
-			if strategyLower != "eager" && strategyLower != "bfs" && strategyLower != "dfs" && strategyLower != "smart" {
-				return fmt.Errorf("invalid --fuzz-strategy: %q (must be eager, bfs, dfs, or smart)", flagFuzzStrategy)
+			if strategyLower != "eager" && strategyLower != "bfs" && strategyLower != "dfs" {
+				return fmt.Errorf("invalid --fuzz-strategy: %q (must be eager, bfs, or dfs)", flagFuzzStrategy)
 			}
 		}
 
@@ -664,6 +665,9 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("fuzz-strategy") {
 		cfg.FuzzStrategy = flagFuzzStrategy
 	}
+	if cmd.Flags().Changed("adaptive") {
+		cfg.Adaptive = flagFuzzAdaptive
+	}
 }
 
 func init() {
@@ -704,5 +708,6 @@ func init() {
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzProfiles, "profile", nil, "load one or more predefined fuzz profiles")
 	fuzzCmd.Flags().BoolVar(&flagFuzzFollowRedirects, "follow-redirects", false, "follow HTTP redirects")
 	fuzzCmd.Flags().IntVar(&flagFuzzMaxRedirects, "max-redirects", 10, "maximum redirect limit")
-	fuzzCmd.Flags().StringVar(&flagFuzzStrategy, "fuzz-strategy", "eager", "hierarchical traversal strategy (eager, bfs, dfs, smart)")
+	fuzzCmd.Flags().StringVar(&flagFuzzStrategy, "fuzz-strategy", "eager", "hierarchical traversal strategy (eager, bfs, dfs)")
+	fuzzCmd.Flags().BoolVar(&flagFuzzAdaptive, "adaptive", false, "enable adaptive fuzzing (prioritization, framework detection, robots.txt, sitemaps)")
 }
