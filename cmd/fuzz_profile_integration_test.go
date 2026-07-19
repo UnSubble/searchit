@@ -43,6 +43,7 @@ func runFuzzProfileTest(args []string, hook func(config.Config)) error {
 	flagFuzzShowTitle = false
 	flagFuzzRequestFile = ""
 	flagFuzzProfiles = nil
+	flagFuzzStrategy = ""
 
 	fuzzCmd.SilenceErrors = false
 	fuzzCmd.SilenceUsage = false
@@ -134,5 +135,40 @@ func TestFuzzProfile_ExtraProfile(t *testing.T) {
 	// Check header from profile
 	if len(captured.Headers) != 1 || captured.Headers[0] != "Content-Type=application/json" {
 		t.Errorf("expected headers from profile [Content-Type=application/json], got %v", captured.Headers)
+	}
+}
+
+func TestFuzz_StrategyFlag(t *testing.T) {
+	// 1. Default (no flag) should be "eager"
+	var captured config.Config
+	err := runFuzzProfileTest([]string{"fuzz", "-w", "go.mod"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err != nil {
+		t.Fatalf("fuzz command failed: %v", err)
+	}
+	if captured.FuzzStrategy != "eager" {
+		t.Errorf("expected default strategy eager, got %q", captured.FuzzStrategy)
+	}
+
+	// 2. Specific strategy
+	for _, strategy := range []string{"eager", "bfs", "dfs", "smart"} {
+		err = runFuzzProfileTest([]string{"fuzz", "-w", "go.mod", "--fuzz-strategy", strategy}, func(cfg config.Config) {
+			captured = cfg
+		})
+		if err != nil {
+			t.Fatalf("fuzz command failed for strategy %s: %v", strategy, err)
+		}
+		if captured.FuzzStrategy != strategy {
+			t.Errorf("expected strategy %s, got %q", strategy, captured.FuzzStrategy)
+		}
+	}
+
+	// 3. Invalid strategy should return error
+	err = runFuzzProfileTest([]string{"fuzz", "-w", "go.mod", "--fuzz-strategy", "invalid"}, func(cfg config.Config) {
+		captured = cfg
+	})
+	if err == nil {
+		t.Error("expected error for invalid strategy, got nil")
 	}
 }

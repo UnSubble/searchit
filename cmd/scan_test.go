@@ -45,10 +45,49 @@ func resetFlagsForTest() {
 	flagRequestFile = ""
 	resolvedTargets = nil
 
+	// Reset fuzz flag variables
+	flagFuzzURL = ""
+	flagFuzzWordlist = ""
+	flagFuzzFoo = ""
+	flagFuzzBar = ""
+	flagFuzzBuzz = ""
+	flagFuzzMethod = "GET"
+	flagFuzzData = ""
+	flagFuzzHeaders = nil
+	flagFuzzThreads = 32
+	flagFuzzTimeout = 10
+	flagFuzzExcludeStat = "404"
+	flagFuzzIncSize = ""
+	flagFuzzExcSize = ""
+	flagFuzzOutput = ""
+	flagFuzzFormat = "text"
+	flagFuzzQuiet = false
+	flagFuzzDelay = ""
+	flagFuzzRate = 0
+	flagFuzzCookie = ""
+	flagFuzzProxy = ""
+	flagFuzzMatchStatus = ""
+	flagFuzzFilterStatus = ""
+	flagFuzzMatchSize = ""
+	flagFuzzFilterSize = ""
+	flagFuzzMatchRegex = nil
+	flagFuzzFilterRegex = nil
+	flagFuzzMatchContent = nil
+	flagFuzzFilterContent = nil
+	flagFuzzShowHeaders = false
+	flagFuzzShowTitle = false
+	flagFuzzRequestFile = ""
+	flagFuzzProfiles = nil
+	flagFuzzFollowRedirects = false
+	flagFuzzMaxRedirects = 10
+	flagFuzzStrategy = "eager"
+
 	// Reset silence flags that may have been set by profile-loading failures
 	// in prior tests, which would suppress PreRunE errors in subsequent tests.
 	scanCmd.SilenceErrors = false
 	scanCmd.SilenceUsage = false
+	fuzzCmd.SilenceErrors = false
+	fuzzCmd.SilenceUsage = false
 
 	// Reset Changed state on all flags of both commands, and explicitly reset help flags.
 	rootCmd.Flags().VisitAll(func(f *pflag.Flag) {
@@ -58,6 +97,12 @@ func resetFlagsForTest() {
 		}
 	})
 	scanCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		f.Changed = false
+		if f.Name == "help" {
+			_ = f.Value.Set("false")
+		}
+	})
+	fuzzCmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
 		if f.Name == "help" {
 			_ = f.Value.Set("false")

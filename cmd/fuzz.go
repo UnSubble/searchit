@@ -52,6 +52,7 @@ var (
 	flagFuzzRate        float64
 	flagFuzzCookie      string
 	flagFuzzProxy       string
+	flagFuzzStrategy    string
 
 	flagFuzzMatchStatus     string
 	flagFuzzFilterStatus    string
@@ -238,6 +239,13 @@ var fuzzCmd = &cobra.Command{
 
 		if flagFuzzMaxRedirects < 0 {
 			return fmt.Errorf("max-redirects cannot be negative")
+		}
+
+		if flagFuzzStrategy != "" {
+			strategyLower := strings.ToLower(flagFuzzStrategy)
+			if strategyLower != "eager" && strategyLower != "bfs" && strategyLower != "dfs" && strategyLower != "smart" {
+				return fmt.Errorf("invalid --fuzz-strategy: %q (must be eager, bfs, dfs, or smart)", flagFuzzStrategy)
+			}
 		}
 
 		return nil
@@ -477,39 +485,29 @@ var fuzzCmd = &cobra.Command{
 		fs.ShowHeaders = cfg.ShowHeaders
 		fs.ShowTitle = cfg.ShowTitle
 
-		// Start generator
-		generator := fuzz.NewGenerator(
-			flagFuzzURL,
-			strings.ToUpper(flagFuzzMethod),
-			flagFuzzData,
-			headers,
-			flagFuzzCookie,
-			fooWords,
-			barWords,
-			buzzWords,
-		)
+		runner := &fuzz.Runner{
+			TargetURL:       flagFuzzURL,
+			Method:          strings.ToUpper(flagFuzzMethod),
+			BodyTemplate:    flagFuzzData,
+			HeaderTemplates: headers,
+			CookieTemplate:  flagFuzzCookie,
+			FooWords:        fooWords,
+			BarWords:        barWords,
+			BuzzWords:       buzzWords,
+			Client:          appState.HTTPClient,
+			FS:              fs,
+			Threads:         cfg.Threads,
+			Delay:           delay,
+			Limiter:         limiter,
+			Collector:       stats.NewCollector(),
+			Quiet:           cfg.Quiet,
+			ShowHeaders:     cfg.ShowHeaders,
+			ShowTitle:       cfg.ShowTitle,
+			Adaptive:        cfg.Adaptive,
+			Cache:           appState.FingerprintCache,
+		}
 
-		jobs := make(chan fuzz.Job, cfg.Threads)
-		go func() {
-			defer close(jobs)
-			generator.Generate(ctx, primaryChan, jobs)
-		}()
-
-		// Start concurrency pool
-		collector := stats.NewCollector()
-		results := fuzz.Start(
-			ctx,
-			appState.HTTPClient,
-			fs,
-			cfg.Threads,
-			delay,
-			limiter,
-			jobs,
-			collector,
-		)
-
-		// Stream results to output formatter
-		for r := range results {
+		err = runner.Run(ctx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
 			if r.Accepted {
 				engRes := engine.Result{
 					URL:        r.URL,
@@ -530,6 +528,9 @@ var fuzzCmd = &cobra.Command{
 					fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
 				}
 			}
+		})
+		if err != nil {
+			return err
 		}
 
 		return nil
@@ -660,6 +661,9 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("max-redirects") {
 		cfg.MaxRedirects = flagFuzzMaxRedirects
 	}
+	if cmd.Flags().Changed("fuzz-strategy") {
+		cfg.FuzzStrategy = flagFuzzStrategy
+	}
 }
 
 func init() {
@@ -700,4 +704,5 @@ func init() {
 	fuzzCmd.Flags().StringSliceVar(&flagFuzzProfiles, "profile", nil, "load one or more predefined fuzz profiles")
 	fuzzCmd.Flags().BoolVar(&flagFuzzFollowRedirects, "follow-redirects", false, "follow HTTP redirects")
 	fuzzCmd.Flags().IntVar(&flagFuzzMaxRedirects, "max-redirects", 10, "maximum redirect limit")
+	fuzzCmd.Flags().StringVar(&flagFuzzStrategy, "fuzz-strategy", "eager", "hierarchical traversal strategy (eager, bfs, dfs, smart)")
 }

@@ -76,6 +76,9 @@ type Config struct {
 
 	// HTTP Request Templates
 	RequestFile string
+
+	// FuzzStrategy determines the hierarchical traversal strategy for fuzzing
+	FuzzStrategy string
 }
 
 type HeaderFilter struct {

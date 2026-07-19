@@ -34,6 +34,7 @@ func Default() Config {
 		Status: StatusConfig{
 			Exclude: exclude,
 		},
-		Adaptive: false,
+		Adaptive:     false,
+		FuzzStrategy: "eager",
 	}
 }

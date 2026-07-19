@@ -105,6 +105,7 @@ func process(
 			URL:      job.URL,
 			Accepted: false,
 			Err:      err,
+			UserData: job.UserData,
 		})
 		return
 	}
@@ -136,6 +137,7 @@ func process(
 			URL:      job.URL,
 			Accepted: false,
 			Err:      err,
+			UserData: job.UserData,
 		})
 		return
 	}
@@ -160,6 +162,7 @@ func process(
 			StatusCode: resp.StatusCode,
 			Length:     length,
 			Accepted:   false,
+			UserData:   job.UserData,
 		})
 		return
 	}
@@ -186,6 +189,7 @@ func process(
 				Length:     length,
 				Accepted:   false,
 				Err:        readErr,
+				UserData:   job.UserData,
 			})
 			return
 		}
@@ -203,6 +207,7 @@ func process(
 				Length:     length,
 				Accepted:   true,
 				Err:        err,
+				UserData:   job.UserData,
 			})
 			return
 		}
@@ -231,6 +236,7 @@ func process(
 		Accepted:   true,
 		Title:      title,
 		Headers:    resHeaders,
+		UserData:   job.UserData,
 	})
 }
 
