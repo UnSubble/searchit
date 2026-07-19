@@ -15,6 +15,7 @@ coverage.html
 *.coverprofile
 cpu.out
 mem.out
+fuzz.out
 *.prof
 *.pprof
 *.test
