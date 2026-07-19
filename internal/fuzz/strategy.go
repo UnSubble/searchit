@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -166,7 +165,8 @@ func GetTargetDepth(urlTemplate string) int {
 
 // TruncateTemplate cuts template segments for a specific target depth.
 func TruncateTemplate(urlTemplate string, depth int) string {
-	if depth == 1 {
+	switch depth {
+	case 1:
 		if idx := strings.Index(urlTemplate, "/BAR"); idx != -1 {
 			return urlTemplate[:idx]
 		}
@@ -179,7 +179,7 @@ func TruncateTemplate(urlTemplate string, depth int) string {
 		if idx := strings.Index(urlTemplate, "BUZZ"); idx != -1 {
 			return urlTemplate[:idx]
 		}
-	} else if depth == 2 {
+	case 2:
 		if idx := strings.Index(urlTemplate, "/BUZZ"); idx != -1 {
 			return urlTemplate[:idx]
 		}
@@ -251,13 +251,13 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			case word, ok := <-primaryChan:
 				if !ok {
 					if len(currentBatch) > 0 {
-						r.executeEagerBatch(ctx, e, currentBatch, fooList, barList, buzzList, yield)
+						r.executeEagerBatch(e, currentBatch, fooList, barList, buzzList, yield)
 					}
 					return nil
 				}
 				currentBatch = append(currentBatch, word)
 				if len(currentBatch) >= batchSize {
-					r.executeEagerBatch(ctx, e, currentBatch, fooList, barList, buzzList, yield)
+					r.executeEagerBatch(e, currentBatch, fooList, barList, buzzList, yield)
 					currentBatch = nil
 				}
 			}
@@ -318,13 +318,7 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	return nil
 }
 
-func (r *Runner) executeEagerBatch(
-	ctx context.Context,
-	e *Executor,
-	fuzzVals []string,
-	fooList, barList, buzzList []string,
-	yield ResultCallback,
-) {
+func (r *Runner) executeEagerBatch(e *Executor, fuzzVals, fooList, barList, buzzList []string, yield ResultCallback) {
 	var batch []eagerJobInfo
 	idx := 0
 	for _, fuzzVal := range fuzzVals {
@@ -511,7 +505,8 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		default:
 		}
 
-		if currentDepth == 1 {
+		switch currentDepth {
+		case 1:
 			tmpl := TruncateTemplate(r.TargetURL, 1)
 			results := make([]Result, len(r.FooWords))
 			var wg sync.WaitGroup
@@ -536,7 +531,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					}
 				}
 			}
-		} else if currentDepth == 2 {
+		case 2:
 			tmpl := TruncateTemplate(r.TargetURL, 2)
 			results := make([]Result, len(r.BarWords))
 			var wg sync.WaitGroup
@@ -561,7 +556,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					}
 				}
 			}
-		} else if currentDepth == 3 {
+		case 3:
 			results := make([]Result, len(r.BuzzWords))
 			var wg sync.WaitGroup
 			for i, word := range r.BuzzWords {
@@ -1072,111 +1067,6 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	}
 
 	return nil
-}
-
-type scoredWord struct {
-	word  string
-	index int
-	score int
-}
-
-func sortWordsByPriority(
-	words []string,
-	parentPath []string,
-	depth int,
-	r *Runner,
-	parentRes *Result,
-	prioritizedSegments, prioritizedFullPaths map[string]bool,
-) []string {
-	scored := make([]scoredWord, len(words))
-	for i, w := range words {
-		score := getPriorityScore(w, parentPath, depth, r, parentRes, prioritizedSegments, prioritizedFullPaths)
-		scored[i] = scoredWord{word: w, index: i, score: score}
-	}
-
-	sort.SliceStable(scored, func(i, j int) bool {
-		return scored[i].score > scored[j].score
-	})
-
-	out := make([]string, len(words))
-	for i, sw := range scored {
-		out[i] = sw.word
-	}
-	return out
-}
-
-func getPriorityScore(
-	word string,
-	parentPath []string,
-	depth int,
-	r *Runner,
-	parentRes *Result,
-	prioritizedSegments, prioritizedFullPaths map[string]bool,
-) int {
-	score := 0
-
-	if prioritizedSegments[strings.ToLower(word)] {
-		score += 5
-	}
-
-	fullPath := word
-	if len(parentPath) > 0 {
-		fullPath = strings.Join(parentPath, "/") + "/" + word
-	}
-	if prioritizedFullPaths[strings.ToLower(fullPath)] {
-		score += 10
-	}
-
-	if parentRes != nil && parentRes.Headers != nil {
-		ct := parentRes.Headers.Get("Content-Type")
-		if strings.Contains(ct, "json") || strings.Contains(ct, "xml") || strings.Contains(ct, "javascript") {
-			apiKeywords := map[string]bool{
-				"api": true, "v1": true, "v2": true, "v3": true, "graphql": true,
-				"json": true, "rest": true, "users": true, "login": true, "auth": true,
-				"admin": true, "config": true, "status": true, "test": true, "dev": true,
-			}
-			if apiKeywords[strings.ToLower(word)] {
-				score += 3
-			}
-		} else if strings.Contains(ct, "html") {
-			htmlKeywords := map[string]bool{
-				"index": true, "home": true, "about": true, "contact": true, "login": true,
-				"register": true, "dashboard": true, "admin": true, "blog": true, "pages": true,
-			}
-			if htmlKeywords[strings.ToLower(word)] {
-				score += 2
-			}
-		}
-	}
-
-	if r.Adaptive && r.Cache != nil {
-		u, err := url.Parse(r.TargetURL)
-		if err == nil {
-			if fp := r.Cache.Get(u.Host); fp != nil {
-				for _, sig := range fp.Signals() {
-					val := strings.ToLower(sig.Value)
-					src := strings.ToLower(sig.Source)
-					if strings.Contains(val, "php") || strings.Contains(src, "php") {
-						if strings.Contains(strings.ToLower(word), "php") {
-							score += 5
-						}
-					}
-					if strings.Contains(val, "wordpress") || strings.Contains(src, "wordpress") {
-						if strings.Contains(strings.ToLower(word), "wp-") || strings.Contains(strings.ToLower(word), "wordpress") {
-							score += 8
-						}
-					}
-					if strings.Contains(val, "laravel") || strings.Contains(src, "laravel") {
-						if strings.Contains(strings.ToLower(word), "artisan") || strings.Contains(strings.ToLower(word), "storage") || strings.Contains(strings.ToLower(word), "nova") {
-							score += 8
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return score
 }
 
 func (r *Runner) buildJob(tmpl, fooVal, barVal, buzzVal string) Job {
