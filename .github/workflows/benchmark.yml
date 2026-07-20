@@ -1,0 +1,36 @@
+name: Benchmarks & Performance Verification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 0" # Weekly on Sundays at 02:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    name: Scientific Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run Benchmarks
+        shell: bash
+        run: |
+          chmod +x scripts/ci/benchmark_perf_test.sh
+          ./scripts/ci/benchmark_perf_test.sh
+
+      - name: Upload Benchmark Artifacts
+        uses: actions/upload-artifact@4bec3ced71b4be111c22db5a9477af736e04f145 # v4.6.0
+        with:
+          name: benchmark-results
+          path: benchmark/

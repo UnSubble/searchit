@@ -16,6 +16,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestMain(m *testing.M) {
+	_ = profile.RegisterBuiltinValidators()
+	_ = profile.RegisterBuiltinDecoders()
+	os.Exit(m.Run())
+}
+
 func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
