@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,42 +48,18 @@ func TestCLI_ScanWithRequestTemplate(t *testing.T) {
 	_, _ = tmpWordlist.WriteString("dummy\n")
 	tmpWordlist.Close()
 
-	// Redirect stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	// Reset flags and setup rootCmd
-	resetFlagsForTest()
-	defer resetFlagsForTest()
-
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
-
-	args := []string{
+	out, err := runIntegrationCommand([]string{
 		"scan",
 		"-u", srv.URL,
 		"--request", tmpFile.Name(),
 		"-w", tmpWordlist.Name(),
 		"--mc", "200",
 		"--no-progress",
-	}
-	rootCmd.SetArgs(args)
-
-	err = rootCmd.ExecuteContext(context.Background())
-	w.Close()
-	os.Stdout = oldStdout
+	})
 
 	if err != nil {
-		t.Fatalf("execute failed: %v. Output:\n%s", err, buf.String())
+		t.Fatalf("execute failed: %v", err)
 	}
-
-	var stdoutBuf bytes.Buffer
-	if _, err := io.Copy(&stdoutBuf, r); err != nil {
-		t.Fatalf("io.Copy: %v", err)
-	}
-	out := stdoutBuf.String()
 
 	if !strings.Contains(out, "200") {
 		t.Errorf("expected 200 status code in output, got:\n%s", out)
@@ -126,41 +99,17 @@ func TestCLI_FuzzWithRequestTemplate(t *testing.T) {
 	_, _ = tmpWordlist.WriteString("myfuzzval\n")
 	tmpWordlist.Close()
 
-	// Redirect stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	// Reset flags and setup rootCmd
-	resetFlagsForTest()
-	defer resetFlagsForTest()
-
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
-
-	args := []string{
+	out, err := runIntegrationCommand([]string{
 		"fuzz",
 		"-u", srv.URL,
 		"--request", tmpFile.Name(),
 		"-w", tmpWordlist.Name(),
 		"--mc", "200",
-	}
-	rootCmd.SetArgs(args)
-
-	err = rootCmd.ExecuteContext(context.Background())
-	w.Close()
-	os.Stdout = oldStdout
+	})
 
 	if err != nil {
-		t.Fatalf("execute failed: %v. Output:\n%s", err, buf.String())
+		t.Fatalf("execute failed: %v", err)
 	}
-
-	var stdoutBuf bytes.Buffer
-	if _, err := io.Copy(&stdoutBuf, r); err != nil {
-		t.Fatalf("io.Copy: %v", err)
-	}
-	out := stdoutBuf.String()
 
 	if !strings.Contains(out, "myfuzzval") {
 		t.Errorf("expected 'myfuzzval' in output, got:\n%s", out)

@@ -16,33 +16,8 @@ import (
 )
 
 func runScanProfileTest(args []string, hook func(config.Config)) error {
-	// Reset all flag variables
-	flagURL = "http://localhost" // Set a default to satisfy validation
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagNormalizePaths = false
-	flagCollapseSlashes = false
-	flagOutput = ""
-	flagFormat = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
-	flagProfiles = nil
-	flagNoProgress = false
-	flagTech = ""
-	resolvedTargets = nil
+	resetFlagsForTest()
+	flagURL = "http://localhost" // Default target URL to satisfy validation
 
 	// Reset silence flags that prior failing tests may have set.
 	scanCmd.SilenceErrors = false

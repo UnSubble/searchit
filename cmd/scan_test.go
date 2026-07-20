@@ -42,8 +42,17 @@ func resetFlagsForTest() {
 	flagNoProgress = false
 	flagTech = ""
 	flagShowHeaders = false
-	flagShowTitle = false
 	flagRequestFile = ""
+	flagMatchStatus = ""
+	flagFilterStatus = ""
+	flagMatchSize = ""
+	flagFilterSize = ""
+	flagMatchRegex = nil
+	flagFilterRegex = nil
+	flagMatchContent = nil
+	flagFilterContent = nil
+	flagFollowRedirects = false
+	flagMaxRedirects = 10
 	resolvedTargets = nil
 
 	// Reset fuzz flag variables

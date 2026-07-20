@@ -25,6 +25,7 @@ func runIntegrationCommand(args []string) (string, error) {
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	fuzzCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs(args)
 
 	// Capture stdout using pipe
