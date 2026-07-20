@@ -263,6 +263,8 @@ func TestScanProfile_DuplicateProfileLoading(t *testing.T) {
 }
 
 func TestScanProfile_OutputText(t *testing.T) {
+	resetFlagsForTest()
+
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -319,6 +321,8 @@ func TestScanProfile_OutputText(t *testing.T) {
 }
 
 func TestScanProfile_OutputJSON(t *testing.T) {
+	resetFlagsForTest()
+
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w

@@ -19,9 +19,7 @@ func benchmarkBatch(b *testing.B, strategy Strategy, size int) {
 		URL: "https://example.com/admin",
 	}
 
-	b.ResetTimer()
-
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		f := NewFrontierWithCapacity(strategy, size)
 
 		for i := 0; i < size; i++ {
@@ -45,9 +43,7 @@ func benchmarkMixed(b *testing.B, strategy Strategy, size int) {
 		URL: "https://example.com/admin",
 	}
 
-	b.ResetTimer()
-
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		f := NewFrontierWithCapacity(strategy, size)
 
 		for i := 0; i < size; i++ {
@@ -77,9 +73,7 @@ func benchmarkGrow(b *testing.B, strategy Strategy) {
 
 	size := DefaultJobBuffer * 4
 
-	b.ResetTimer()
-
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		f := NewFrontierWithCapacity(strategy, size)
 
 		for i := 0; i < size; i++ {

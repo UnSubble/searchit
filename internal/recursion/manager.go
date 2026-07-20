@@ -407,9 +407,8 @@ func (m *Manager) handleResult(
 			frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
 		}
 	}
-	if err := <-readErr; err != nil && err != context.Canceled {
-		// Reader failures during recursion do not invalidate already-scheduled children.
-	}
+	// Reader failures during recursion do not invalidate already-scheduled children.
+	<-readErr
 }
 
 // normalizeURL strips trailing slashes and fragments to normalize directory matches.

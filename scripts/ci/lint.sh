@@ -23,7 +23,7 @@ echo "[3/3] Running staticcheck..."
 STATICCHECK="$(go env GOPATH)/bin/staticcheck"
 if ! command -v "${STATICCHECK}" &> /dev/null && ! which staticcheck &> /dev/null; then
     echo "Installing staticcheck..."
-    go install honnef.co/go/tools/cmd/staticcheck@latest
+    go install honnef.co/go/tools/cmd/staticcheck@v0.4.7
 fi
 
 if command -v staticcheck &> /dev/null; then
