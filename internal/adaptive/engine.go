@@ -105,7 +105,9 @@ func (e *Engine) GetSignals(word string, parentPath []string, depth int, parentR
 // GetScore calculates the priority score for a given word.
 func (e *Engine) GetScore(word string, parentPath []string, depth int, parentResContentType string) int {
 	sigs := e.GetSignals(word, parentPath, depth, parentResContentType)
-	return prioritizer.GetScore(sigs)
+	score := prioritizer.GetScore(sigs)
+	e.Summary.RecordPriority(score)
+	return score
 }
 
 // SelectTraversal evaluates the default rule table against the provided signals

@@ -8,9 +8,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/unsubble/searchit/internal/adaptive"
+	"github.com/unsubble/searchit/internal/adaptive/summary"
 	"github.com/unsubble/searchit/internal/adaptive/types"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
@@ -68,6 +70,7 @@ func NewExecutor(
 
 func (e *Executor) routeResults() {
 	for res := range e.resultsChan {
+		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 		id, ok := res.UserData.(uint64)
 		if !ok {
 			continue
@@ -95,6 +98,9 @@ func (e *Executor) Execute(job Job) (Result, error) {
 	e.mu.Unlock()
 
 	job.UserData = id
+
+	atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+	atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 
 	select {
 	case <-e.ctx.Done():
@@ -143,6 +149,7 @@ type Runner struct {
 
 	Adaptive bool
 	Cache    *fingerprint.Cache
+	Summary  *summary.Summary
 }
 
 // GetTargetDepth checks placeholder levels in target URL template.
@@ -586,6 +593,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallback) error {
 	engine := adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
+	r.Summary = engine.Summary
 	if err := engine.Discover(ctx); err != nil {
 		return err
 	}
@@ -707,7 +715,6 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 		}
 		if !r.Quiet {
 			engine.Summary.RecordFindings(len(orderedRes1))
-			engine.Summary.Print(os.Stdout)
 		}
 		return nil
 	}
@@ -1063,7 +1070,6 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 
 	if !r.Quiet {
 		engine.Summary.RecordFindings(len(allResults))
-		engine.Summary.Print(os.Stdout)
 	}
 
 	return nil

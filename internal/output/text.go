@@ -65,7 +65,21 @@ func (f *TextFormatter) Print(r engine.Result) error {
 		return err
 	}
 
-	_, err := fmt.Fprintf(f.w, "[+] %d - %s\n", r.StatusCode, r.URL)
+	if r.Length >= 0 {
+		var s string
+		if r.Length < 1024 {
+			s = fmt.Sprintf("%dB", r.Length)
+		} else if r.Length < 1024*1024 {
+			s = fmt.Sprintf("%.1fKB", float64(r.Length)/1024.0)
+		} else if r.Length < 1024*1024*1024 {
+			s = fmt.Sprintf("%.1fMB", float64(r.Length)/(1024.0*1024.0))
+		} else {
+			s = fmt.Sprintf("%.1fGB", float64(r.Length)/(1024.0*1024.0*1024.0))
+		}
+		_, err := fmt.Fprintf(f.w, "[+] %d - %s - %s\n", r.StatusCode, s, r.URL)
+		return err
+	}
+	_, err := fmt.Fprintf(f.w, "[+] %d -        - %s\n", r.StatusCode, r.URL)
 	return err
 }
 

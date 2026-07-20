@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/telemetry"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
@@ -436,7 +439,7 @@ var fuzzCmd = &cobra.Command{
 			outFormat = parsedFormat
 		}
 
-		outWriter := os.Stdout
+		var outWriter io.Writer = os.Stdout
 		if flagFuzzOutput != "" {
 			f, err := os.OpenFile(flagFuzzOutput, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 			if err != nil {
@@ -446,15 +449,75 @@ var fuzzCmd = &cobra.Command{
 			outWriter = f
 		}
 
-		fmttr := output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-		defer fmttr.Close()
+		var telemetryWriter io.Writer = os.Stdout
+		if outFormat != output.FormatText {
+			telemetryWriter = os.Stderr
+		}
 
-		if outFormat == output.FormatText && !cfg.Quiet {
-			fmt.Printf("[*] Fuzzing target: %s\n", flagFuzzURL)
+		if !cfg.Quiet {
+			wordlistsCount := 0
+			var placeholders []string
 			if flagFuzzWordlist != "" {
-				fmt.Printf("[*] Primary wordlist: %s\n", flagFuzzWordlist)
+				wordlistsCount++
+				placeholders = append(placeholders, "FUZZ")
+			}
+			if flagFuzzFoo != "" {
+				wordlistsCount++
+				placeholders = append(placeholders, "FOO")
+			}
+			if flagFuzzBar != "" {
+				wordlistsCount++
+				placeholders = append(placeholders, "BAR")
+			}
+			if flagFuzzBuzz != "" {
+				wordlistsCount++
+				placeholders = append(placeholders, "BUZZ")
+			}
+			placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(placeholders, ", "), len(placeholders))
+
+			totalCandidates := 1
+			if flagFuzzWordlist != "" {
+				totalCandidates *= countFileLines(flagFuzzWordlist)
+			}
+			if flagFuzzFoo != "" {
+				totalCandidates *= countFileLines(flagFuzzFoo)
+			}
+			if flagFuzzBar != "" {
+				totalCandidates *= countFileLines(flagFuzzBar)
+			}
+			if flagFuzzBuzz != "" {
+				totalCandidates *= countFileLines(flagFuzzBuzz)
+			}
+
+			excludeStatusStr := cfg.Status.Exclude.String()
+			if excludeStatusStr == "" {
+				excludeStatusStr = "none"
+			}
+
+			info := telemetry.ConfigInfo{
+				Target:          flagFuzzURL,
+				Method:          cfg.Method,
+				Workers:         cfg.Threads,
+				Strategy:        cfg.FuzzStrategy,
+				AdaptiveEnabled: cfg.Adaptive,
+				WordlistsCount:  wordlistsCount,
+				PrimaryWordlist: flagFuzzWordlist,
+				Placeholders:    placeholdersStr,
+				HTTPVersion:     "auto",
+				FollowRedirects: cfg.FollowRedirects,
+				FilterStatus:    excludeStatusStr,
+				TotalCandidates: totalCandidates,
+				IsFuzz:          true,
+			}
+			if flagDebug {
+				telemetry.PrintConfiguration(telemetryWriter, info)
+			} else {
+				telemetry.PrintNormalConfiguration(telemetryWriter, info)
 			}
 		}
+
+		fmttr := output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+		defer fmttr.Close()
 
 		// Setup the primary wordlist reader if provided
 		var reader wordlist.Reader
@@ -464,7 +527,19 @@ var fuzzCmd = &cobra.Command{
 			primaryChan = make(chan string, 100)
 			go func() {
 				defer close(primaryChan)
-				_ = reader.Read(ctx, primaryChan)
+				tempChan := make(chan string, 100)
+				go func() {
+					defer close(tempChan)
+					_ = reader.Read(ctx, tempChan)
+				}()
+				for w := range tempChan {
+					atomic.AddInt64(&stats.GlobalInstrumentation.WordsRead, 1)
+					select {
+					case <-ctx.Done():
+						return
+					case primaryChan <- w:
+					}
+				}
 			}()
 		}
 
@@ -532,6 +607,48 @@ var fuzzCmd = &cobra.Command{
 		})
 		if err != nil {
 			return err
+		}
+
+		if !cfg.Quiet {
+			snap := runner.Collector.Snapshot()
+			candidatesCount := int(atomic.LoadInt64(&stats.GlobalInstrumentation.JobsProduced))
+			if candidatesCount == 0 {
+				candidatesCount = int(snap.RequestsSent)
+			}
+
+			telemetry.PrintSummary(telemetryWriter, telemetry.SummaryInfo{
+				IsFuzz:          true,
+				Strategy:        cfg.FuzzStrategy,
+				AdaptiveEnabled: cfg.Adaptive,
+				Candidates:      candidatesCount,
+				Findings:        int(snap.Discovered),
+				Snapshot:        snap,
+			}, flagDebug)
+
+			if flagDebug {
+				if cfg.Adaptive && runner.Summary != nil {
+					// We can obtain technologies, discoveries, DFS/BFS/Eager counts directly from runner.Summary.
+					// Wait, let's map them to telemetry.AdaptiveInfo:
+					techs := append([]string(nil), runner.Summary.Technologies...)
+					sort.Strings(techs)
+
+					discoveries := append([]string(nil), runner.Summary.Discoveries...)
+					sort.Strings(discoveries)
+
+					telemetry.PrintAdaptive(telemetryWriter, telemetry.AdaptiveInfo{
+						Technologies:        techs,
+						Discoveries:         discoveries,
+						DFSCount:            int(runner.Summary.DFSCount),
+						BFSCount:            int(runner.Summary.BFSCount),
+						EagerCount:          int(runner.Summary.EagerCount),
+						HighPriorityCount:   int(runner.Summary.HighPriorityCount),
+						MediumPriorityCount: int(runner.Summary.MediumPriorityCount),
+						LowPriorityCount:    int(runner.Summary.LowPriorityCount),
+					})
+				}
+
+				telemetry.PrintPipelineReconciliation(telemetryWriter)
+			}
 		}
 
 		return nil
@@ -710,4 +827,33 @@ func init() {
 	fuzzCmd.Flags().IntVar(&flagFuzzMaxRedirects, "max-redirects", 10, "maximum redirect limit")
 	fuzzCmd.Flags().StringVar(&flagFuzzStrategy, "fuzz-strategy", "eager", "hierarchical traversal strategy (eager, bfs, dfs)")
 	fuzzCmd.Flags().BoolVar(&flagFuzzAdaptive, "adaptive", false, "enable adaptive fuzzing (prioritization, framework detection, robots.txt, sitemaps)")
+}
+
+func countFileLines(path string) int {
+	if path == "" {
+		return 1
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 1
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	count := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		count++
+	}
+
+	// check for errors encountered by scanner
+	if err := scanner.Err(); err != nil {
+		return 1
+	}
+	if count == 0 {
+		return 1
+	}
+	return count
 }

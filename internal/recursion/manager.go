@@ -45,6 +45,17 @@ type Manager struct {
 	body    []byte
 	headers http.Header
 	cookies []*http.Cookie
+
+	// Adaptive summary tracking fields
+	LaravelDetected     bool
+	RobotsDiscovered    bool
+	SitemapDiscovered   bool
+	DFSCount            int
+	BFSCount            int
+	EagerCount          int
+	HighPriorityCount   int
+	MediumPriorityCount int
+	LowPriorityCount    int
 }
 
 // SetRequestManipulation configures custom outbound request templates for scanning.
@@ -127,6 +138,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 				visited[key] = struct{}{}
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+				m.MediumPriorityCount++
 				frontier.Push(engine.Job{URL: u, Depth: 0, Origin: engine.OriginProfile})
 			}
 		}
@@ -319,6 +331,7 @@ func (m *Manager) handleResult(
 					}
 					if isLaravel {
 						injectedLaravel[host] = true
+						m.LaravelDetected = true
 						laravelPaths := []string{".env", "artisan", "storage/", "bootstrap/", "vendor/"}
 						scheme := "http"
 						if parsed.Scheme != "" {
@@ -333,6 +346,7 @@ func (m *Manager) handleResult(
 									visited[key] = struct{}{}
 									atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 									atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+									m.HighPriorityCount++
 									frontier.PushFront(engine.Job{
 										URL:    childURL,
 										Depth:  result.Depth + 1,
@@ -347,7 +361,13 @@ func (m *Manager) handleResult(
 		}
 	}
 
-	if !m.recurseOn.Match(result.StatusCode) {
+	if m.recurseOn.Match(result.StatusCode) {
+		if m.strategy == DFS {
+			m.DFSCount++
+		} else {
+			m.BFSCount++
+		}
+	} else {
 		return
 	}
 
@@ -374,6 +394,7 @@ func (m *Manager) handleResult(
 		visited[key] = struct{}{}
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+		m.LowPriorityCount++
 		frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
 	}
 	if err := <-readErr; err != nil && err != context.Canceled {
@@ -422,6 +443,7 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 	}
 	defer body.Close()
 
+	m.RobotsDiscovered = true
 	directives, err := robots.Parse(body)
 	if err != nil {
 		return nil
@@ -485,6 +507,7 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 		visited[key] = struct{}{}
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+		m.HighPriorityCount++
 		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: engine.OriginRobots})
 	}
 
@@ -525,6 +548,7 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 	hostRootURL, _ := url.Parse(hostRoot)
 
 	disc.Discover(ctx, startURLs, func(candidatePath string, origin string) {
+		m.SitemapDiscovered = true
 		parsedCand, err := url.Parse(candidatePath)
 		if err != nil {
 			return
@@ -539,6 +563,20 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 		visited[key] = struct{}{}
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+		m.HighPriorityCount++
 		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: origin})
 	})
+}
+
+func (m *Manager) GetAdaptiveMetrics() (techs []string, discoveries []string, dfs, bfs, eager, high, med, low int) {
+	if m.LaravelDetected {
+		techs = append(techs, "Laravel")
+	}
+	if m.RobotsDiscovered {
+		discoveries = append(discoveries, "robots.txt")
+	}
+	if m.SitemapDiscovered {
+		discoveries = append(discoveries, "sitemap.xml")
+	}
+	return techs, discoveries, m.DFSCount, m.BFSCount, m.EagerCount, m.HighPriorityCount, m.MediumPriorityCount, m.LowPriorityCount
 }

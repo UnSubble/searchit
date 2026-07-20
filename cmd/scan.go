@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/telemetry"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
@@ -429,7 +431,7 @@ var scanCmd = &cobra.Command{
 		}
 
 		// Determine the output writer (file or stdout).
-		outWriter := os.Stdout
+		var outWriter io.Writer = os.Stdout
 		if cfg.OutputFile != "" {
 			f, err := os.OpenFile(cfg.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 			if err != nil {
@@ -445,6 +447,49 @@ var scanCmd = &cobra.Command{
 			// Fallback — should not happen after validation, but be safe.
 			fmt_ = output.FormatText
 		}
+
+		var telemetryWriter io.Writer = os.Stdout
+		if fmt_ != output.FormatText {
+			telemetryWriter = os.Stderr
+		}
+
+		if !cfg.Quiet {
+			targetStr := strings.Join(cfg.URLs, ", ")
+			primaryWl := cfg.Wordlist
+			if primaryWl == "" {
+				primaryWl = "embedded"
+			}
+			strategyStr := cfg.Strategy.String()
+			if cfg.Recursive {
+				strategyStr = fmt.Sprintf("recursive (%s)", strategyStr)
+			} else {
+				strategyStr = "non-recursive"
+			}
+			excludeStatusStr := cfg.Status.Exclude.String()
+			if excludeStatusStr == "" {
+				excludeStatusStr = "none"
+			}
+			info := telemetry.ConfigInfo{
+				Target:          targetStr,
+				Method:          cfg.Method,
+				Workers:         cfg.Threads,
+				Strategy:        strategyStr,
+				AdaptiveEnabled: cfg.Adaptive,
+				WordlistsCount:  1,
+				PrimaryWordlist: primaryWl,
+				HTTPVersion:     "auto",
+				FollowRedirects: cfg.FollowRedirects,
+				FilterStatus:    excludeStatusStr,
+				TotalCandidates: totalWords,
+				IsFuzz:          false,
+			}
+			if flagDebug {
+				telemetry.PrintConfiguration(telemetryWriter, info)
+			} else {
+				telemetry.PrintNormalConfiguration(telemetryWriter, info)
+			}
+		}
+
 		fmttr := output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 		defer fmttr.Close()
 
@@ -476,10 +521,6 @@ var scanCmd = &cobra.Command{
 		fs.ShowTitle = cfg.ShowTitle
 
 		for _, targetURL := range cfg.URLs {
-			if cfg.OutputFormat == "text" && !cfg.Quiet {
-				fmt.Printf("[*] Target: %s\n", targetURL)
-			}
-
 			scanCtx, scanCancel := context.WithCancel(ctx)
 			collector := stats.NewCollector()
 			if totalWords > 0 {
@@ -531,17 +572,8 @@ var scanCmd = &cobra.Command{
 					close(progDone)
 				}()
 			}
-
+			var manager *recursion.Manager
 			if cfg.Recursive {
-				if cfg.OutputFormat == "text" && !cfg.Quiet {
-					fmt.Println("[*] Recursive scan enabled")
-					fmt.Printf("[*] Strategy: %s\n", cfg.Strategy.String())
-					fmt.Printf("[*] Max depth: %d\n", cfg.MaxDepth)
-					fmt.Printf("[*] Recurse on: %s\n", formatRecurseOn(cfg))
-					if !cfg.RecurseOn.Match(404) {
-						fmt.Println("[*] 404 responses are ignored by default.")
-					}
-				}
 
 				var fpCache *fingerprint.Cache
 				if cfg.Adaptive {
@@ -549,7 +581,7 @@ var scanCmd = &cobra.Command{
 				}
 
 				seeds := []string{targetURL}
-				manager := recursion.NewManager(
+				manager = recursion.NewManager(
 					appState.HTTPClient,
 					appState.Config.Status.Exclude,
 					reader,
@@ -639,7 +671,49 @@ var scanCmd = &cobra.Command{
 				}
 			}
 			if !cfg.Quiet {
-				stats.GlobalInstrumentation.PrintReconciliation()
+				snap := collector.Snapshot()
+				strategyStr := cfg.Strategy.String()
+				if cfg.Recursive {
+					strategyStr = fmt.Sprintf("recursive (%s)", strategyStr)
+				} else {
+					strategyStr = "non-recursive"
+				}
+
+				candidatesCount := int(atomic.LoadInt64(&stats.GlobalInstrumentation.JobsProduced))
+				if candidatesCount == 0 {
+					candidatesCount = int(snap.RequestsSent)
+				}
+
+				telemetry.PrintSummary(telemetryWriter, telemetry.SummaryInfo{
+					IsFuzz:          false,
+					Strategy:        strategyStr,
+					AdaptiveEnabled: cfg.Adaptive,
+					Candidates:      candidatesCount,
+					Findings:        int(snap.Discovered),
+					Snapshot:        snap,
+				}, flagDebug)
+
+				if flagDebug {
+					if cfg.Adaptive {
+						var techs, discoveries []string
+						var dfs, bfs, eager, high, med, low int
+						if manager != nil {
+							techs, discoveries, dfs, bfs, eager, high, med, low = manager.GetAdaptiveMetrics()
+						}
+						telemetry.PrintAdaptive(telemetryWriter, telemetry.AdaptiveInfo{
+							Technologies:        techs,
+							Discoveries:         discoveries,
+							DFSCount:            dfs,
+							BFSCount:            bfs,
+							EagerCount:          eager,
+							HighPriorityCount:   high,
+							MediumPriorityCount: med,
+							LowPriorityCount:    low,
+						})
+					}
+
+					telemetry.PrintPipelineReconciliation(telemetryWriter)
+				}
 			}
 			scanCancel()
 			if progDone != nil {
@@ -810,15 +884,6 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("request") {
 		cfg.RequestFile = flagRequestFile
 	}
-}
-
-// formatRecurseOn returns a human-readable string for the recurse-on filters.
-// Prefers the CLI flag value if set, otherwise falls back to the default.
-func formatRecurseOn(_ config.Config) string {
-	if flagRecurseOn != "" {
-		return flagRecurseOn
-	}
-	return "200,301,302,403"
 }
 
 func init() {

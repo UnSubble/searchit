@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	cfgFile string
-	verbose bool
+	cfgFile   string
+	verbose   bool
+	flagDebug bool
 )
 
 var rootCmd = &cobra.Command{
@@ -57,5 +58,12 @@ func init() {
 		"v",
 		false,
 		"verbose output",
+	)
+
+	rootCmd.PersistentFlags().BoolVar(
+		&flagDebug,
+		"debug",
+		false,
+		"debug output",
 	)
 }

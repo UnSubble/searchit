@@ -20,6 +20,7 @@ func TestTextFormatter(t *testing.T) {
 		r := engine.Result{
 			URL:        "http://example.com/admin",
 			StatusCode: 200,
+			Length:     -1,
 		}
 
 		if err := f.Print(r); err != nil {
@@ -30,7 +31,7 @@ func TestTextFormatter(t *testing.T) {
 		}
 
 		got := buf.String()
-		want := "[+] 200 - http://example.com/admin\n"
+		want := "[+] 200 -        - http://example.com/admin\n"
 		if got != want {
 			t.Errorf("got %q, want %q", got, want)
 		}

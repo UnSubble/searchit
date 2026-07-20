@@ -18,11 +18,28 @@ type Summary struct {
 	BFSCount     int
 	EagerCount   int
 	Findings     int
+
+	HighPriorityCount   int
+	MediumPriorityCount int
+	LowPriorityCount    int
 }
 
 // NewSummary returns an initialized empty Summary.
 func NewSummary() *Summary {
 	return &Summary{}
+}
+
+// RecordPriority increments candidate priority based on score.
+func (s *Summary) RecordPriority(score int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if score >= 30 {
+		s.HighPriorityCount++
+	} else if score > 0 {
+		s.MediumPriorityCount++
+	} else {
+		s.LowPriorityCount++
+	}
 }
 
 // RecordTraversal increments traversal category counters and candidates count.

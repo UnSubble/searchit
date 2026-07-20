@@ -110,12 +110,13 @@ func TestCLI_OutputFormatters(t *testing.T) {
 				t.Fatalf("format %s failed: %v", fmtName, err)
 			}
 
-			if fmtName == "csv" {
+			switch fmtName {
+			case "csv":
 				// CSV output should contain columns (e.g. url,status)
 				if !strings.Contains(out, srv.URL+"/admin") {
 					t.Errorf("expected CSV to contain result URL, got:\n%s", out)
 				}
-			} else if fmtName == "markdown" {
+			case "markdown":
 				// Markdown table formatting
 				if !strings.Contains(out, "|") {
 					t.Errorf("expected Markdown table, got:\n%s", out)
