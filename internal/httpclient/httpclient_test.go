@@ -170,5 +170,5 @@ func TestNew_ProxyPanicOnInvalid(t *testing.T) {
 			t.Errorf("expected panic on invalid proxy URL format")
 		}
 	}()
-	_ = httpclient.New(10*time.Second, 10*time.Second, false, "http://invalid-url::8080")
+	_ = httpclient.New(10*time.Second, 10*time.Second, false, ":\n")
 }
