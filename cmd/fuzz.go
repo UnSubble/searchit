@@ -19,6 +19,7 @@ import (
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/output"
@@ -37,6 +38,7 @@ import (
 var (
 	flagFuzzURL         string
 	flagFuzzWordlist    string
+	flagFuzzExt         []string
 	flagFuzzFoo         string
 	flagFuzzBar         string
 	flagFuzzBuzz        string
@@ -238,6 +240,12 @@ var fuzzCmd = &cobra.Command{
 		for _, rx := range flagFuzzFilterRegex {
 			if _, err := regexp.Compile(rx); err != nil {
 				return fmt.Errorf("invalid filter-regex (--fr) %q: %w", rx, err)
+			}
+		}
+
+		if len(flagFuzzExt) > 0 {
+			if _, err := extensions.Parse(flagFuzzExt); err != nil {
+				return fmt.Errorf("invalid --ext: %w", err)
 			}
 		}
 
@@ -477,7 +485,11 @@ var fuzzCmd = &cobra.Command{
 
 			totalCandidates := 1
 			if flagFuzzWordlist != "" {
-				totalCandidates *= countFileLines(flagFuzzWordlist)
+				baseCount := countFileLines(flagFuzzWordlist)
+				if len(cfg.Extensions) > 0 {
+					baseCount *= (1 + len(cfg.Extensions))
+				}
+				totalCandidates *= baseCount
 			}
 			if flagFuzzFoo != "" {
 				totalCandidates *= countFileLines(flagFuzzFoo)
@@ -508,6 +520,7 @@ var fuzzCmd = &cobra.Command{
 				FilterStatus:    excludeStatusStr,
 				TotalCandidates: totalCandidates,
 				IsFuzz:          true,
+				Extensions:      cfg.Extensions,
 			}
 			if flagDebug {
 				telemetry.PrintConfiguration(telemetryWriter, info)
@@ -534,10 +547,13 @@ var fuzzCmd = &cobra.Command{
 				}()
 				for w := range tempChan {
 					atomic.AddInt64(&stats.GlobalInstrumentation.WordsRead, 1)
-					select {
-					case <-ctx.Done():
-						return
-					case primaryChan <- w:
+					variants := extensions.GenerateVariants(w, cfg.Extensions)
+					for _, v := range variants {
+						select {
+						case <-ctx.Done():
+							return
+						case primaryChan <- v:
+						}
 					}
 				}
 			}()
@@ -779,6 +795,14 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("max-redirects") {
 		cfg.MaxRedirects = flagFuzzMaxRedirects
 	}
+	if cmd.Flags().Changed("wordlist") {
+		cfg.Wordlist = flagFuzzWordlist
+	}
+	if cmd.Flags().Changed("ext") {
+		if exts, err := extensions.Parse(flagFuzzExt); err == nil {
+			cfg.Extensions = exts
+		}
+	}
 	if cmd.Flags().Changed("strategy") {
 		cfg.FuzzStrategy = flagFuzzStrategy
 	}
@@ -792,6 +816,7 @@ func init() {
 
 	fuzzCmd.Flags().StringVarP(&flagFuzzURL, "url", "u", "", "target URL with placeholders (FUZZ, FOO, BAR, BUZZ)")
 	fuzzCmd.Flags().StringVarP(&flagFuzzWordlist, "wordlist", "w", "", "primary wordlist path (maps to FUZZ)")
+	fuzzCmd.Flags().StringSliceVarP(&flagFuzzExt, "ext", "e", nil, "comma-separated extensions or @file")
 	fuzzCmd.Flags().StringVar(&flagFuzzFoo, "foo", "", "wordlist path for FOO placeholder")
 	fuzzCmd.Flags().StringVar(&flagFuzzBar, "bar", "", "wordlist path for BAR placeholder")
 	fuzzCmd.Flags().StringVar(&flagFuzzBuzz, "buzz", "", "wordlist path for BUZZ placeholder")

@@ -18,6 +18,7 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/output"
@@ -40,6 +41,7 @@ var (
 	flagURL             string
 	flagURLFile         string
 	flagWordlist        string
+	flagScanExt         []string
 	flagThreads         int
 	flagTimeout         int
 	flagRecursive       bool
@@ -263,6 +265,12 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
+		if len(flagScanExt) > 0 {
+			if _, err := extensions.Parse(flagScanExt); err != nil {
+				return fmt.Errorf("invalid --ext: %w", err)
+			}
+		}
+
 		resolvedTargets = nil
 		if flagURL != "" {
 			for _, val := range strings.Split(flagURL, ",") {
@@ -427,6 +435,9 @@ var scanCmd = &cobra.Command{
 		if countable, ok := reader.(wordlist.Countable); ok {
 			if count, err := countable.Count(); err == nil {
 				totalWords = count
+				if len(cfg.Extensions) > 0 {
+					totalWords *= (1 + len(cfg.Extensions))
+				}
 			}
 		}
 
@@ -482,6 +493,7 @@ var scanCmd = &cobra.Command{
 				FilterStatus:    excludeStatusStr,
 				TotalCandidates: totalWords,
 				IsFuzz:          false,
+				Extensions:      cfg.Extensions,
 			}
 			if flagDebug {
 				telemetry.PrintConfiguration(telemetryWriter, info)
@@ -601,6 +613,7 @@ var scanCmd = &cobra.Command{
 				manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, parsedCookies)
 				manager.SetFilterSuite(fs)
 				manager.SetStats(collector)
+				manager.SetExtensions(cfg.Extensions)
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
 					if r.Accepted {
@@ -643,6 +656,7 @@ var scanCmd = &cobra.Command{
 						Reader:          reader,
 						NormalizePaths:  cfg.Paths.NormalizePaths,
 						CollapseSlashes: cfg.Paths.CollapseSlashes,
+						Extensions:      cfg.Extensions,
 					}
 					_ = p.Produce(scanCtx, jobs)
 				}()
@@ -736,6 +750,11 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 
 	if cmd.Flags().Changed("wordlist") {
 		cfg.Wordlist = flagWordlist
+	}
+	if cmd.Flags().Changed("ext") {
+		if exts, err := extensions.Parse(flagScanExt); err == nil {
+			cfg.Extensions = exts
+		}
 	}
 	if cmd.Flags().Changed("threads") {
 		cfg.Threads = flagThreads
@@ -918,6 +937,14 @@ func init() {
 		"timeout",
 		10,
 		"timeout in seconds",
+	)
+
+	scanCmd.Flags().StringSliceVarP(
+		&flagScanExt,
+		"ext",
+		"e",
+		nil,
+		"comma-separated extensions or @file",
 	)
 
 	scanCmd.Flags().BoolVarP(

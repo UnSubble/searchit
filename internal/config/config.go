@@ -19,8 +19,9 @@ type TechProfile struct {
 // Config is the single source of truth consumed by the engine.
 // All external inputs (CLI, YAML, env) must be translated into this struct.
 type Config struct {
-	URLs     []string
-	Wordlist string
+	URLs       []string
+	Wordlist   string
+	Extensions []string
 
 	Threads        int
 	Timeout        time.Duration

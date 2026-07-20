@@ -20,6 +20,7 @@ type ConfigInfo struct {
 	FilterStatus    string // e.g. "40x"
 	TotalCandidates int
 	IsFuzz          bool
+	Extensions      []string
 }
 
 func padConfigDots(label string) string {
@@ -53,6 +54,9 @@ func PrintNormalConfiguration(w io.Writer, info ConfigInfo) {
 	fmt.Fprintf(w, "%s%s\n", padConfigDots("[*] Strategy"), info.Strategy)
 	fmt.Fprintf(w, "%s%s\n", padConfigDots("[*] Adaptive"), adaptiveStr)
 	fmt.Fprintf(w, "%s%s\n", padConfigDots("[*] Wordlist"), wl)
+	if len(info.Extensions) > 0 {
+		fmt.Fprintf(w, "%s%s\n", padConfigDots("[*] Extensions"), strings.Join(info.Extensions, ", "))
+	}
 	fmt.Fprintf(w, "%s%d\n\n", padConfigDots("[*] Workers"), info.Workers)
 }
 
@@ -83,6 +87,10 @@ func PrintConfiguration(w io.Writer, info ConfigInfo) {
 		fmt.Fprintf(w, "Placeholders:\n    %s\n\n", info.Placeholders)
 	} else {
 		fmt.Fprintf(w, "Wordlist:\n    %s\n\n", info.PrimaryWordlist)
+	}
+
+	if len(info.Extensions) > 0 {
+		fmt.Fprintf(w, "Extensions:\n    %s\n\n", strings.Join(info.Extensions, ", "))
 	}
 
 	fmt.Fprintf(w, "HTTP Version:\n    %s\n\n", info.HTTPVersion)

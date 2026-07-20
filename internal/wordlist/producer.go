@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
@@ -20,6 +21,7 @@ type Producer struct {
 	Reader          Reader
 	NormalizePaths  bool
 	CollapseSlashes bool
+	Extensions      []string
 }
 
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
@@ -57,19 +59,23 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 			if !ok {
 				continue
 			}
-			url, err := Join(p.BaseURL, cleaned)
-			if err != nil {
-				return err
-			}
 
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+			variants := extensions.GenerateVariants(cleaned, p.Extensions)
+			for _, variant := range variants {
+				url, err := Join(p.BaseURL, variant)
+				if err != nil {
+					return err
+				}
 
-			select {
-			case <-ctx.Done():
-				stats.GlobalInstrumentation.LogEvent("context cancellation")
-				return ctx.Err()
-			case jobs <- engine.Job{URL: url}:
-				atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+
+				select {
+				case <-ctx.Done():
+					stats.GlobalInstrumentation.LogEvent("context cancellation")
+					return ctx.Err()
+				case jobs <- engine.Job{URL: url}:
+					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+				}
 			}
 		}
 	}

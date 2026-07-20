@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/robots"
@@ -28,6 +29,7 @@ type Manager struct {
 	client           *http.Client
 	fs               *filter.FilterSuite
 	reader           wordlist.Reader
+	extensions       []string
 	strategy         Strategy
 	maxDepth         uint16
 	recurseOn        status.Filters
@@ -69,6 +71,11 @@ func (m *Manager) SetRequestManipulation(method string, body []byte, headers htt
 // SetFilterSuite configures response filters.
 func (m *Manager) SetFilterSuite(fs *filter.FilterSuite) {
 	m.fs = fs
+}
+
+// SetExtensions configures extension variants for recursion candidate generation.
+func (m *Manager) SetExtensions(exts []string) {
+	m.extensions = exts
 }
 
 func NewManager(
@@ -383,19 +390,22 @@ func (m *Manager) handleResult(
 		if !ok {
 			continue
 		}
-		childURL, err := wordlist.Join(parentURL, cleaned)
-		if err != nil {
-			continue
+		variants := extensions.GenerateVariants(cleaned, m.extensions)
+		for _, variant := range variants {
+			childURL, err := wordlist.Join(parentURL, variant)
+			if err != nil {
+				continue
+			}
+			key := normalizeURL(childURL)
+			if _, seen := visited[key]; seen {
+				continue
+			}
+			visited[key] = struct{}{}
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+			m.LowPriorityCount++
+			frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
 		}
-		key := normalizeURL(childURL)
-		if _, seen := visited[key]; seen {
-			continue
-		}
-		visited[key] = struct{}{}
-		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-		m.LowPriorityCount++
-		frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
 	}
 	if err := <-readErr; err != nil && err != context.Canceled {
 		// Reader failures during recursion do not invalidate already-scheduled children.

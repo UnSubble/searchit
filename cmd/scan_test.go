@@ -18,6 +18,7 @@ func resetFlagsForTest() {
 	flagURL = ""
 	flagURLFile = ""
 	flagWordlist = ""
+	flagScanExt = nil
 	flagThreads = 32
 	flagTimeout = 10
 	flagRecursive = false
@@ -48,6 +49,7 @@ func resetFlagsForTest() {
 	// Reset fuzz flag variables
 	flagFuzzURL = ""
 	flagFuzzWordlist = ""
+	flagFuzzExt = nil
 	flagFuzzFoo = ""
 	flagFuzzBar = ""
 	flagFuzzBuzz = ""

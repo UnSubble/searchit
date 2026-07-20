@@ -515,3 +515,78 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestIntegration_ExtensionSupport(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin", "/admin.php", "/admin.txt", "/admin.bak":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ADMIN OK"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	wlFile := filepath.Join(t.TempDir(), "words.txt")
+	if err := os.WriteFile(wlFile, []byte("admin\n"), 0600); err != nil {
+		t.Fatalf("failed to write test wordlist: %v", err)
+	}
+
+	t.Run("scan mode with --ext", func(t *testing.T) {
+		out, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", wlFile,
+			"--ext", "php,txt",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+
+		if !strings.Contains(out, srv.URL+"/admin") ||
+			!strings.Contains(out, srv.URL+"/admin.php") ||
+			!strings.Contains(out, srv.URL+"/admin.txt") {
+			t.Errorf("expected base and extension variants in output, got:\n%s", out)
+		}
+	})
+
+	t.Run("fuzz mode with --ext", func(t *testing.T) {
+		out, err := runIntegrationCommand([]string{
+			"fuzz",
+			"-u", srv.URL + "/FUZZ",
+			"-w", wlFile,
+			"--ext", "php,bak",
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+
+		if !strings.Contains(out, srv.URL+"/admin") ||
+			!strings.Contains(out, srv.URL+"/admin.php") ||
+			!strings.Contains(out, srv.URL+"/admin.bak") {
+			t.Errorf("expected base and extension variants in fuzz output, got:\n%s", out)
+		}
+	})
+
+	t.Run("file based --ext", func(t *testing.T) {
+		extFile := filepath.Join(t.TempDir(), "extensions.txt")
+		if err := os.WriteFile(extFile, []byte(".php\n.txt\n"), 0600); err != nil {
+			t.Fatalf("failed to write ext file: %v", err)
+		}
+
+		out, err := runIntegrationCommand([]string{
+			"scan",
+			"-u", srv.URL,
+			"-w", wlFile,
+			"--ext", "@" + extFile,
+		})
+		if err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+
+		if !strings.Contains(out, srv.URL+"/admin.php") || !strings.Contains(out, srv.URL+"/admin.txt") {
+			t.Errorf("expected file-based extension variants, got:\n%s", out)
+		}
+	})
+}
