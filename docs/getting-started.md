@@ -8,7 +8,7 @@ Welcome to Searchit, a concurrent, extensible, and profile-based web content dis
 
 ## Installation
 
-Searchit requires Go 1.26 or higher.
+Searchit requires Go 1.24 or higher.
 
 To compile from source using the Makefile (recommended):
 ```bash
