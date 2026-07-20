@@ -1,4 +1,4 @@
-name: CI
+name: CI Infrastructure & Verification
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Code Quality & Lint
+    name: Code Quality & Linting
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -31,29 +31,20 @@ jobs:
           go-version: "1.26.x"
           cache: true
 
-      - name: Format check
+      - name: Run Lint Suite
         run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Code is not formatted"
-            gofmt -l .
-            exit 1
-          fi
-
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
-
-      - name: Run staticcheck
-        run: $(go env GOPATH)/bin/staticcheck ./...
+          chmod +x scripts/ci/lint.sh
+          ./scripts/ci/lint.sh
 
   test-and-build:
-    name: Test & Build (${{ matrix.os }})
+    name: Test & Build (${{ matrix.os }}, Go ${{ matrix.go-version }})
     needs: lint
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ["1.26.x"]
+        go-version: ["1.25.x", "1.26.x"]
 
     steps:
       - name: Checkout code
@@ -69,47 +60,183 @@ jobs:
         run: go mod download
 
       - name: Unit Tests
-        run: go test -v "./..."
+        run: go test -v ./...
 
-      - name: Race Detection Tests
-        # Only run race tests on Linux/macOS; race detector on Windows in Actions is sometimes slow or flaky
-        if: matrix.os != 'windows-latest'
-        run: go test -race "./..."
-
-      - name: Code Coverage
-        run: go test "-coverprofile=coverage.out" -covermode=atomic "./..."
-
-      - name: Compile Benchmarks (Verification)
-        run: go test -run=^$ "-bench=." "./..."
-
-      - name: Build local binary (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          chmod +x build.sh
-          ./build.sh
-
-      - name: Build local binary (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Build local binary & target binaries
         shell: bash
         run: |
+          chmod +x build.sh
           ./build.sh
 
       - name: Binary Smoke Tests (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          dist/searchit --version
-          dist/searchit scan --help
+          chmod +x scripts/ci/binary_smoke_test.sh
+          ./scripts/ci/binary_smoke_test.sh
 
       - name: Binary Smoke Tests (Windows)
         if: matrix.os == 'windows-latest'
+        shell: bash
         run: |
-          dist\searchit.exe --version
-          dist\searchit.exe scan --help
+          dist/searchit.exe --version
+          dist/searchit.exe scan --help
+          dist/searchit.exe fuzz --help
 
-      - name: Upload Coverage Report
-        if: matrix.os == 'ubuntu-latest'
+  stress-and-race:
+    name: Stress & Race Safety Tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run Stress & Race Test Suite
+        run: |
+          chmod +x scripts/ci/stress_test.sh
+          ./scripts/ci/stress_test.sh
+
+  determinism:
+    name: Determinism Verification (Workers 1, 8, 32, 64, 128)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run Determinism Validation
+        run: |
+          chmod +x scripts/ci/determinism_test.sh
+          ./scripts/ci/determinism_test.sh
+
+      - name: Upload Determinism Artifacts
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
-          name: code-coverage
-          path: coverage.out
-          retention-days: 7
+          name: determinism-report
+          path: determinism/
+          retention-days: 14
+
+  pipeline:
+    name: Pipeline & Reconciliation Verification
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run Pipeline Validation
+        run: |
+          chmod +x scripts/ci/pipeline_test.sh
+          ./scripts/ci/pipeline_test.sh
+
+      - name: Upload Pipeline Artifacts
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: pipeline-report
+          path: pipeline/
+          retention-days: 14
+
+  compatibility:
+    name: Output & Profile Compatibility
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run Compatibility Validation
+        run: |
+          chmod +x scripts/ci/compatibility_test.sh
+          ./scripts/ci/compatibility_test.sh
+
+      - name: Upload Compatibility Artifacts
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: compatibility-report
+          path: compatibility/
+          retention-days: 14
+
+  benchmark-and-performance:
+    name: Benchmark & Performance Regression Validation
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run Benchmark & Performance Suite
+        run: |
+          chmod +x scripts/ci/benchmark_perf_test.sh
+          ./scripts/ci/benchmark_perf_test.sh
+
+      - name: Upload Benchmark & Performance Artifacts
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: benchmark-and-performance-reports
+          path: |
+            benchmark/
+            performance/
+          retention-days: 14
+
+  verification-report:
+    name: Master Verification Summary
+    needs: [test-and-build, stress-and-race, determinism, pipeline, compatibility, benchmark-and-performance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          merge-multiple: true
+
+      - name: Generate Coverage & Verification Report
+        run: |
+          chmod +x scripts/ci/coverage_report.sh scripts/ci/generate_verification_report.sh
+          ./scripts/ci/coverage_report.sh
+          ./scripts/ci/generate_verification_report.sh
+
+      - name: Upload Master Verification Bundle
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: master-verification-report
+          path: |
+            verification/
+            coverage/
+          retention-days: 30

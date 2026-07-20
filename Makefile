@@ -1,4 +1,4 @@
-.PHONY: build run test race benchmark chaos profile audit release clean coverage install
+.PHONY: build run test race benchmark chaos profile audit release clean coverage install lint smoke determinism stress pipeline compatibility ci verify
 
 APP=searchit
 STATICCHECK=$(shell go env GOPATH)/bin/staticcheck
@@ -28,6 +28,31 @@ audit:
 	go vet ./...
 	$(STATICCHECK) ./...
 
+lint:
+	./scripts/ci/lint.sh
+
+smoke: build
+	./scripts/ci/binary_smoke_test.sh
+
+determinism: build
+	./scripts/ci/determinism_test.sh
+
+stress:
+	./scripts/ci/stress_test.sh
+
+pipeline:
+	./scripts/ci/pipeline_test.sh
+
+compatibility:
+	./scripts/ci/compatibility_test.sh
+
+ci: lint smoke stress determinism pipeline compatibility
+	./scripts/ci/coverage_report.sh
+	./scripts/ci/benchmark_perf_test.sh
+	./scripts/ci/generate_verification_report.sh
+
+verify: ci
+
 release:
 	mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/$(APP)-linux-amd64 .
@@ -35,7 +60,7 @@ release:
 	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/$(APP)-windows-amd64.exe .
 
 clean:
-	rm -rf dist bin coverage.out coverage.html
+	rm -rf dist bin coverage.out coverage.html benchmark performance determinism pipeline compatibility verification
 
 coverage:
 	go test -coverprofile=coverage.out ./...
