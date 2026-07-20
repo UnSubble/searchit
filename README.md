@@ -20,7 +20,7 @@ Searchit provides a concurrent scanning engine, topological profile dependency r
 - **Output Formats**: Supports text, JSON, and NDJSON output formats, with an optional quiet text mode.
 
 ## Installation
-Build from source (requires Go 1.26+):
+Build from source (requires Go 1.24+):
 
 Using the Makefile (recommended):
 ```bash

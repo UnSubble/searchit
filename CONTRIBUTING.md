@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Searchit. Please review these gui
 
 ## Development Setup
 
-**Requirements**: Go 1.26+, Git
+**Requirements**: Go 1.24+, Git
 
 ```bash
 git clone https://github.com/unsubble/searchit.git
