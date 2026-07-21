@@ -37,3 +37,12 @@ temp/
 Thumbs.db
 
 CHANGELOG.md
+
+# Ci Test Results Folders
+pipeline/
+performance/
+determinism/
+coverage/
+compatibility/
+verification/
+benchmark/
