@@ -17,4 +17,10 @@ type Result struct {
 	// Presentation metadata
 	Title   string
 	Headers http.Header
+
+	// Extracted links for smarter recursive crawling
+	Links []string
+
+	// Hash of the response body for wildcard/duplicate detection
+	BodyHash uint64
 }

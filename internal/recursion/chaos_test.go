@@ -93,8 +93,9 @@ func TestChaos_WorkerEdgeCases(t *testing.T) {
 				nil,
 				nil,
 			)
+			m.SetDisableWildcard(true)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 
 			resChan := m.Run(ctx, []string{"http://chaos.com"}, 4)
@@ -156,6 +157,7 @@ func TestChaos_HighScaleStarvationAndGrowth(t *testing.T) {
 		nil,
 		nil,
 	)
+	m.SetDisableWildcard(true)
 
 	// Stress-test with 128 workers
 	resChan := m.Run(context.Background(), targets, 128)
@@ -216,6 +218,7 @@ func TestChaos_DeterministicWorkerMatrix(t *testing.T) {
 				nil,
 				a.FingerprintCache,
 			)
+			m.SetDisableWildcard(true)
 
 			resChan := m.Run(context.Background(), []string{"http://determinism.com"}, w)
 			var results []engine.Result

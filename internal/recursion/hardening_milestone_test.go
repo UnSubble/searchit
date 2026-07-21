@@ -224,6 +224,7 @@ func runDeterminismTest(
 		true, // collapseSlashes
 		nil, nil, nil, nil, 0, nil, nil,
 	)
+	m1.SetDisableWildcard(true)
 
 	ctx := context.Background()
 	ch1 := m1.Run(ctx, seeds, 1)
@@ -250,6 +251,7 @@ func runDeterminismTest(
 				true, // collapseSlashes
 				nil, nil, nil, nil, 0, nil, nil,
 			)
+			mN.SetDisableWildcard(true)
 
 			chN := mN.Run(ctx, seeds, wN)
 			var wNResults []engine.Result
@@ -425,6 +427,9 @@ func TestHardening_Breadth(t *testing.T) {
 	expected := 1 + breadthSize
 	if len(results) != expected {
 		t.Errorf("Expected %d results, got %d", expected, len(results))
+		for idx, r := range results {
+			t.Logf("Result[%d]: URL=%s, Accepted=%t, Origin=%s", idx, r.URL, r.Accepted, r.Origin)
+		}
 	}
 }
 

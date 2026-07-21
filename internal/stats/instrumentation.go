@@ -46,6 +46,10 @@ type Instrumentation struct {
 	ResultsAccepted int64
 	ResultsRejected int64
 
+	// Telemetry updates
+	WildcardsDetected int64
+	RequestsFiltered  int64
+
 	// Shutdown Order Log
 	EventsMu sync.Mutex
 	Events   []string
@@ -180,6 +184,8 @@ func (i *Instrumentation) Reset() {
 	atomic.StoreInt64(&i.ResultsConsumed, 0)
 	atomic.StoreInt64(&i.ResultsAccepted, 0)
 	atomic.StoreInt64(&i.ResultsRejected, 0)
+	atomic.StoreInt64(&i.WildcardsDetected, 0)
+	atomic.StoreInt64(&i.RequestsFiltered, 0)
 	i.EventsMu.Lock()
 	i.Events = nil
 	i.EventsMu.Unlock()

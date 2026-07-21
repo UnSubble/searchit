@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"hash/fnv"
 	"html"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/filter"
+	htmlparser "github.com/unsubble/searchit/internal/html"
 	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/stats"
 	"golang.org/x/time/rate"
@@ -213,11 +215,11 @@ func process(
 	var bodyBytes []byte
 	bodyRead := false
 	var readErr error
-	if fs.RequiresBody() {
-		bodyBytes, readErr = io.ReadAll(io.LimitReader(resp.Body, bodyRegexLimit))
-		bodyRead = true
-		resp.Body.Close()
-	}
+	isHTML := strings.Contains(strings.ToLower(contentType), "text/html")
+	// Always read body of responses passing header validation to extract links and compute hash
+	bodyBytes, readErr = io.ReadAll(io.LimitReader(resp.Body, bodyRegexLimit))
+	bodyRead = true
+	resp.Body.Close()
 
 	if bodyRead {
 		if readErr != nil || !fs.MatchBody(bodyBytes) {
@@ -301,6 +303,18 @@ func process(
 		}
 	}
 
+	var links []string
+	if isHTML && bodyRead && readErr == nil {
+		links = htmlparser.ExtractLinks(bodyBytes)
+	}
+
+	var bodyHash uint64
+	if bodyRead && readErr == nil {
+		h := fnv.New64a()
+		_, _ = h.Write(bodyBytes)
+		bodyHash = h.Sum64()
+	}
+
 	sendResult(results, Result{
 		URL:         job.URL,
 		RedirectURL: redirectURL,
@@ -311,6 +325,8 @@ func process(
 		Origin:      job.Origin,
 		Title:       title,
 		Headers:     resHeaders,
+		Links:       links,
+		BodyHash:    bodyHash,
 	})
 }
 

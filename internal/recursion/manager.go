@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsubble/searchit/internal/adaptive/prioritizer"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
@@ -18,6 +19,7 @@ import (
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
+	"github.com/unsubble/searchit/internal/wildcard"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
 )
@@ -41,6 +43,8 @@ type Manager struct {
 	limiter          *rate.Limiter
 	stats            *stats.Collector
 	fingerprintCache *fingerprint.Cache
+	wildcardDetector *wildcard.Detector
+	disableWildcard  bool
 
 	// Request manipulation fields
 	method  string
@@ -50,6 +54,8 @@ type Manager struct {
 
 	// Adaptive summary tracking fields
 	LaravelDetected     bool
+	WPDetected          bool
+	ExpressDetected     bool
 	RobotsDiscovered    bool
 	SitemapDiscovered   bool
 	DFSCount            int
@@ -111,12 +117,18 @@ func NewManager(
 		delay:            delay,
 		limiter:          limiter,
 		fingerprintCache: fingerprintCache,
+		wildcardDetector: wildcard.NewDetector(),
 	}
 }
 
 // SetStats sets the statistics collector for the manager.
 func (m *Manager) SetStats(c *stats.Collector) {
 	m.stats = c
+}
+
+// SetDisableWildcard enables or disables automatic wildcard detection.
+func (m *Manager) SetDisableWildcard(disable bool) {
+	m.disableWildcard = disable
 }
 
 // Run performs a recursive scan starting from the given seed URLs.
@@ -138,6 +150,8 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		frontier := NewFrontier(m.strategy)
 		visited := make(map[string]struct{})
 		injectedLaravel := make(map[string]bool)
+		injectedWordPress := make(map[string]bool)
+		injectedExpress := make(map[string]bool)
 
 		for _, u := range seeds {
 			key := normalizeURL(u)
@@ -219,7 +233,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, visited, injectedLaravel, out)
+					m.handleResult(ctx, result, frontier, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
 				}
 			} else {
 				// Frontier empty but workers still running; block until a result
@@ -244,7 +258,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, visited, injectedLaravel, out)
+					m.handleResult(ctx, result, frontier, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
 				}
 			}
 		}
@@ -258,7 +272,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			m.handleResult(ctx, result, frontier, visited, injectedLaravel, out)
+			m.handleResult(ctx, result, frontier, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
 		}
 	}()
 
@@ -273,12 +287,38 @@ func (m *Manager) handleResult(
 	frontier *Frontier,
 	visited map[string]struct{},
 	injectedLaravel map[string]bool,
+	injectedWordPress map[string]bool,
+	injectedExpress map[string]bool,
 	out chan<- engine.Result,
 ) {
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 		return
 	}
+
+	// Wildcard detection signature check
+	if !m.disableWildcard {
+		var host string
+		if u, err := url.Parse(result.URL); err == nil {
+			host = u.Host
+		}
+		sig := wildcard.Signature{
+			StatusCode: result.StatusCode,
+			BodyHash:   result.BodyHash,
+			BodySize:   result.Length,
+		}
+		wasWildcardBefore := m.wildcardDetector.IsWildcard(host, result.Depth, sig)
+		_, active := m.wildcardDetector.Add(host, result.Depth, sig)
+		if active {
+			if !wasWildcardBefore {
+				atomic.AddInt64(&stats.GlobalInstrumentation.WildcardsDetected, 1)
+			}
+			atomic.AddInt64(&stats.GlobalInstrumentation.RequestsFiltered, 1)
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
+			return
+		}
+	}
+
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 
 	// If it's a redirect response (3xx), enqueue the destination URL to be scanned and return
@@ -320,46 +360,101 @@ func (m *Manager) handleResult(
 		parentURL = result.RedirectURL
 	}
 
-	// Laravel detection and path injection
+	// Technology detection and path injection (Laravel, WordPress, Express)
 	if m.fingerprintCache != nil {
 		parsed, err := url.Parse(parentURL)
 		if err == nil {
 			host := parsed.Host
-			if !injectedLaravel[host] {
-				fp := m.fingerprintCache.Get(host)
-				if fp != nil {
-					matcher := fingerprint.NewMatcher()
-					isLaravel := false
-					for _, tech := range matcher.Match(fp) {
-						if tech.Name == "Laravel" {
-							isLaravel = true
-							break
+			fp := m.fingerprintCache.Get(host)
+			if fp != nil {
+				matcher := fingerprint.NewMatcher()
+				isLaravel := false
+				isWP := false
+				isExpress := false
+				for _, tech := range matcher.Match(fp) {
+					if tech.Name == "Laravel" {
+						isLaravel = true
+					}
+					if tech.Name == "WordPress" {
+						isWP = true
+					}
+				}
+				for _, sig := range fp.Signals() {
+					if strings.Contains(strings.ToLower(sig.Value), "express") {
+						isExpress = true
+					}
+				}
+
+				scheme := "http"
+				if parsed.Scheme != "" {
+					scheme = parsed.Scheme
+				}
+				baseURL := fmt.Sprintf("%s://%s", scheme, host)
+
+				if isLaravel && !injectedLaravel[host] {
+					injectedLaravel[host] = true
+					m.LaravelDetected = true
+					laravelPaths := []string{".env", "artisan", "storage/", "bootstrap/", "vendor/"}
+					for _, p := range laravelPaths {
+						childURL, err := wordlist.Join(baseURL, p)
+						if err == nil {
+							key := normalizeURL(childURL)
+							if _, seen := visited[key]; !seen {
+								visited[key] = struct{}{}
+								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+								m.HighPriorityCount++
+								frontier.PushFront(engine.Job{
+									URL:    childURL,
+									Depth:  result.Depth + 1,
+									Origin: "adaptive",
+								})
+							}
 						}
 					}
-					if isLaravel {
-						injectedLaravel[host] = true
-						m.LaravelDetected = true
-						laravelPaths := []string{".env", "artisan", "storage/", "bootstrap/", "vendor/"}
-						scheme := "http"
-						if parsed.Scheme != "" {
-							scheme = parsed.Scheme
+				}
+
+				if isWP && !injectedWordPress[host] {
+					injectedWordPress[host] = true
+					m.WPDetected = true
+					wpPaths := []string{"wp-admin/", "wp-content/", "wp-includes/", "wp-login.php", "xmlrpc.php"}
+					for _, p := range wpPaths {
+						childURL, err := wordlist.Join(baseURL, p)
+						if err == nil {
+							key := normalizeURL(childURL)
+							if _, seen := visited[key]; !seen {
+								visited[key] = struct{}{}
+								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+								m.HighPriorityCount++
+								frontier.PushFront(engine.Job{
+									URL:    childURL,
+									Depth:  result.Depth + 1,
+									Origin: "adaptive",
+								})
+							}
 						}
-						baseURL := fmt.Sprintf("%s://%s", scheme, host)
-						for _, p := range laravelPaths {
-							childURL, err := wordlist.Join(baseURL, p)
-							if err == nil {
-								key := normalizeURL(childURL)
-								if _, seen := visited[key]; !seen {
-									visited[key] = struct{}{}
-									atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-									atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-									m.HighPriorityCount++
-									frontier.PushFront(engine.Job{
-										URL:    childURL,
-										Depth:  result.Depth + 1,
-										Origin: "adaptive",
-									})
-								}
+					}
+				}
+
+				if isExpress && !injectedExpress[host] {
+					injectedExpress[host] = true
+					m.ExpressDetected = true
+					expressPaths := []string{"api/", "uploads/", "assets/", "static/"}
+					for _, p := range expressPaths {
+						childURL, err := wordlist.Join(baseURL, p)
+						if err == nil {
+							key := normalizeURL(childURL)
+							if _, seen := visited[key]; !seen {
+								visited[key] = struct{}{}
+								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+								m.HighPriorityCount++
+								frontier.PushFront(engine.Job{
+									URL:    childURL,
+									Depth:  result.Depth + 1,
+									Origin: "adaptive",
+								})
 							}
 						}
 					}
@@ -376,6 +471,87 @@ func (m *Manager) handleResult(
 		}
 	} else {
 		return
+	}
+
+	// Process HTML-extracted links (same-host only) as high-priority jobs
+	if len(result.Links) > 0 {
+		parentParsed, err := url.Parse(parentURL)
+		if err == nil {
+			for _, link := range result.Links {
+				linkParsed, err := url.Parse(link)
+				if err != nil {
+					continue
+				}
+				resolved := parentParsed.ResolveReference(linkParsed)
+				if resolved.Host == parentParsed.Host {
+					resolvedStr := resolved.String()
+					key := normalizeURL(resolvedStr)
+					if _, seen := visited[key]; !seen {
+						visited[key] = struct{}{}
+						atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
+						atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+						m.HighPriorityCount++
+						frontier.PushFront(engine.Job{
+							URL:    resolvedStr,
+							Depth:  result.Depth + 1,
+							Origin: engine.OriginHTML,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	var parentPath []string
+	var host string
+	parentParsed, err := url.Parse(parentURL)
+	if err == nil {
+		host = parentParsed.Host
+		segments := strings.Split(parentParsed.Path, "/")
+		for _, seg := range segments {
+			if seg != "" {
+				parentPath = append(parentPath, seg)
+			}
+		}
+	}
+
+	parentResContentType := result.Headers.Get("Content-Type")
+
+	var prioritizedSegments = make(map[string]bool)
+	var prioritizedPaths = make(map[string]bool)
+	var laravel, wp, express bool
+
+	if m.fingerprintCache != nil && host != "" {
+		fp := m.fingerprintCache.Get(host)
+		if fp != nil {
+			matcher := fingerprint.NewMatcher()
+			for _, tech := range matcher.Match(fp) {
+				if tech.Name == "Laravel" {
+					laravel = true
+				}
+				if tech.Name == "WordPress" {
+					wp = true
+				}
+			}
+			for _, sig := range fp.Signals() {
+				val := strings.ToLower(sig.Value)
+				src := strings.ToLower(sig.Source)
+				if strings.Contains(val, "express") {
+					express = true
+				}
+				if strings.HasPrefix(src, "robots:") || strings.HasPrefix(src, "sitemap:") {
+					p := strings.Trim(sig.Value, "/")
+					prioritizedPaths[p] = true
+					parts := strings.Split(p, "/")
+					for _, part := range parts {
+						part = strings.TrimSpace(part)
+						if part != "" {
+							prioritizedSegments[strings.ToLower(part)] = true
+						}
+					}
+				}
+			}
+		}
 	}
 
 	words := make(chan string, wordlist.DefaultWordBuffer)
@@ -400,11 +576,36 @@ func (m *Manager) handleResult(
 			if _, seen := visited[key]; seen {
 				continue
 			}
+
+			// Adaptive scoring
+			score := 0
+			isAdaptive := m.fingerprintCache != nil
+			if isAdaptive {
+				sigs := prioritizer.CalculateSignals(
+					variant,
+					parentPath,
+					int(result.Depth+1),
+					parentResContentType,
+					prioritizedSegments,
+					prioritizedPaths,
+					laravel,
+					wp,
+					express,
+				)
+				score = prioritizer.GetScore(sigs)
+			}
+
 			visited[key] = struct{}{}
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-			m.LowPriorityCount++
-			frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
+
+			if isAdaptive && score > 50 {
+				m.HighPriorityCount++
+				frontier.PushFront(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
+			} else {
+				m.LowPriorityCount++
+				frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
+			}
 		}
 	}
 	// Reader failures during recursion do not invalidate already-scheduled children.
@@ -580,6 +781,12 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 func (m *Manager) GetAdaptiveMetrics() (techs []string, discoveries []string, dfs, bfs, eager, high, med, low int) {
 	if m.LaravelDetected {
 		techs = append(techs, "Laravel")
+	}
+	if m.WPDetected {
+		techs = append(techs, "WordPress")
+	}
+	if m.ExpressDetected {
+		techs = append(techs, "Express")
 	}
 	if m.RobotsDiscovered {
 		discoveries = append(discoveries, "robots.txt")

@@ -24,6 +24,8 @@ func PrintPipelineReconciliation(w io.Writer) {
 	respsRecv := atomic.LoadInt64(&inst.ResponsesReceived)
 	resultsProd := atomic.LoadInt64(&inst.ResultsProduced)
 	resultsCons := atomic.LoadInt64(&inst.ResultsConsumed)
+	wildcards := atomic.LoadInt64(&inst.WildcardsDetected)
+	reqsFiltered := atomic.LoadInt64(&inst.RequestsFiltered)
 
 	mismatch := false
 	mismatchStage := ""
@@ -70,6 +72,8 @@ func PrintPipelineReconciliation(w io.Writer) {
 	fmt.Fprintf(w, "Responses Received:\n    %d\n\n", respsRecv)
 	fmt.Fprintf(w, "Results Produced:\n    %d\n\n", resultsProd)
 	fmt.Fprintf(w, "Results Consumed:\n    %d\n\n", resultsCons)
+	fmt.Fprintf(w, "Wildcards Detected:\n    %d\n\n", wildcards)
+	fmt.Fprintf(w, "Wildcard Filtered:\n    %d\n\n", reqsFiltered)
 
 	fmt.Fprintf(w, "Status:\n    %s\n\n", statusStr)
 	fmt.Fprintln(w, "---------------------------------------------------------")
