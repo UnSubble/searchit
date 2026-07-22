@@ -552,6 +552,9 @@ var fuzzCmd = &cobra.Command{
 		interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
 		var progDone chan struct{}
+		progCtx, cancelProg := context.WithCancel(ctx)
+		defer cancelProg()
+
 		if enableProgress {
 			modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
 			renderer = progress.NewANSIRenderer(os.Stdout, flagFuzzURL, nil, modeStr)
@@ -583,7 +586,7 @@ var fuzzCmd = &cobra.Command{
 			progDone = make(chan struct{})
 			go func() {
 				defer close(progDone)
-				progMgr.Start(ctx, progCmdChan)
+				progMgr.Start(progCtx, progCmdChan)
 			}()
 		}
 
@@ -690,6 +693,7 @@ var fuzzCmd = &cobra.Command{
 		stateMgr.Transition(state.PhaseFinalizing)
 
 		if enableProgress && renderer != nil {
+			cancelProg()
 			renderer.Close()
 			if progDone != nil {
 				<-progDone

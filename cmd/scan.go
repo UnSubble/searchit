@@ -552,6 +552,9 @@ var scanCmd = &cobra.Command{
 			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
 			var progDone chan struct{}
+			progCtx, cancelProg := context.WithCancel(scanCtx)
+			defer cancelProg()
+
 			if enableProgress {
 				modeStr := "Single target"
 				if cfg.Recursive {
@@ -585,8 +588,8 @@ var scanCmd = &cobra.Command{
 
 				progDone = make(chan struct{})
 				go func() {
-					progMgr.Start(scanCtx, progCmdChan)
-					close(progDone)
+					defer close(progDone)
+					progMgr.Start(progCtx, progCmdChan)
 				}()
 			}
 			var manager *recursion.Manager
@@ -694,6 +697,7 @@ var scanCmd = &cobra.Command{
 			stateMgr.Transition(state.PhaseFinalizing)
 
 			if enableProgress && renderer != nil {
+				cancelProg()
 				renderer.Close()
 				if progDone != nil {
 					<-progDone
