@@ -21,8 +21,8 @@ func BenchmarkFrontier(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		f.Push(engine.Job{URL: "http://localhost/path", Depth: 1})
-		_, _ = f.Pop()
+		f.Push(recursion.NewSliceGenerator([]engine.Job{{URL: "http://localhost/path", Depth: 1}}))
+		f.Pop()
 	}
 }
 

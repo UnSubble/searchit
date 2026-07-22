@@ -9,9 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/unsubble/searchit/internal/adaptive/prioritizer"
 	"github.com/unsubble/searchit/internal/engine"
-	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/robots"
@@ -160,7 +158,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 				m.MediumPriorityCount++
-				frontier.Push(engine.Job{URL: u, Depth: 0, Origin: engine.OriginProfile})
+				frontier.Push(NewSliceGenerator([]engine.Job{{URL: u, Depth: 0, Origin: engine.OriginProfile}}))
 			}
 		}
 
@@ -195,13 +193,29 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		// The loop ends when the frontier is empty and no in-flight work remains.
 		pending := 0
 
-		for frontier.Len() > 0 || pending > 0 {
+		var activeGenerator Generator
+		var nextJob engine.Job
+		var hasNextJob bool
+
+		for (frontier.Len() > 0 || activeGenerator != nil || hasNextJob) || pending > 0 {
+			if activeGenerator == nil && frontier.Len() > 0 {
+				activeGenerator, _ = frontier.Peek()
+				frontier.Pop()
+			}
+
 			if m.stats != nil {
 				m.stats.SetQueuedJobs(int64(frontier.Len()))
 			}
 
-			if frontier.Len() > 0 {
-				next, _ := frontier.Peek()
+			if !hasNextJob && activeGenerator != nil {
+				nextJob, hasNextJob = activeGenerator.Next()
+				if !hasNextJob {
+					activeGenerator = nil
+					continue
+				}
+			}
+
+			if hasNextJob {
 
 				select {
 				case <-ctx.Done():
@@ -220,11 +234,11 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 					}
 					return
 
-				case jobs <- next:
+				case jobs <- nextJob:
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsDispatched, 1)
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
-					frontier.Pop()
 					pending++
+					hasNextJob = false
 
 				case result, ok := <-results:
 					if !ok {
@@ -233,7 +247,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
+					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
 				}
 			} else {
 				// Frontier empty but workers still running; block until a result
@@ -258,7 +272,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
+					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
 				}
 			}
 		}
@@ -272,7 +286,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			m.handleResult(ctx, result, frontier, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
+			m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
 		}
 	}()
 
@@ -285,6 +299,7 @@ func (m *Manager) handleResult(
 	ctx context.Context,
 	result engine.Result,
 	frontier *Frontier,
+	activeGenerator *Generator,
 	visited map[string]struct{},
 	injectedLaravel map[string]bool,
 	injectedWordPress map[string]bool,
@@ -339,7 +354,7 @@ func (m *Manager) handleResult(
 			visited[key] = struct{}{}
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-			frontier.Push(engine.Job{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"})
+			frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
 		}
 		return
 	}
@@ -395,6 +410,7 @@ func (m *Manager) handleResult(
 					injectedLaravel[host] = true
 					m.LaravelDetected = true
 					laravelPaths := []string{".env", "artisan", "storage/", "bootstrap/", "vendor/"}
+					var jobs []engine.Job
 					for _, p := range laravelPaths {
 						childURL, err := wordlist.Join(baseURL, p)
 						if err == nil {
@@ -404,7 +420,7 @@ func (m *Manager) handleResult(
 								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 								m.HighPriorityCount++
-								frontier.PushFront(engine.Job{
+								jobs = append(jobs, engine.Job{
 									URL:    childURL,
 									Depth:  result.Depth + 1,
 									Origin: "adaptive",
@@ -412,12 +428,16 @@ func (m *Manager) handleResult(
 							}
 						}
 					}
+					if len(jobs) > 0 {
+						frontier.PushFront(NewSliceGenerator(jobs))
+					}
 				}
 
 				if isWP && !injectedWordPress[host] {
 					injectedWordPress[host] = true
 					m.WPDetected = true
 					wpPaths := []string{"wp-admin/", "wp-content/", "wp-includes/", "wp-login.php", "xmlrpc.php"}
+					var jobs []engine.Job
 					for _, p := range wpPaths {
 						childURL, err := wordlist.Join(baseURL, p)
 						if err == nil {
@@ -427,7 +447,7 @@ func (m *Manager) handleResult(
 								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 								m.HighPriorityCount++
-								frontier.PushFront(engine.Job{
+								jobs = append(jobs, engine.Job{
 									URL:    childURL,
 									Depth:  result.Depth + 1,
 									Origin: "adaptive",
@@ -435,12 +455,16 @@ func (m *Manager) handleResult(
 							}
 						}
 					}
+					if len(jobs) > 0 {
+						frontier.PushFront(NewSliceGenerator(jobs))
+					}
 				}
 
 				if isExpress && !injectedExpress[host] {
 					injectedExpress[host] = true
 					m.ExpressDetected = true
 					expressPaths := []string{"api/", "uploads/", "assets/", "static/"}
+					var jobs []engine.Job
 					for _, p := range expressPaths {
 						childURL, err := wordlist.Join(baseURL, p)
 						if err == nil {
@@ -450,13 +474,16 @@ func (m *Manager) handleResult(
 								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 								m.HighPriorityCount++
-								frontier.PushFront(engine.Job{
+								jobs = append(jobs, engine.Job{
 									URL:    childURL,
 									Depth:  result.Depth + 1,
 									Origin: "adaptive",
 								})
 							}
 						}
+					}
+					if len(jobs) > 0 {
+						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
 			}
@@ -477,6 +504,7 @@ func (m *Manager) handleResult(
 	if len(result.Links) > 0 {
 		parentParsed, err := url.Parse(parentURL)
 		if err == nil {
+			var jobs []engine.Job
 			for _, link := range result.Links {
 				linkParsed, err := url.Parse(link)
 				if err != nil {
@@ -491,13 +519,16 @@ func (m *Manager) handleResult(
 						atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 						atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 						m.HighPriorityCount++
-						frontier.PushFront(engine.Job{
+						jobs = append(jobs, engine.Job{
 							URL:    resolvedStr,
 							Depth:  result.Depth + 1,
 							Origin: engine.OriginHTML,
 						})
 					}
 				}
+			}
+			if len(jobs) > 0 {
+				frontier.PushFront(NewSliceGenerator(jobs))
 			}
 		}
 	}
@@ -554,62 +585,36 @@ func (m *Manager) handleResult(
 		}
 	}
 
-	words := make(chan string, wordlist.DefaultWordBuffer)
-	readErr := make(chan error, 1)
-	go func() {
-		defer close(words)
-		readErr <- m.reader.Read(ctx, words)
-	}()
+	gen := NewDirectoryGenerator(
+		ctx,
+		m.reader,
+		parentURL,
+		parentPath,
+		int(result.Depth+1),
+		parentResContentType,
+		prioritizedSegments,
+		prioritizedPaths,
+		laravel,
+		wp,
+		express,
+		m.normalizePaths,
+		m.collapseSlashes,
+		m.extensions,
+		visited,
+		m.fingerprintCache,
+		m.stats,
+		&m.HighPriorityCount,
+		&m.LowPriorityCount,
+	)
 
-	for word := range words {
-		cleaned, ok := wordlist.CleanWord(word, m.normalizePaths, m.collapseSlashes)
-		if !ok {
-			continue
+	if m.strategy == DFS {
+		if *activeGenerator != nil {
+			frontier.PushFront(*activeGenerator)
 		}
-		variants := extensions.GenerateVariants(cleaned, m.extensions)
-		for _, variant := range variants {
-			childURL, err := wordlist.Join(parentURL, variant)
-			if err != nil {
-				continue
-			}
-			key := normalizeURL(childURL)
-			if _, seen := visited[key]; seen {
-				continue
-			}
-
-			// Adaptive scoring
-			score := 0
-			isAdaptive := m.fingerprintCache != nil
-			if isAdaptive {
-				sigs := prioritizer.CalculateSignals(
-					variant,
-					parentPath,
-					int(result.Depth+1),
-					parentResContentType,
-					prioritizedSegments,
-					prioritizedPaths,
-					laravel,
-					wp,
-					express,
-				)
-				score = prioritizer.GetScore(sigs)
-			}
-
-			visited[key] = struct{}{}
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-
-			if isAdaptive && score > 50 {
-				m.HighPriorityCount++
-				frontier.PushFront(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
-			} else {
-				m.LowPriorityCount++
-				frontier.Push(engine.Job{URL: childURL, Depth: result.Depth + 1, Origin: engine.OriginWordlist})
-			}
-		}
+		*activeGenerator = gen
+	} else {
+		frontier.Push(gen)
 	}
-	// Reader failures during recursion do not invalidate already-scheduled children.
-	<-readErr
 }
 
 // normalizeURL strips trailing slashes and fragments to normalize directory matches.
@@ -718,7 +723,7 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		m.HighPriorityCount++
-		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: engine.OriginRobots})
+		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: engine.OriginRobots}}))
 	}
 
 	return sitemaps
@@ -774,7 +779,7 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		m.HighPriorityCount++
-		frontier.PushFront(engine.Job{URL: childURL, Depth: 0, Origin: origin})
+		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: origin}}))
 	})
 }
 

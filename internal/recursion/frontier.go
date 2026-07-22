@@ -3,8 +3,6 @@ package recursion
 import (
 	"fmt"
 	"strings"
-
-	"github.com/unsubble/searchit/internal/engine"
 )
 
 // Strategy controls insertion order on the frontier.
@@ -46,7 +44,7 @@ const DefaultJobBuffer = 2048
 // Single-threaded ownership eliminates synchronization overhead.
 type Frontier struct {
 	strategy Strategy
-	buf      []engine.Job
+	buf      []Generator
 	head     int
 	size     int
 }
@@ -55,7 +53,7 @@ type Frontier struct {
 func NewFrontier(s Strategy) *Frontier {
 	return &Frontier{
 		strategy: s,
-		buf:      make([]engine.Job, DefaultJobBuffer),
+		buf:      make([]Generator, DefaultJobBuffer),
 	}
 }
 
@@ -66,48 +64,49 @@ func NewFrontierWithCapacity(s Strategy, capacity int) *Frontier {
 	}
 	return &Frontier{
 		strategy: s,
-		buf:      make([]engine.Job, capacity),
+		buf:      make([]Generator, capacity),
 	}
 }
 
-// Push enqueues a job. If the buffer is full, it is doubled.
-func (f *Frontier) Push(job engine.Job) {
+// Push enqueues a generator. If the buffer is full, it is doubled.
+func (f *Frontier) Push(gen Generator) {
 	if f.size == len(f.buf) {
 		f.grow()
 	}
 
 	if f.strategy == DFS {
 		f.head = (f.head - 1 + len(f.buf)) % len(f.buf)
-		f.buf[f.head] = job
+		f.buf[f.head] = gen
 	} else {
 		tail := (f.head + f.size) % len(f.buf)
-		f.buf[tail] = job
+		f.buf[tail] = gen
 	}
 	f.size++
 }
 
-// PushFront enqueues a job at the head of the buffer, giving it the highest priority.
-func (f *Frontier) PushFront(job engine.Job) {
+// PushFront enqueues a generator at the head of the buffer, giving it the highest priority.
+func (f *Frontier) PushFront(gen Generator) {
 	if f.size == len(f.buf) {
 		f.grow()
 	}
 
 	f.head = (f.head - 1 + len(f.buf)) % len(f.buf)
-	f.buf[f.head] = job
+	f.buf[f.head] = gen
 	f.size++
 }
 
-// Pop dequeues the next job from the head of the buffer.
-func (f *Frontier) Pop() (engine.Job, bool) {
+// Pop dequeues the next generator from the head of the buffer.
+func (f *Frontier) Pop() {
 	if f.size == 0 {
-		return engine.Job{}, false
+		return
 	}
-
-	job := f.buf[f.head]
+	f.buf[f.head] = nil // Release reference for GC
 	f.head = (f.head + 1) % len(f.buf)
 	f.size--
 
-	return job, true
+	if f.size > 0 && f.size == len(f.buf)/4 && len(f.buf) > DefaultJobBuffer {
+		f.shrink()
+	}
 }
 
 // Len returns the number of active elements in the buffer.
@@ -115,13 +114,11 @@ func (f *Frontier) Len() int {
 	return f.size
 }
 
-// Peek returns the next job without removing it.
-// Returns false when the frontier is empty.
-func (f *Frontier) Peek() (engine.Job, bool) {
+// Peek returns the next generator without removing it.
+func (f *Frontier) Peek() (Generator, bool) {
 	if f.size == 0 {
-		return engine.Job{}, false
+		return nil, false
 	}
-
 	return f.buf[f.head], true
 }
 
@@ -129,15 +126,20 @@ func (f *Frontier) Peek() (engine.Job, bool) {
 // from head to tail starting at index 0 of the new slice.
 func (f *Frontier) grow() {
 	newCap := len(f.buf) * 2
-	if newCap == 0 {
-		newCap = DefaultJobBuffer
-	}
-
-	newBuf := make([]engine.Job, newCap)
+	newBuf := make([]Generator, newCap)
 	for i := 0; i < f.size; i++ {
 		newBuf[i] = f.buf[(f.head+i)%len(f.buf)]
 	}
+	f.buf = newBuf
+	f.head = 0
+}
 
+func (f *Frontier) shrink() {
+	newCap := len(f.buf) / 2
+	newBuf := make([]Generator, newCap)
+	for i := 0; i < f.size; i++ {
+		newBuf[i] = f.buf[(f.head+i)%len(f.buf)]
+	}
 	f.buf = newBuf
 	f.head = 0
 }

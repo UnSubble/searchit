@@ -104,17 +104,19 @@ func TestFrontier_BFS_Order(t *testing.T) {
 	f := recursion.NewFrontier(recursion.BFS)
 	jobs := []engine.Job{{URL: "a"}, {URL: "b"}, {URL: "c"}}
 	for _, j := range jobs {
-		f.Push(j)
+		f.Push(recursion.NewSliceGenerator([]engine.Job{j}))
 	}
 
 	for _, want := range jobs {
-		got, ok := f.Pop()
+		gen, ok := f.Peek()
 		if !ok {
-			t.Fatal("Pop returned false, want a job")
+			t.Fatal("Peek returned false, want a generator")
 		}
+		got, _ := gen.Next()
 		if got.URL != want.URL {
-			t.Errorf("Pop() = %q, want %q (BFS must preserve insertion order)", got.URL, want.URL)
+			t.Errorf("Next() = %q, want %q (BFS must preserve insertion order)", got.URL, want.URL)
 		}
+		f.Pop()
 	}
 }
 
@@ -122,19 +124,21 @@ func TestFrontier_DFS_Order(t *testing.T) {
 	f := recursion.NewFrontier(recursion.DFS)
 	jobs := []engine.Job{{URL: "a"}, {URL: "b"}, {URL: "c"}}
 	for _, j := range jobs {
-		f.Push(j)
+		f.Push(recursion.NewSliceGenerator([]engine.Job{j}))
 	}
 
 	// DFS pushes to front, so the last pushed comes out first.
 	want := []string{"c", "b", "a"}
 	for _, w := range want {
-		got, ok := f.Pop()
+		gen, ok := f.Peek()
 		if !ok {
-			t.Fatal("Pop returned false, want a job")
+			t.Fatal("Peek returned false, want a generator")
 		}
+		got, _ := gen.Next()
 		if got.URL != w {
-			t.Errorf("Pop() = %q, want %q (DFS must reverse insertion order)", got.URL, w)
+			t.Errorf("Next() = %q, want %q (DFS must reverse insertion order)", got.URL, w)
 		}
+		f.Pop()
 	}
 }
 
@@ -144,8 +148,8 @@ func TestFrontier_Len(t *testing.T) {
 		t.Errorf("Len() = %d, want 0 on empty frontier", f.Len())
 	}
 
-	f.Push(engine.Job{URL: "x"})
-	f.Push(engine.Job{URL: "y"})
+	f.Push(recursion.NewSliceGenerator([]engine.Job{{URL: "x"}}))
+	f.Push(recursion.NewSliceGenerator([]engine.Job{{URL: "y"}}))
 	if f.Len() != 2 {
 		t.Errorf("Len() = %d, want 2", f.Len())
 	}
@@ -156,11 +160,11 @@ func TestFrontier_Len(t *testing.T) {
 	}
 }
 
-func TestFrontier_Pop_EmptyReturnsFalse(t *testing.T) {
+func TestFrontier_Peek_EmptyReturnsFalse(t *testing.T) {
 	f := recursion.NewFrontier(recursion.BFS)
-	_, ok := f.Pop()
+	_, ok := f.Peek()
 	if ok {
-		t.Error("Pop on empty frontier returned true, want false")
+		t.Error("Peek on empty frontier returned true, want false")
 	}
 }
 
@@ -571,7 +575,7 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 		// Push more than default buffer capacity (2048) to trigger grow
 		numJobs := 2500
 		for i := 0; i < numJobs; i++ {
-			f.Push(engine.Job{URL: fmt.Sprintf("url-%d", i)})
+			f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
 		}
 
 		if f.Len() != numJobs {
@@ -579,14 +583,16 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 		}
 
 		for i := 0; i < numJobs; i++ {
-			job, ok := f.Pop()
+			gen, ok := f.Peek()
 			if !ok {
-				t.Fatalf("Pop failed at index %d", i)
+				t.Fatalf("Peek failed at index %d", i)
 			}
+			job, _ := gen.Next()
 			expectedURL := fmt.Sprintf("url-%d", i)
 			if job.URL != expectedURL {
 				t.Errorf("expected URL %q, got %q", expectedURL, job.URL)
 			}
+			f.Pop()
 		}
 	})
 
@@ -594,7 +600,7 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 		f := recursion.NewFrontier(recursion.DFS)
 		numJobs := 2500
 		for i := 0; i < numJobs; i++ {
-			f.Push(engine.Job{URL: fmt.Sprintf("url-%d", i)})
+			f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
 		}
 
 		if f.Len() != numJobs {
@@ -603,14 +609,16 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 
 		// DFS reverses order
 		for i := numJobs - 1; i >= 0; i-- {
-			job, ok := f.Pop()
+			gen, ok := f.Peek()
 			if !ok {
-				t.Fatalf("Pop failed at index %d", i)
+				t.Fatalf("Peek failed at index %d", i)
 			}
+			job, _ := gen.Next()
 			expectedURL := fmt.Sprintf("url-%d", i)
 			if job.URL != expectedURL {
 				t.Errorf("expected URL %q, got %q", expectedURL, job.URL)
 			}
+			f.Pop()
 		}
 	})
 }
@@ -833,7 +841,7 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 			// Initial default capacity is 2048. Pushing 5000 items will trigger growth.
 			const count = 5000
 			for i := 0; i < count; i++ {
-				f.Push(engine.Job{URL: fmt.Sprintf("url-%d", i)})
+				f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
 			}
 
 			if f.Len() != count {
@@ -843,11 +851,13 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 			// 2. Pop all and verify correct ordering invariants
 			popped := make([]string, 0, count)
 			for {
-				j, ok := f.Pop()
+				gen, ok := f.Peek()
 				if !ok {
 					break
 				}
+				j, _ := gen.Next()
 				popped = append(popped, j.URL)
+				f.Pop()
 			}
 
 			if len(popped) != count {
@@ -874,11 +884,13 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 
 			// 3. Interleaved push/pop to verify head wrap-around correctness
 			for i := 0; i < 1000; i++ {
-				f.Push(engine.Job{URL: fmt.Sprintf("interleaved-%d", i)})
-				j, ok := f.Pop()
+				f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("interleaved-%d", i)}}))
+				gen, ok := f.Peek()
 				if !ok {
-					t.Fatalf("expected pop to succeed at %d", i)
+					t.Fatalf("expected peek to succeed at %d", i)
 				}
+				j, _ := gen.Next()
+				f.Pop()
 				if tc.strategy == recursion.BFS {
 					if j.URL != fmt.Sprintf("interleaved-%d", i) {
 						t.Errorf("expected %q, got %q", fmt.Sprintf("interleaved-%d", i), j.URL)

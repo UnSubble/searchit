@@ -24,13 +24,14 @@ func benchmarkBatch(b *testing.B, strategy Strategy, size int) {
 
 		for i := 0; i < size; i++ {
 			job.Depth = uint16(i % 10)
-			f.Push(job)
+			f.Push(NewSliceGenerator([]engine.Job{job}))
 		}
 
 		for i := 0; i < size; i++ {
-			if _, ok := f.Pop(); !ok {
+			if _, ok := f.Peek(); !ok {
 				b.Fatal("frontier became empty unexpectedly")
 			}
+			f.Pop()
 		}
 	}
 }
@@ -48,12 +49,13 @@ func benchmarkMixed(b *testing.B, strategy Strategy, size int) {
 
 		for i := 0; i < size; i++ {
 			job.Depth = uint16(i % 10)
-			f.Push(job)
+			f.Push(NewSliceGenerator([]engine.Job{job}))
 
 			if i%2 == 0 {
-				if _, ok := f.Pop(); !ok {
+				if _, ok := f.Peek(); !ok {
 					b.Fatal("frontier became empty unexpectedly")
 				}
+				f.Pop()
 			}
 		}
 
@@ -78,7 +80,7 @@ func benchmarkGrow(b *testing.B, strategy Strategy) {
 
 		for i := 0; i < size; i++ {
 			job.Depth = uint16(i)
-			f.Push(job)
+			f.Push(NewSliceGenerator([]engine.Job{job}))
 		}
 
 		for f.Len() > 0 {
@@ -125,20 +127,21 @@ func TestFrontier_GrowPreservesBFSOrder(t *testing.T) {
 	n := DefaultJobBuffer * 3
 
 	for i := 0; i < n; i++ {
-		f.Push(engine.Job{
-			Depth: uint16(i),
-		})
+		f.Push(NewSliceGenerator([]engine.Job{
+			{Depth: uint16(i)},
+		}))
 	}
 
 	for i := 0; i < n; i++ {
-		job, ok := f.Pop()
+		gen, ok := f.Peek()
 		if !ok {
 			t.Fatal("unexpected empty frontier")
 		}
-
+		job, _ := gen.Next()
 		if job.Depth != uint16(i) {
 			t.Fatalf("got %d, want %d", job.Depth, i)
 		}
+		f.Pop()
 	}
 }
 
@@ -148,19 +151,20 @@ func TestFrontier_GrowPreservesDFSOrder(t *testing.T) {
 	n := DefaultJobBuffer * 3
 
 	for i := 0; i < n; i++ {
-		f.Push(engine.Job{
-			Depth: uint16(i),
-		})
+		f.Push(NewSliceGenerator([]engine.Job{
+			{Depth: uint16(i)},
+		}))
 	}
 
 	for i := n - 1; i >= 0; i-- {
-		job, ok := f.Pop()
+		gen, ok := f.Peek()
 		if !ok {
 			t.Fatal("unexpected empty frontier")
 		}
-
+		job, _ := gen.Next()
 		if job.Depth != uint16(i) {
 			t.Fatalf("got %d, want %d", job.Depth, i)
 		}
+		f.Pop()
 	}
 }

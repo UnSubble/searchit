@@ -861,11 +861,11 @@ func BenchmarkAdaptive_PathInjectionOverhead(b *testing.B) {
 			childURL := baseURL + "/" + p
 			if _, seen := visited[childURL]; !seen {
 				visited[childURL] = struct{}{}
-				frontier.Push(engine.Job{
+				frontier.Push(recursion.NewSliceGenerator([]engine.Job{{
 					URL:    childURL,
 					Depth:  1,
 					Origin: "adaptive",
-				})
+				}}))
 			}
 		}
 	}
