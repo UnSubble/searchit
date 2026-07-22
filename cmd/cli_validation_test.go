@@ -62,7 +62,7 @@ func TestCLI_FuzzValidation(t *testing.T) {
 			name:    "missing url and request in fuzz",
 			args:    []string{"fuzz"},
 			wantErr: true,
-			errMsg:  "target url is required",
+			errMsg:  "fuzz requires exactly one target",
 		},
 		{
 			name:    "missing placeholder in fuzz url",

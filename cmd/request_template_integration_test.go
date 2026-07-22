@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -81,7 +82,7 @@ func TestCLI_FuzzWithRequestTemplate(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// Create temporary request template file with FUZZ placeholder in path
-	tmplContent := "GET /api/FUZZ HTTP/1.1\nHost: fuzz-test.local\nX-Fuzz-Header: FuzzValue\n\n"
+	tmplContent := fmt.Sprintf("GET /api/FUZZ HTTP/1.1\nHost: %s\nX-Fuzz-Header: FuzzValue\n\n", strings.TrimPrefix(srv.URL, "http://"))
 	tmpFile, err := os.CreateTemp("", "request_fuzz_*.txt")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -101,7 +102,6 @@ func TestCLI_FuzzWithRequestTemplate(t *testing.T) {
 
 	out, err := runIntegrationCommand([]string{
 		"fuzz",
-		"-u", srv.URL,
 		"--request", tmpFile.Name(),
 		"-w", tmpWordlist.Name(),
 		"--mc", "200",

@@ -87,12 +87,65 @@ var (
 	resolvedFuzzTargets []targets.Target
 )
 
+type structuralErr string
+
+func (e structuralErr) Error() string { return string(e) }
+
+func fuzzZeroTargetError() error {
+	return structuralErr(`
+error:
+
+    fuzz requires exactly one target.
+
+    Supported:
+
+        searchit fuzz -u URL
+
+    or
+
+        searchit fuzz --request request.txt
+`)
+}
+
+func fuzzTargetError() error {
+	return structuralErr(`
+error:
+
+    fuzz accepts exactly one target.
+
+    Multiple target execution is
+    intentionally not supported by
+    the fuzz subsystem.
+
+    Supported:
+
+        searchit fuzz -u URL
+
+    or
+
+        searchit fuzz --request request.txt
+
+    For multiple targets use:
+
+        searchit scan --url-file ...
+
+    or execute fuzz separately
+    for each target.
+`)
+}
+
 var fuzzCmd = &cobra.Command{
 	Use:   "fuzz",
 	Short: "Fuzz parameters, paths, subdomains and bodies",
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if flagFuzzURL == "" && flagFuzzRequestFile == "" {
-			return fmt.Errorf("target URL is required (use -u or --url) or request template (--request)")
+			return fuzzZeroTargetError()
+		}
+		if flagFuzzURL != "" && flagFuzzRequestFile != "" {
+			return fuzzTargetError()
+		}
+		if flagFuzzURLFile != "" {
+			return fuzzTargetError()
 		}
 		if flagFuzzThreads < 1 {
 			return fmt.Errorf("threads must be at least 1")
@@ -105,37 +158,40 @@ var fuzzCmd = &cobra.Command{
 			RequestFile: flagFuzzRequestFile,
 		})
 		if errParse != nil {
-			return errParse
+			return fuzzTargetError()
+		}
+
+		if len(resolvedFuzzTargets) != 1 {
+			return fuzzTargetError()
 		}
 
 		usesFUZZ, usesFOO, usesBAR, usesBUZZ := false, false, false, false
-		for _, t := range resolvedFuzzTargets {
-			if strings.Contains(t.URL, "FUZZ") || strings.Contains(t.Body, "FUZZ") {
+		t := resolvedFuzzTargets[0]
+		if strings.Contains(t.URL, "FUZZ") || strings.Contains(t.Body, "FUZZ") {
+			usesFUZZ = true
+		}
+		if strings.Contains(t.URL, "FOO") || strings.Contains(t.Body, "FOO") {
+			usesFOO = true
+		}
+		if strings.Contains(t.URL, "BAR") || strings.Contains(t.Body, "BAR") {
+			usesBAR = true
+		}
+		if strings.Contains(t.URL, "BUZZ") || strings.Contains(t.Body, "BUZZ") {
+			usesBUZZ = true
+		}
+
+		for _, h := range t.Headers {
+			if strings.Contains(h, "FUZZ") {
 				usesFUZZ = true
 			}
-			if strings.Contains(t.URL, "FOO") || strings.Contains(t.Body, "FOO") {
+			if strings.Contains(h, "FOO") {
 				usesFOO = true
 			}
-			if strings.Contains(t.URL, "BAR") || strings.Contains(t.Body, "BAR") {
+			if strings.Contains(h, "BAR") {
 				usesBAR = true
 			}
-			if strings.Contains(t.URL, "BUZZ") || strings.Contains(t.Body, "BUZZ") {
+			if strings.Contains(h, "BUZZ") {
 				usesBUZZ = true
-			}
-
-			for _, h := range t.Headers {
-				if strings.Contains(h, "FUZZ") {
-					usesFUZZ = true
-				}
-				if strings.Contains(h, "FOO") {
-					usesFOO = true
-				}
-				if strings.Contains(h, "BAR") {
-					usesBAR = true
-				}
-				if strings.Contains(h, "BUZZ") {
-					usesBUZZ = true
-				}
 			}
 		}
 
@@ -975,6 +1031,7 @@ func init() {
 	rootCmd.AddCommand(fuzzCmd)
 
 	fuzzCmd.Flags().StringVarP(&flagFuzzURL, "url", "u", "", "target URL with placeholders (FUZZ, FOO, BAR, BUZZ)")
+	fuzzCmd.Flags().StringVar(&flagFuzzURLFile, "url-file", "", "Target URL file (NOT SUPPORTED in fuzz)")
 	fuzzCmd.Flags().StringVarP(&flagFuzzWordlist, "wordlist", "w", "", "primary wordlist path (maps to FUZZ)")
 	fuzzCmd.Flags().StringSliceVarP(&flagFuzzExt, "ext", "e", nil, "comma-separated extensions or @file")
 	fuzzCmd.Flags().StringVar(&flagFuzzFoo, "foo", "", "wordlist path for FOO placeholder")
