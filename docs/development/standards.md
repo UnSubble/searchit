@@ -6,7 +6,7 @@
 
 ## Quality Gates
 
-Before submitting any code changes, ensure they pass all quality checks locally (requires Go 1.22+):
+Before submitting any code changes, ensure they pass all quality checks locally (requires Go 1.23+):
 ```bash
 make build
 make audit

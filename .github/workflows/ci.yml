@@ -78,9 +78,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ubuntu Matrix
-          - os: ubuntu-latest
-            go-version: "1.22.x"
+          # Ubuntu Matrix (minimum: Go 1.23 — required by golang.org/x/net@v0.38.0)
           - os: ubuntu-latest
             go-version: "1.23.x"
           - os: ubuntu-latest
@@ -92,13 +90,13 @@ jobs:
 
           # Windows Matrix
           - os: windows-latest
-            go-version: "1.22.x"
+            go-version: "1.23.x"
           - os: windows-latest
             go-version: "1.26.x"
 
           # macOS Matrix
           - os: macos-latest
-            go-version: "1.22.x"
+            go-version: "1.23.x"
           - os: macos-latest
             go-version: "1.26.x"
 
