@@ -1060,7 +1060,7 @@ func init() {
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowHeaders, "show-headers", false, "show response headers in output")
 	fuzzCmd.Flags().BoolVar(&flagFuzzShowTitle, "show-title", false, "show HTML titles in output")
 	fuzzCmd.Flags().StringVar(&flagFuzzRequestFile, "request", "", "load raw HTTP request template from file")
-	fuzzCmd.Flags().StringSliceVar(&flagFuzzProfiles, "profile", nil, "load one or more predefined fuzz profiles")
+	fuzzCmd.Flags().StringSliceVarP(&flagFuzzProfiles, "profile", "p", nil, "load one or more predefined fuzz profiles")
 	fuzzCmd.Flags().BoolVar(&flagFuzzFollowRedirects, "follow-redirects", false, "follow HTTP redirects")
 	fuzzCmd.Flags().IntVar(&flagFuzzMaxRedirects, "max-redirects", 10, "maximum redirect limit")
 	fuzzCmd.Flags().StringVarP(&flagFuzzStrategy, "strategy", "s", "eager", "Traversal strategy (eager, bfs, dfs)")

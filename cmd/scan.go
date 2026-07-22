@@ -1174,9 +1174,10 @@ func init() {
 		"timeout for establishing new TCP connections",
 	)
 
-	scanCmd.Flags().StringSliceVar(
+	scanCmd.Flags().StringSliceVarP(
 		&flagProfiles,
 		"profile",
+		"p",
 		nil,
 		"profile(s) to apply (e.g. scan/quick); may be specified multiple times",
 	)
