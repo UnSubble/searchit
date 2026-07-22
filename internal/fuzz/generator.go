@@ -3,7 +3,12 @@ package fuzz
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
+	"sync/atomic"
+
+	"github.com/unsubble/searchit/internal/stats"
 )
 
 // Generator produces Job instances by replacing placeholders in templates.
@@ -102,6 +107,13 @@ func (g *Generator) generatePermutations(
 				}
 
 				urlStr := g.replacePlaceholders(g.urlTemplate, fuzzVal, fooVal, barVal, buzzVal)
+				f, _ := os.OpenFile("scratch/fuzz_val.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				f.WriteString(fuzzVal + "\n")
+				f.Close()
+				if _, err := url.Parse(urlStr); err != nil {
+					atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
+					continue
+				}
 
 				var bodyBytes []byte
 				if g.bodyTemplate != "" {

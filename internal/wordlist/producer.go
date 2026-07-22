@@ -22,6 +22,7 @@ type Producer struct {
 	NormalizePaths  bool
 	CollapseSlashes bool
 	Extensions      []string
+	Collector       *stats.Collector
 }
 
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
@@ -64,10 +65,17 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 			for _, variant := range variants {
 				url, err := Join(p.BaseURL, variant)
 				if err != nil {
-					return err
+					atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
+					if p.Collector != nil {
+						p.Collector.RecordInvalidWord()
+					}
+					continue
 				}
 
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+				if p.Collector != nil {
+					p.Collector.RecordJobProduced()
+				}
 
 				select {
 				case <-ctx.Done():

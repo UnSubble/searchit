@@ -18,6 +18,8 @@ type Collector struct {
 	activeWorkers     int64
 	queuedJobs        int64
 	discovered        int64
+	invalidWords      int64
+	jobsProduced      int64
 	startTime         int64 // Unix nano timestamp
 
 	// Future metrics support
@@ -72,6 +74,16 @@ func (c *Collector) RecordRequestSucceeded() {
 // RecordDiscovered increments the discovered resources counter.
 func (c *Collector) RecordDiscovered() {
 	atomic.AddInt64(&c.discovered, 1)
+}
+
+// RecordInvalidWord increments the invalid words counter.
+func (c *Collector) RecordInvalidWord() {
+	atomic.AddInt64(&c.invalidWords, 1)
+}
+
+// RecordJobProduced increments the produced jobs counter.
+func (c *Collector) RecordJobProduced() {
+	atomic.AddInt64(&c.jobsProduced, 1)
 }
 
 // IncrementActiveWorkers increments the active worker count by 1.
@@ -131,6 +143,8 @@ func (c *Collector) Snapshot() Snapshot {
 	workers := atomic.LoadInt64(&c.activeWorkers)
 	queued := atomic.LoadInt64(&c.queuedJobs)
 	disc := atomic.LoadInt64(&c.discovered)
+	invalid := atomic.LoadInt64(&c.invalidWords)
+	jobs := atomic.LoadInt64(&c.jobsProduced)
 	startNano := atomic.LoadInt64(&c.startTime)
 
 	retries := atomic.LoadInt64(&c.retries)
@@ -183,6 +197,8 @@ func (c *Collector) Snapshot() Snapshot {
 		ActiveWorkers:         workers,
 		QueuedJobs:            queued,
 		Discovered:            disc,
+		InvalidWords:          invalid,
+		JobsProduced:          jobs,
 		StartTime:             startTime,
 		StatusCodes:           statusCopy,
 		Retries:               retries,

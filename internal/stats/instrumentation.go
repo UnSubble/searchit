@@ -12,9 +12,10 @@ type Instrumentation struct {
 	Trace   int32 // 0 = disabled, 1 = enabled
 
 	// Reader
-	WordsRead  int64
-	ReaderEOF  int64
-	ReaderExit int64
+	WordsRead    int64
+	InvalidWords int64
+	ReaderEOF    int64
+	ReaderExit   int64
 
 	// Producer
 	JobsProduced  int64
@@ -119,6 +120,7 @@ func (i *Instrumentation) PrintReconciliation() {
 
 	fmt.Fprintf(os.Stderr, "\n--- PIPELINE RECONCILIATION ---\n")
 	fmt.Fprintf(os.Stderr, "Words Read          : %d\n", wordsRead)
+	fmt.Fprintf(os.Stderr, "Invalid Words       : %d\n", atomic.LoadInt64(&i.InvalidWords))
 	fmt.Fprintf(os.Stderr, "Jobs Produced       : %d\n", jobsProduced)
 	fmt.Fprintf(os.Stderr, "Jobs Submitted      : %d\n", jobsSubmitted)
 	fmt.Fprintf(os.Stderr, "Jobs Received       : %d\n", jobsRecv)
@@ -162,6 +164,7 @@ func (i *Instrumentation) PrintReconciliation() {
 func (i *Instrumentation) Reset() {
 	atomic.StoreInt32(&i.Trace, 0)
 	atomic.StoreInt64(&i.WordsRead, 0)
+	atomic.StoreInt64(&i.InvalidWords, 0)
 	atomic.StoreInt64(&i.ReaderEOF, 0)
 	atomic.StoreInt64(&i.ReaderExit, 0)
 	atomic.StoreInt64(&i.JobsProduced, 0)

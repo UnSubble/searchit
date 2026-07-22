@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -306,7 +307,10 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 				wg.Add(1)
 				go func(localIdx int, jobInfo eagerJobInfo) {
 					defer wg.Done()
-					job := r.buildJob(r.TargetURL, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
+					job, err := r.buildJob(r.TargetURL, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
+					if err != nil {
+						return
+					}
 					res, err := e.Execute(job)
 					if err == nil {
 						batchResults[localIdx] = res
@@ -353,7 +357,10 @@ func (r *Runner) executeEagerBatch(e *Executor, fuzzVals, fooList, barList, buzz
 		wg.Add(1)
 		go func(localIdx int, jobInfo eagerJobInfo) {
 			defer wg.Done()
-			job := r.buildJobWithFuzz(r.TargetURL, jobInfo.fuzz, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
+			job, err := r.buildJobWithFuzz(r.TargetURL, jobInfo.fuzz, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
+			if err != nil {
+				return
+			}
 			res, err := e.Execute(job)
 			if err == nil {
 				batchResults[localIdx] = res
@@ -390,7 +397,10 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		wg.Add(1)
 		go func(idx int, w string) {
 			defer wg.Done()
-			job := r.buildJob(tmpl1, w, "", "")
+			job, err := r.buildJob(tmpl1, w, "", "")
+			if err != nil {
+				return
+			}
 			res, err := e.Execute(job)
 			if err == nil {
 				results1[idx] = jobResult{word: w, res: res}
@@ -437,7 +447,10 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		wg.Add(1)
 		go func(info barJob) {
 			defer wg.Done()
-			job := r.buildJob(tmpl2, info.foo, info.bar, "")
+			job, err := r.buildJob(tmpl2, info.foo, info.bar, "")
+			if err != nil {
+				return
+			}
 			res, err := e.Execute(job)
 			if err == nil {
 				results2[info.idx] = jobResult{word: info.foo + "/" + info.bar, res: res}
@@ -480,7 +493,10 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		wg.Add(1)
 		go func(info buzzJob) {
 			defer wg.Done()
-			job := r.buildJob(r.TargetURL, info.foo, info.bar, info.buzz)
+			job, err := r.buildJob(r.TargetURL, info.foo, info.bar, info.buzz)
+			if err != nil {
+				return
+			}
 			res, err := e.Execute(job)
 			if err == nil {
 				results3[info.idx] = jobResult{word: info.foo + "/" + info.bar + "/" + info.buzz, res: res}
@@ -522,7 +538,10 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				wg.Add(1)
 				go func(idx int, w string) {
 					defer wg.Done()
-					job := r.buildJob(tmpl, w, "", "")
+					job, err := r.buildJob(tmpl, w, "", "")
+					if err != nil {
+						return
+					}
 					res, err := e.Execute(job)
 					if err == nil {
 						results[idx] = res
@@ -547,7 +566,10 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				wg.Add(1)
 				go func(idx int, w string) {
 					defer wg.Done()
-					job := r.buildJob(tmpl, parentFoo, w, "")
+					job, err := r.buildJob(tmpl, parentFoo, w, "")
+					if err != nil {
+						return
+					}
 					res, err := e.Execute(job)
 					if err == nil {
 						results[idx] = res
@@ -571,7 +593,10 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				wg.Add(1)
 				go func(idx int, w string) {
 					defer wg.Done()
-					job := r.buildJob(r.TargetURL, parentFoo, parentBar, w)
+					job, err := r.buildJob(r.TargetURL, parentFoo, parentBar, w)
+					if err != nil {
+						return
+					}
 					res, err := e.Execute(job)
 					if err == nil {
 						results[idx] = res
@@ -638,7 +663,10 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 		wg.Add(1)
 		go func(w string) {
 			defer wg.Done()
-			job := r.buildJob(tmpl1, w, "", "")
+			job, err := r.buildJob(tmpl1, w, "", "")
+			if err != nil {
+				return
+			}
 			res, err := e.Execute(job)
 			if err == nil {
 				results1[sortedIndices[w]] = res
@@ -750,7 +778,10 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						eagerWg.Add(1)
 						go func(i int, bVal string) {
 							defer eagerWg.Done()
-							job := r.buildJob(tmpl2, d.foo, bVal, "")
+							job, err := r.buildJob(tmpl2, d.foo, bVal, "")
+							if err != nil {
+								return
+							}
 							res, err := e.Execute(job)
 							if err == nil {
 								results[i] = res
@@ -797,7 +828,10 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						eagerWg.Add(1)
 						go func(i int, info eagerJob) {
 							defer eagerWg.Done()
-							job := r.buildJob(r.TargetURL, d.foo, info.bar, info.buzz)
+							job, err := r.buildJob(r.TargetURL, d.foo, info.bar, info.buzz)
+							if err != nil {
+								return
+							}
 							res, err := e.Execute(job)
 							if err == nil {
 								results[i] = res
@@ -842,7 +876,10 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 				innerWg.Add(1)
 				go func(bVal string) {
 					defer innerWg.Done()
-					job := r.buildJob(tmpl2, d.foo, bVal, "")
+					job, err := r.buildJob(tmpl2, d.foo, bVal, "")
+					if err != nil {
+						return
+					}
 					res, err := e.Execute(job)
 					if err == nil {
 						barResults[sortedBarIndices[bVal]] = res
@@ -891,7 +928,10 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							leafWg.Add(1)
 							go func(bzVal string) {
 								defer leafWg.Done()
-								job := r.buildJob(r.TargetURL, d.foo, barVal, bzVal)
+								job, err := r.buildJob(r.TargetURL, d.foo, barVal, bzVal)
+								if err != nil {
+									return
+								}
 								r3, err := e.Execute(job)
 								if err == nil {
 									buzzResults[sortedBuzzIndices[bzVal]] = r3
@@ -975,7 +1015,10 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						leafWg.Add(1)
 						go func(bzVal string) {
 							defer leafWg.Done()
-							job := r.buildJob(r.TargetURL, fooVal, barVal, bzVal)
+							job, err := r.buildJob(r.TargetURL, fooVal, barVal, bzVal)
+							if err != nil {
+								return
+							}
 							r3, err := e.Execute(job)
 							if err == nil {
 								buzzResults[sortedBuzzIndices[bzVal]] = r3
@@ -1069,8 +1112,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	return nil
 }
 
-func (r *Runner) buildJob(tmpl, fooVal, barVal, buzzVal string) Job {
+func (r *Runner) buildJob(tmpl, fooVal, barVal, buzzVal string) (Job, error) {
 	urlStr := r.replacePlaceholders(tmpl, "", fooVal, barVal, buzzVal)
+	if _, err := url.Parse(urlStr); err != nil {
+		atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
+		if r.Collector != nil {
+			r.Collector.RecordInvalidWord()
+		}
+		return Job{}, err
+	}
 
 	var bodyBytes []byte
 	if r.BodyTemplate != "" {
@@ -1100,11 +1150,18 @@ func (r *Runner) buildJob(tmpl, fooVal, barVal, buzzVal string) Job {
 		Body:    bodyBytes,
 		Headers: headers,
 		Cookies: cookies,
-	}
+	}, nil
 }
 
-func (r *Runner) buildJobWithFuzz(tmpl, fuzzVal, fooVal, barVal, buzzVal string) Job {
+func (r *Runner) buildJobWithFuzz(tmpl, fuzzVal, fooVal, barVal, buzzVal string) (Job, error) {
 	urlStr := r.replacePlaceholders(tmpl, fuzzVal, fooVal, barVal, buzzVal)
+	if _, err := url.Parse(urlStr); err != nil {
+		atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
+		if r.Collector != nil {
+			r.Collector.RecordInvalidWord()
+		}
+		return Job{}, err
+	}
 
 	var bodyBytes []byte
 	if r.BodyTemplate != "" {
@@ -1134,7 +1191,7 @@ func (r *Runner) buildJobWithFuzz(tmpl, fuzzVal, fooVal, barVal, buzzVal string)
 		Body:    bodyBytes,
 		Headers: headers,
 		Cookies: cookies,
-	}
+	}, nil
 }
 
 func (r *Runner) replacePlaceholders(template, fuzzVal, fooVal, barVal, buzzVal string) string {

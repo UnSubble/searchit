@@ -699,6 +699,7 @@ var scanCmd = &cobra.Command{
 						NormalizePaths:  cfg.Paths.NormalizePaths,
 						CollapseSlashes: cfg.Paths.CollapseSlashes,
 						Extensions:      cfg.Extensions,
+						Collector:       collector,
 					}
 					_ = p.Produce(scanCtx, jobs)
 				}()
@@ -768,16 +769,10 @@ var scanCmd = &cobra.Command{
 					strategyStr = "non-recursive"
 				}
 
-				candidatesCount := int(atomic.LoadInt64(&stats.GlobalInstrumentation.JobsProduced))
-				if candidatesCount == 0 {
-					candidatesCount = int(snap.RequestsSent)
-				}
-
 				telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 					IsFuzz:          false,
 					Strategy:        strategyStr,
 					AdaptiveEnabled: cfg.Adaptive,
-					Candidates:      candidatesCount,
 					Findings:        int(snap.Discovered),
 					Snapshot:        snap,
 				}, flagDebug)

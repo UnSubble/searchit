@@ -823,16 +823,11 @@ var fuzzCmd = &cobra.Command{
 
 			if !cfg.Quiet {
 				snap := runner.Collector.Snapshot()
-				candidatesCount := int(atomic.LoadInt64(&stats.GlobalInstrumentation.JobsProduced))
-				if candidatesCount == 0 {
-					candidatesCount = int(snap.RequestsSent)
-				}
 
 				telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 					IsFuzz:          true,
 					Strategy:        cfg.FuzzStrategy,
 					AdaptiveEnabled: cfg.Adaptive,
-					Candidates:      candidatesCount,
 					Findings:        int(snap.Discovered),
 					Snapshot:        snap,
 				}, flagDebug)

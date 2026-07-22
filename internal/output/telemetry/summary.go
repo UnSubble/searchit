@@ -15,7 +15,6 @@ type SummaryInfo struct {
 	IsFuzz          bool
 	Strategy        string
 	AdaptiveEnabled bool
-	Candidates      int
 	Findings        int
 	Snapshot        stats.Snapshot
 }
@@ -35,11 +34,21 @@ func PrintSummary(tm *terminal.Manager, owner terminal.Owner, info SummaryInfo, 
 		reqPerSec = int64(float64(info.Snapshot.RequestsSent) / wallTimeSec)
 	}
 
+	candidates := int(info.Snapshot.JobsProduced)
+	if candidates == 0 && info.IsFuzz {
+		candidates = int(info.Snapshot.RequestsSent)
+	}
+
+	invalidWords := int(info.Snapshot.InvalidWords)
+
 	items := []terminal.Item{
-		{Key: "Candidates", Value: strconv.Itoa(info.Candidates)},
+		{Key: "Candidates", Value: strconv.Itoa(candidates)},
 		{Key: "Findings", Value: strconv.Itoa(info.Findings)},
 		{Key: "Wall Time", Value: fmt.Sprintf("%.2f sec", wallTimeSec)},
 		{Key: "Req/sec", Value: strconv.FormatInt(reqPerSec, 10)},
+	}
+	if invalidWords > 0 {
+		items = append(items, terminal.Item{Key: "Invalid Words", Value: strconv.Itoa(invalidWords)})
 	}
 
 	if debugMode {

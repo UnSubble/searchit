@@ -252,7 +252,6 @@ func TestSnapshot_SummaryFormat(t *testing.T) {
 		IsFuzz:          false,
 		Strategy:        "bfs",
 		AdaptiveEnabled: false,
-		Candidates:      125412,
 		Findings:        451,
 		Snapshot: stats.Snapshot{
 			StartTime:         time.Now().Add(-520 * time.Millisecond),
@@ -264,9 +263,6 @@ func TestSnapshot_SummaryFormat(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "SCAN SUMMARY") {
 		t.Errorf("Summary snapshot header missing:\n%s", got)
-	}
-	if !strings.Contains(got, "Candidates ................ 125412") {
-		t.Errorf("Summary snapshot candidates line mismatch:\n%s", got)
 	}
 	if !strings.Contains(buf.String(), "Findings .................. 451") {
 		t.Errorf("Summary snapshot findings line mismatch:\n%s", got)

@@ -13,6 +13,8 @@ type Snapshot struct {
 	ActiveWorkers     int64
 	QueuedJobs        int64
 	Discovered        int64
+	InvalidWords      int64
+	JobsProduced      int64
 	StartTime         time.Time
 	StatusCodes       map[int]int64
 
