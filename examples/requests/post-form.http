@@ -1,0 +1,6 @@
+POST /login HTTP/1.1
+Host: example.com
+Content-Type: application/x-www-form-urlencoded
+User-Agent: searchit/0.5.0
+
+username=admin&password=FUZZ

@@ -1,0 +1,4 @@
+GET /FUZZ HTTP/1.1
+Host: example.com
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.example
+User-Agent: searchit/0.5.0
