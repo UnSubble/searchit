@@ -137,9 +137,6 @@ func RenderStatsViewFull(
 	profiles []string,
 	mode string,
 ) {
-	// Clear the terminal before printing the report
-	fmt.Fprint(w, "\r\033[2J\033[H")
-
 	lines := statsReport(snap, configuredThreads, recent, target, profiles, mode)
 	for _, line := range lines {
 		fmt.Fprintf(w, "\r%s\r\n", line)

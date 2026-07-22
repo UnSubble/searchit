@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/console"
+	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/stats"
 	"golang.org/x/term"
 )
@@ -194,9 +195,7 @@ func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
 	}
 
 	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
-		leftText := fmt.Sprintf("%-12s%-14s", leftKey, leftVal)
-		rightText := fmt.Sprintf("%-12s%s", rightKey, rightVal)
-		return leftText + rightText
+		return output.FormatTwoColumnRow(leftKey, leftVal, rightKey, rightVal, 0)
 	}
 
 	return []string{

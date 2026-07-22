@@ -43,6 +43,29 @@ func FormatRow(key, val string, maxColumns int) string {
 	return line
 }
 
+// FormatTwoColumnRow formats two key-value pairs into a clean 2-column layout.
+func FormatTwoColumnRow(leftKey, leftVal, rightKey, rightVal string, maxColumns int) string {
+	leftText := fmt.Sprintf("%-12s%-14s", leftKey, leftVal)
+	rightText := fmt.Sprintf("%-12s%s", rightKey, rightVal)
+	line := leftText + rightText
+
+	if maxColumns > 0 && len(line) > maxColumns {
+		return line[:maxColumns]
+	}
+	return line
+}
+
+// RenderDivider prints a divider line of specified character and width.
+func RenderDivider(w io.Writer, width int, char string) {
+	if width <= 0 {
+		width = DefaultLineWidth
+	}
+	if char == "" {
+		char = "-"
+	}
+	fmt.Fprintln(w, strings.Repeat(char, width))
+}
+
 // RenderBlock prints a left-aligned, dot-padded section block with separators.
 func RenderBlock(w io.Writer, title string, items []Item, maxColumns int) {
 	width := DefaultLineWidth
