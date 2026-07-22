@@ -1,10 +1,10 @@
 # Recursion & Determinism Hardening Guide
 
-[Index](../../README.md) | [Getting Started](../getting-started.md) | [Command Reference](../commands/reference.md) | [Profiles Guide](../profiles/guide.md) | [Scanning Guide](config.md) | [Recursion Guide](recursion.md) | [Architecture](../architecture/details.md) | [Standards](../development/standards.md) | [Roadmap](../../ROADMAP.md)
+[Index](../../README.md) | [Getting Started](../getting-started.md) | [Command Reference](../commands/reference.md) | [Profiles Guide](../profiles/guide.md) | [Scanning Guide](config.md) | [Recursion Guide](recursion.md)
 
 ---
 
-Searchit features a highly performant and hardened recursion subsystem. It is designed to safely, reliably, and deterministically discover nested directory structures on target servers.
+Searchit features a highly performant and hardened recursion subsystem. It is designed to safely, reliably, and deterministically discover nested directory structures and crawling links on target servers.
 
 ## Traversal Strategies
 
@@ -16,14 +16,26 @@ Searchit supports two directory traversal strategies:
 Traversal is enabled using the `-r` or `--recursive` flag. You can set the strategy via `--strategy bfs` or `--strategy dfs`, and enforce a limit using `-R` or `--max-depth <depth>`.
 
 ```bash
-searchit scan -u https://example.com -r --strategy bfs --max-depth 3
+searchit scan -u http://127.0.0.1:8080 -w ~/wordlists/rockyou.txt -r --strategy bfs --max-depth 3
 ```
+
+![Recursive Crawling](../../assets/screenshots/scan_recursive_bfs.png)
+
+---
+
+## HTML Link Extraction & Crawling
+
+During recursive scanning, Searchit automatically parses HTML response bodies to discover and crawl internal links:
+
+- **Parsed Tags**: `a[href]`, `link[href]`, `script[src]`, `img[src]`, `form[action]`.
+- **Filtering**: Automatically discards fragment links (`#`), `javascript:`, `mailto:`, and `tel:` URIs.
+- **Frontier Enqueuing**: Discovered internal paths are enqueued into the recursion frontier under `OriginHTML` with depth tracking.
 
 ---
 
 ## Determinism Across Worker Counts
 
-One of Searchit's core design principles is **strict determinism**. 
+One of Searchit's core design principles is **strict determinism**.
 
 Regardless of the number of concurrent worker threads allocated via `-t/--threads` (from 1 to 256), a given scan target and configuration **must produce exactly the same result set**.
 
@@ -37,35 +49,3 @@ Searchit's hardening test matrix validates and enforces that the following prope
 5. **Output formatters**: Text, JSON, NDJSON, CSV, and Markdown outputs are validated to be character-for-character identical after sorting.
 6. **Profile behavior**: Config overrides and dependency merges remain identical.
 
----
-
-## Benchmark & Hardening Levels
-
-To balance validation depth and execution speed, the testing and benchmarking suites are organized into five levels, controlled by the `BENCHMARK_LEVEL` environment variable.
-
-| Level | Name | Purpose | Target Runtime | Workload / Worker Counts |
-|:---:|---|---|:---:|---|
-| **1** | **SMOKE** | Commit validation (default) | `< 30s` | Small targets (5 URLs), low workers (1, 4) |
-| **2** | **TEST** | Feature implementation | `< 5m` | Medium targets (20 URLs), workers (1, 2, 4, 16) |
-| **3** | **HARDENING** | Pre-release validation | `< 15m` | Medium targets (100 URLs), workers (1, 4, 16, 64), timeout checks |
-| **4** | **BENCHMARK** | Release benchmarking | `< 60m` | Large targets (500 URLs), workers up to 128, performance metrics |
-| **5** | **RIGOROUS** | Major release validation | Unrestricted | Huge targets (1000 URLs), workers up to 256, randomized executions |
-
-To run the suites under a specific level, set the environment variable:
-
-```bash
-BENCHMARK_LEVEL=3 go test -v ./internal/recursion/ -run TestHardening
-```
-
-Alternatively, use the Make targets which run under the safe default of level 1:
-
-```bash
-# Runs fast smoke validation tests
-make test
-
-# Runs race detector validation tests
-make race
-
-# Runs benchmarks
-make benchmark
-```

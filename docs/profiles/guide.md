@@ -1,6 +1,6 @@
 # Profiles Guide
 
-[Index](../../README.md) | [Getting Started](../getting-started.md) | [Command Reference](../commands/reference.md) | [Profiles Guide](guide.md) | [Scanning Guide](../scanning/config.md) | [Architecture](../architecture/details.md) | [Standards](../development/standards.md) | [Roadmap](../../ROADMAP.md)
+[Index](../../README.md) | [Getting Started](../getting-started.md) | [Command Reference](../commands/reference.md) | [Profiles Guide](guide.md) | [Scanning Guide](../scanning/config.md)
 
 ---
 
@@ -251,7 +251,16 @@ searchit profile validate ./myprofile.yaml
 searchit profile graph scan/wordpress
 ```
 
-![Profile dependency graph](../../assets/screenshots/searchit%20profile%20graph%20scan%E2%81%84wordpress.png)
+### Executing with a Profile
+
+```bash
+searchit scan -u http://127.0.0.1:8080 --profile scan-extra/laravel
+```
+
+![Executing with a Profile](../../assets/screenshots/scan_profile.png)
+
+
+![Profile dependency graph](../../assets/screenshots/profile_graph.png)
 
 ### Explaining Override Merges
 
@@ -261,9 +270,9 @@ Analyze how configuration is inherited and overridden throughout the dependency 
 searchit profile explain scan/wordpress
 ```
 
-![Profile explain metadata](../../assets/screenshots/searchit%20profile%20explain%20scan%E2%81%84wordpress%201.png)
+![Profile explain metadata](../../assets/screenshots/profile_explain_1.png)
 
-![Profile explain overrides](../../assets/screenshots/searchit%20profile%20explain%20scan%E2%81%84wordpress%202.png)
+![Profile explain overrides](../../assets/screenshots/profile_explain_2.png)
 
 ### Safe Editing
 
@@ -283,25 +292,25 @@ Apply a built-in fuzz profile with the `--profile` flag:
 # Use the login preset (POST, 16 threads, 15s timeout)
 searchit fuzz \
   -u https://example.com/login \
-  --FUZZ passwords.txt \
+  -w ~/wordlists/rockyou.txt \
   --profile fuzz/login
 
 # Use the GraphQL extra preset (POST, JSON content-type)
 searchit fuzz \
   -u https://example.com/graphql \
-  --FUZZ queries.txt \
+  -w queries.txt \
   --profile fuzz-extra/graphql
 
 # Fast discovery fuzzing (64 threads, 5s timeout)
 searchit fuzz \
   -u https://example.com/FUZZ \
-  -w paths.txt \
+  -w common.txt \
   --profile fuzz/discovery
 
 # Profile + CLI override: profile sets POST but CLI switches to PUT
 searchit fuzz \
   -u https://example.com/api/FUZZ \
-  -w words.txt \
+  -w common.txt \
   --profile fuzz/login \
   -X PUT \
   --threads 32

@@ -1,57 +1,127 @@
 # Getting Started
 
-[Index](../README.md) | [Getting Started](getting-started.md) | [Command Reference](commands/reference.md) | [Profiles Guide](profiles/guide.md) | [Scanning Guide](scanning/config.md) | [Architecture](architecture/details.md) | [Standards](development/standards.md) | [Roadmap](../ROADMAP.md)
+[Index](../README.md) | [Getting Started](getting-started.md) | [Command Reference](commands/reference.md) | [Profiles Guide](profiles/guide.md) | [Scanning Guide](scanning/config.md) | [Keyboard Shortcuts](keyboard-shortcuts.md)
 
 ---
 
-Welcome to Searchit, a concurrent, extensible, and profile-based web content discovery tool designed to find directories, files, and application endpoints.
+Welcome to Searchit, a fast, concurrent, profile-driven web content discovery and fuzzing tool.
 
 ## Installation
 
-Searchit requires Go 1.23 or higher.
+Searchit requires **Go 1.23 or higher**.
 
-To compile from source using the Makefile (recommended):
 ```bash
 git clone https://github.com/unsubble/searchit.git
 cd searchit
 make build
 ```
-The compiled binary will be placed at `bin/searchit`. You can run it locally as `./bin/searchit` or install it globally to your `GOBIN` path using `make install`.
 
-Alternatively, you can compile the codebase directly using standard Go tooling:
+The compiled executable is placed at `bin/searchit`. Install globally with:
+
+```bash
+make install
+```
+
+Or build directly with Go:
+
 ```bash
 go build -o bin/searchit .
 ```
 
+---
+
 ## Quick Start
 
-To verify installation, print the help menu:
+### 1. Verify Installation
+
 ```bash
 searchit --help
 ```
 
-![Help output](../assets/screenshots/searchit%20--help.png)
+![searchit --help](../assets/screenshots/help.png)
 
-To run a basic scan against a target using the built-in embedded wordlist:
+---
+
+### 2. Basic Discovery Scan
+
+Discover directories and files on a web server:
+
 ```bash
-searchit scan -u https://example.com
+searchit scan -u https://example.com -w common.txt
 ```
 
-To run a scan with recursive directory crawling:
+![Basic Scan](../assets/screenshots/scan_basic_common.png)
+
+---
+
+### 3. Recursive Scan
+
+Scan recursively up to depth 3, following discovered links:
+
 ```bash
-searchit scan -u https://example.com -r --max-depth 3
+searchit scan -u https://example.com -w common.txt -r --max-depth 3
 ```
 
-![Recursive scan progress](../assets/screenshots/searchit%20scan%20-u%20example.com%20-r%20--max-depth%203.png)
+![Recursive Scan](../assets/screenshots/scan_recursive.png)
 
-To scan with a custom wordlist file:
+---
+
+### 4. Fuzz a URL Parameter or Path
+
+Replace `FUZZ` in the URL with each word from your wordlist:
+
 ```bash
-searchit scan -u https://example.com -w my_wordlist.txt
+# Path fuzzing
+searchit fuzz -u http://example.com/FUZZ -w common.txt
+
+# Parameter fuzzing
+searchit fuzz -u 'http://example.com/search?q=FUZZ' -w common.txt
 ```
 
-To check available configurations and built-in profiles:
+![Parameter Fuzzing](../assets/screenshots/fuzz_parameter.png)
+
+![Path Fuzzing](../assets/screenshots/fuzz_basic.png)
+
+> **Note**: `fuzz` accepts exactly one target. See [Fuzz Constraints](commands/reference.md#fuzz-target-constraint).
+
+---
+
+### 5. Scan with a Profile
+
+Use a built-in profile for technology-specific scanning:
+
+```bash
+searchit scan -u http://example.com --profile scan-extra/laravel
+```
+
+List all available profiles:
+
 ```bash
 searchit profile list
 ```
 
-![Profile list output](../assets/screenshots/searchit%20profile%20list.png)
+![Profile List](../assets/screenshots/profile_list.png)
+
+---
+
+### 6. Adaptive Scanning
+
+Let Searchit detect the target technology and prioritize relevant paths:
+
+```bash
+searchit scan -u http://example.com -w common.txt --adaptive
+```
+
+![Adaptive Scanning](../assets/screenshots/scan_adaptive.png)
+
+---
+
+## Next Steps
+
+| Resource | Description |
+|---|---|
+| [Command Reference](commands/reference.md) | All flags for `scan`, `fuzz`, and `profile` |
+| [Profiles Guide](profiles/guide.md) | How to use and create profiles |
+| [Scanning Guide](scanning/config.md) | Adaptive mode, recursion, extensions, filters |
+| [Practical Examples](examples/scenarios.md) | 28 real-world usage examples |
+| [Keyboard Shortcuts](keyboard-shortcuts.md) | Interactive TUI controls |

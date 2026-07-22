@@ -6,4 +6,4 @@ We take the security of Searchit seriously. If you find any security vulnerabili
 
 ## Supported Versions
 
-Only the latest release (currently `v0.4.0-beta`) receives security patches.
+Only the latest release receives security patches.

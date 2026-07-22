@@ -1,76 +1,109 @@
 # Searchit
 
-Searchit is a concurrent, extensible, and profile-based web content discovery tool. It allows developers and security researchers to discover web content such as directories, files, and application endpoints on web servers.
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-[![Release](https://img.shields.io/github/v/release/unsubble/searchit)](https://github.com/unsubble/searchit/releases/latest)
-[![CI](https://img.shields.io/github/actions/workflow/status/unsubble/searchit/ci.yml?branch=main&label=CI)](https://github.com/unsubble/searchit/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/unsubble/searchit)](go.mod)
-[![License](https://img.shields.io/github/license/unsubble/searchit)](LICENSE)
+Searchit is a fast, flexible, and powerful web directory scanner and fuzzer. It helps you discover hidden paths, perform adaptive fuzzing, and analyze web applications with ease.
 
-Searchit provides a concurrent scanning engine, topological profile dependency resolution, interactive console progress controls, and a structured output system.
-
-![Live interactive ANSI progress dashboard](assets/screenshots/searchit%20scan%20-u%20example.com.png)
-
-## Core Features
-- **Concurrent scan engine**: Configurable worker pool and connection reuse policy.
-- **Recursive scanning**: BFS and DFS traversal strategies with configurable recursion depth.
-- **Filtering**: Filters responses by status code, body size, and custom headers.
-- **Profiles**: Reusable scan configurations supporting inheritance/dependency resolution, creation, validation, visualization, and interactive editing.
-- **Interactive TUI**: Live progress display enabled automatically in interactive terminals. Use `--no-progress` to suppress. Console keyboard controls available during scans.
-- **Output Formats**: Supports text, JSON, and NDJSON output formats, with an optional quiet text mode.
+![searchit --help](assets/screenshots/help.png)
 
 ## Installation
-Build from source (requires Go 1.23+):
 
-Using the Makefile (recommended):
+You can build Searchit from source using Go or Make:
+
 ```bash
-git clone https://github.com/unsubble/searchit.git
-cd searchit
+# Using Go
+go build -o searchit main.go
+
+# Using Make
 make build
 ```
 
-This compiles the binary to `bin/searchit`. To install it globally to your `GOBIN` path:
-```bash
-make install
-```
-
-Or build manually:
-```bash
-go build -o bin/searchit .
-```
-
-You can run the compiled binary directly:
-```bash
-./bin/searchit --help
-```
-
 ## Quick Start
-Scan a target with default settings using the embedded wordlist:
+
+**Scan a target for directories:**
 ```bash
-searchit scan -u https://example.com
+searchit scan -u http://target.com/ -w common.txt
 ```
 
-The live progress display is enabled automatically when running in an interactive terminal.
-To suppress it, pass `--no-progress`.
-
-![Default text output of a completed scan](assets/screenshots/searchit%20scan%20-u%20example.com.png)
-
-Scan using a built-in profile:
+**Fuzz a parameter:**
 ```bash
-searchit scan -u https://example.com --profile wordpress
+searchit fuzz -u "http://target.com/page?id=FUZZ" -w common.txt
 ```
+
+![Parameter Fuzzing](assets/screenshots/fuzz_parameter.png)
+
+**List available profiles:**
+```bash
+searchit profile list
+```
+
+## Basic Scan
+
+Discover directories and files on a web server.
+
+```bash
+searchit scan -u http://example.com -w ~/wordlists/rockyou.txt
+```
+
+![Basic Scan](assets/screenshots/scan_basic_rockyou.png)
+
+## Recursive Scan
+
+Discover directories deeply by setting a recursion depth.
+
+```bash
+searchit scan -u http://example.com -r --max-depth 3 -w ~/wordlists/rockyou.txt
+```
+
+![Recursive Scan](assets/screenshots/scan_recursive_d3.png)
+
+## Adaptive Scan
+
+Automatically detect the technology stack of the target and adaptively inject high-probability paths on the fly.
+
+```bash
+searchit scan -u http://127.0.0.1:8080 -w ~/wordlists/rockyou.txt --adaptive
+```
+
+![Adaptive Scan](assets/screenshots/scan_adaptive.png)
+
+## Basic Fuzzing
+
+Fuzz request parameters, headers, and bodies seamlessly.
+
+```bash
+searchit fuzz -u http://127.0.0.1:8080/FUZZ -w ~/wordlists/rockyou.txt
+```
+
+![Basic Fuzzing](assets/screenshots/fuzz_basic.png)
+
+## Profiles
+
+Profiles allow you to bundle configurations, extensions, and targets for specific tasks (like WordPress or Laravel scanning).
+
+```bash
+searchit profile list
+```
+
+![Profile List](assets/screenshots/profile_list.png)
+
+## Output Formats
+
+Searchit supports various structured output formats for downstream pipeline integrations.
+
+| Format | Description | Example Command |
+|--------|-------------|-----------------|
+| `text` | Plain text output | `--format text` |
+| `json` | Single-line JSON | `--format json` |
+| `ndjson`| Newline-delimited JSON | `--format ndjson` |
+| `csv` | Comma-separated values | `--format csv` |
+| `markdown` | Markdown table | `--format markdown` |
 
 ## Documentation
-Complete guides and documentation are available in the `docs/` directory:
-- [Getting Started Guide](docs/getting-started.md)
-- [Command Reference](docs/commands/reference.md)
-- [Profiles Guide](docs/profiles/guide.md)
-- [Scan Configuration](docs/scanning/config.md)
-- [Recursion & Determinism Hardening](docs/scanning/recursion.md)
-- [Architecture & Technical Design](docs/architecture/details.md)
-- [Practical Examples](docs/examples/scenarios.md)
-- [Development & Contribution Standards](docs/development/standards.md)
-- [Project Roadmap](ROADMAP.md)
+
+For more detailed documentation, check out the [docs/](docs/) directory.
 
 ## License
-Searchit is licensed under the [MIT License](LICENSE).
+
+[MIT](LICENSE)
