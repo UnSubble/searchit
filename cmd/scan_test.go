@@ -373,11 +373,11 @@ func TestCLI_StartupInformation(t *testing.T) {
 			name: "default recurse-on (excludes 404)",
 			args: []string{"scan", "-u", "http://localhost", "-r"},
 			wantPrints: []string{
-				"[*] Target ............... http://localhost",
-				"[*] Strategy ............. recursive (bfs)",
-				"[*] Adaptive ............. disabled",
-				"[*] Wordlist ............. embedded",
-				"[*] Workers .............. 32",
+				"Target .................... http://localhost",
+				"Strategy .................. recursive (bfs)",
+				"Adaptive .................. disabled",
+				"Wordlist .................. embedded",
+				"Workers ................... 32",
 			},
 		},
 		{

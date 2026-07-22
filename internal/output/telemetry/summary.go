@@ -5,8 +5,9 @@ import (
 	"io"
 	"sort"
 	"strconv"
-	"strings"
+	"time"
 
+	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
@@ -19,70 +20,56 @@ type SummaryInfo struct {
 	Snapshot        stats.Snapshot
 }
 
-func padDots(label string) string {
-	targetWidth := 20
-	if len(label) >= targetWidth {
-		return label + " "
+func PrintSummaryWithWidth(w io.Writer, info SummaryInfo, debugMode bool, width int) {
+	title := "SCAN SUMMARY"
+	if info.IsFuzz {
+		title = "FUZZ SUMMARY"
 	}
-	dotsCount := targetWidth - len(label) - 1
-	if dotsCount < 0 {
-		dotsCount = 0
+
+	elapsed := time.Since(info.Snapshot.StartTime)
+	wallTimeSec := elapsed.Seconds()
+	var reqPerSec int64
+	if wallTimeSec > 0 {
+		reqPerSec = int64(float64(info.Snapshot.RequestsSent) / wallTimeSec)
 	}
-	return label + " " + strings.Repeat(".", dotsCount) + " "
+
+	items := []output.Item{
+		{Key: "Candidates", Value: strconv.Itoa(info.Candidates)},
+		{Key: "Findings", Value: strconv.Itoa(info.Findings)},
+		{Key: "Wall Time", Value: fmt.Sprintf("%.2f sec", wallTimeSec)},
+		{Key: "Req/sec", Value: strconv.FormatInt(reqPerSec, 10)},
+	}
+
+	if debugMode {
+		adaptiveStr := "disabled"
+		if info.AdaptiveEnabled {
+			adaptiveStr = "enabled"
+		}
+		items = append(items,
+			output.Item{Key: "Strategy", Value: info.Strategy},
+			output.Item{Key: "Adaptive", Value: adaptiveStr},
+			output.Item{Key: "Requests Sent", Value: strconv.FormatInt(info.Snapshot.RequestsSent, 10)},
+			output.Item{Key: "Requests Completed", Value: strconv.FormatInt(info.Snapshot.ResponsesReceived, 10)},
+		)
+
+		var codes []int
+		for c := range info.Snapshot.StatusCodes {
+			codes = append(codes, c)
+		}
+		sort.Ints(codes)
+		for _, c := range codes {
+			count := info.Snapshot.StatusCodes[c]
+			items = append(items, output.Item{
+				Key:   fmt.Sprintf("Status %d", c),
+				Value: strconv.FormatInt(count, 10),
+			})
+		}
+		items = append(items, output.Item{Key: "Requests Filtered", Value: strconv.FormatInt(info.Snapshot.RequestsFiltered, 10)})
+	}
+
+	output.RenderBlock(w, title, items, width)
 }
 
 func PrintSummary(w io.Writer, info SummaryInfo, debugMode bool) {
-	fmt.Fprintln(w, "---------------------------------------------------------")
-	fmt.Fprintln(w)
-	if info.IsFuzz {
-		fmt.Fprintln(w, "FUZZ SUMMARY")
-	} else {
-		fmt.Fprintln(w, "SCAN SUMMARY")
-	}
-	fmt.Fprintln(w)
-
-	if !debugMode {
-		fmt.Fprintf(w, "Candidates:\n    %d\n\n", info.Candidates)
-		fmt.Fprintf(w, "Findings:\n    %d\n\n", info.Findings)
-		PrintPerformance(w, PerformanceInfo{
-			StartTime:    info.Snapshot.StartTime,
-			RequestsSent: info.Snapshot.RequestsSent,
-		})
-		fmt.Fprintln(w, "---------------------------------------------------------")
-		return
-	}
-
-	fmt.Fprintf(w, "Strategy:\n    %s\n\n", info.Strategy)
-
-	adaptiveStr := "disabled"
-	if info.AdaptiveEnabled {
-		adaptiveStr = "enabled"
-	}
-	fmt.Fprintf(w, "Adaptive:\n    %s\n\n", adaptiveStr)
-
-	fmt.Fprintf(w, "Candidates:\n    %d\n\n", info.Candidates)
-	fmt.Fprintf(w, "Findings:\n    %d\n\n", info.Findings)
-
-	fmt.Fprintln(w, "Requests:")
-	fmt.Fprintf(w, "    %s%d\n", padDots("Sent"), info.Snapshot.RequestsSent)
-	fmt.Fprintf(w, "    %s%d\n\n", padDots("Completed"), info.Snapshot.ResponsesReceived)
-
-	fmt.Fprintln(w, "Responses:")
-	// Sort status codes numerically
-	var codes []int
-	for c := range info.Snapshot.StatusCodes {
-		codes = append(codes, c)
-	}
-	sort.Ints(codes)
-	for _, c := range codes {
-		count := info.Snapshot.StatusCodes[c]
-		fmt.Fprintf(w, "    %s%d\n", padDots(strconv.Itoa(c)), count)
-	}
-	fmt.Fprintf(w, "    %s%d\n\n", padDots("Filtered"), info.Snapshot.RequestsFiltered)
-
-	PrintPerformance(w, PerformanceInfo{
-		StartTime:    info.Snapshot.StartTime,
-		RequestsSent: info.Snapshot.RequestsSent,
-	})
-	fmt.Fprintln(w, "---------------------------------------------------------")
+	PrintSummaryWithWidth(w, info, debugMode, 0)
 }

@@ -29,7 +29,9 @@ import (
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/requesttemplate"
+	"github.com/unsubble/searchit/internal/signals"
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/state"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/targets"
@@ -417,10 +419,13 @@ var scanCmd = &cobra.Command{
 			return nil
 		}
 
+		stateMgr := state.NewManager()
+		stateMgr.Transition(state.PhaseStarting)
+
 		ctx := cmd.Context()
-		if ctx == nil {
-			ctx = context.Background()
-		}
+		ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
+		defer cancelSig()
+
 		appState := app.New(ctx, cfg)
 
 		var reader wordlist.Reader
@@ -684,6 +689,19 @@ var scanCmd = &cobra.Command{
 					collector.DecrementQueuedJobs()
 				}
 			}
+
+			stateMgr.Transition(state.PhaseWaitingWorkers)
+			stateMgr.Transition(state.PhaseFinalizing)
+
+			if enableProgress && renderer != nil {
+				renderer.Close()
+				if progDone != nil {
+					<-progDone
+				}
+			}
+
+			stateMgr.Transition(state.PhaseSummary)
+
 			if !cfg.Quiet {
 				snap := collector.Snapshot()
 				strategyStr := cfg.Strategy.String()
@@ -707,6 +725,8 @@ var scanCmd = &cobra.Command{
 					Snapshot:        snap,
 				}, flagDebug)
 
+				stateMgr.Transition(state.PhasePipeline)
+
 				if flagDebug {
 					if cfg.Adaptive {
 						var techs, discoveries []string
@@ -729,13 +749,9 @@ var scanCmd = &cobra.Command{
 					telemetry.PrintPipelineReconciliation(telemetryWriter)
 				}
 			}
+
+			stateMgr.Transition(state.PhaseDone)
 			scanCancel()
-			if progDone != nil {
-				<-progDone
-			}
-			if renderer != nil {
-				_ = renderer.Close()
-			}
 		}
 
 		return nil

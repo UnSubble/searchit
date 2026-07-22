@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
@@ -27,8 +28,11 @@ import (
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
+	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/requesttemplate"
+	"github.com/unsubble/searchit/internal/signals"
 	"github.com/unsubble/searchit/internal/size"
+	"github.com/unsubble/searchit/internal/state"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wordlist"
@@ -532,6 +536,59 @@ var fuzzCmd = &cobra.Command{
 		fmttr := output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 		defer fmttr.Close()
 
+		stateMgr := state.NewManager()
+		stateMgr.Transition(state.PhaseStarting)
+
+		ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
+		defer cancelSig()
+
+		collector := stats.NewCollector()
+
+		var progMgr *progress.Manager
+		var renderer *progress.ANSIRenderer
+		var progCmdChan chan console.Command
+
+		enableProgress := shouldEnableProgress(cfg, flagNoProgress)
+		interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
+
+		var progDone chan struct{}
+		if enableProgress {
+			modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
+			renderer = progress.NewANSIRenderer(os.Stdout, flagFuzzURL, nil, modeStr)
+			progMgr = progress.NewManager(collector, renderer, 1*time.Second)
+			progMgr.ConfiguredThreads = cfg.Threads
+			progMgr.Formatter = fmttr
+
+			if interactive {
+				consoleCtrl := console.NewController(os.Stdin)
+				progCmdChan = make(chan console.Command, 10)
+				go consoleCtrl.Start(ctx)
+
+				go func() {
+					for c := range consoleCtrl.Commands() {
+						switch c {
+						case console.CommandProgress, console.CommandStats:
+							select {
+							case progCmdChan <- c:
+							default:
+							}
+						case console.CommandStop:
+							cancelSig()
+						}
+					}
+					close(progCmdChan)
+				}()
+			}
+
+			progDone = make(chan struct{})
+			go func() {
+				defer close(progDone)
+				progMgr.Start(ctx, progCmdChan)
+			}()
+		}
+
+		stateMgr.Transition(state.PhaseRunning)
+
 		// Setup the primary wordlist reader if provided
 		var reader wordlist.Reader
 		var primaryChan chan string
@@ -591,7 +648,7 @@ var fuzzCmd = &cobra.Command{
 			Threads:         cfg.Threads,
 			Delay:           delay,
 			Limiter:         limiter,
-			Collector:       stats.NewCollector(),
+			Collector:       collector,
 			Quiet:           cfg.Quiet,
 			ShowHeaders:     cfg.ShowHeaders,
 			ShowTitle:       cfg.ShowTitle,
@@ -611,7 +668,11 @@ var fuzzCmd = &cobra.Command{
 					Title:      r.Title,
 					Headers:    r.Headers,
 				}
-				_ = fmttr.Print(engRes)
+				if progMgr != nil {
+					progMgr.HandleResult(engRes)
+				} else {
+					_ = fmttr.Print(engRes)
+				}
 			} else if r.Err != nil {
 				errStr := r.Err.Error()
 				if strings.Contains(errStr, "maximum redirect limit exceeded") {
@@ -624,6 +685,18 @@ var fuzzCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		stateMgr.Transition(state.PhaseWaitingWorkers)
+		stateMgr.Transition(state.PhaseFinalizing)
+
+		if enableProgress && renderer != nil {
+			renderer.Close()
+			if progDone != nil {
+				<-progDone
+			}
+		}
+
+		stateMgr.Transition(state.PhaseSummary)
 
 		if !cfg.Quiet {
 			snap := runner.Collector.Snapshot()
@@ -641,19 +714,16 @@ var fuzzCmd = &cobra.Command{
 				Snapshot:        snap,
 			}, flagDebug)
 
+			stateMgr.Transition(state.PhasePipeline)
+
 			if flagDebug {
 				if cfg.Adaptive && runner.Summary != nil {
-					// We can obtain technologies, discoveries, DFS/BFS/Eager counts directly from runner.Summary.
-					// Wait, let's map them to telemetry.AdaptiveInfo:
 					techs := append([]string(nil), runner.Summary.Technologies...)
 					sort.Strings(techs)
 
-					discoveries := append([]string(nil), runner.Summary.Discoveries...)
-					sort.Strings(discoveries)
-
 					telemetry.PrintAdaptive(telemetryWriter, telemetry.AdaptiveInfo{
 						Technologies:        techs,
-						Discoveries:         discoveries,
+						Discoveries:         runner.Summary.Discoveries,
 						DFSCount:            int(runner.Summary.DFSCount),
 						BFSCount:            int(runner.Summary.BFSCount),
 						EagerCount:          int(runner.Summary.EagerCount),
@@ -667,6 +737,7 @@ var fuzzCmd = &cobra.Command{
 			}
 		}
 
+		stateMgr.Transition(state.PhaseDone)
 		return nil
 	},
 }

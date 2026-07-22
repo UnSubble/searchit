@@ -2,7 +2,6 @@ package progress
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -167,9 +166,7 @@ func (m *Manager) restoreDashboard() {
 	m.isStatsActive = false
 
 	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		// Clear terminal screen and home cursor
-		fmt.Fprint(tr.Writer, "\033[2J\033[H")
-		tr.ResetLineCount()
+		tr.Clear()
 
 		// Print all buffered results
 		for _, r := range m.bufferedResults {

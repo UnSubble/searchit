@@ -3,8 +3,10 @@ package telemetry
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"sync/atomic"
 
+	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
@@ -58,23 +60,24 @@ func PrintPipelineReconciliation(w io.Writer) {
 
 	statusStr := "Reconciled"
 	if mismatch {
-		statusStr = fmt.Sprintf("Mismatch Detected (First lost work stage: %s)", mismatchStage)
+		statusStr = fmt.Sprintf("Mismatch Detected (%s)", mismatchStage)
 	}
 
-	fmt.Fprintln(w, "---------------------------------------------------------")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "PIPELINE RECONCILIATION")
-	fmt.Fprintln(w)
+	items := []output.Item{
+		{Key: "Candidates Read", Value: strconv.FormatInt(wordsRead, 10)},
+		{Key: "Jobs Produced", Value: strconv.FormatInt(jobsProduced, 10)},
+		{Key: "Jobs Submitted", Value: strconv.FormatInt(jobsSubmitted, 10)},
+		{Key: "Jobs Received", Value: strconv.FormatInt(jobsRecv, 10)},
+		{Key: "Jobs Completed", Value: strconv.FormatInt(jobsComp, 10)},
+		{Key: "Requests Built", Value: strconv.FormatInt(reqsBuilt, 10)},
+		{Key: "Requests Sent", Value: strconv.FormatInt(reqsSent, 10)},
+		{Key: "Responses Received", Value: strconv.FormatInt(respsRecv, 10)},
+		{Key: "Results Produced", Value: strconv.FormatInt(resultsProd, 10)},
+		{Key: "Results Consumed", Value: strconv.FormatInt(resultsCons, 10)},
+		{Key: "Wildcards Detected", Value: strconv.FormatInt(wildcards, 10)},
+		{Key: "Wildcard Filtered", Value: strconv.FormatInt(reqsFiltered, 10)},
+		{Key: "Status", Value: statusStr},
+	}
 
-	fmt.Fprintf(w, "Candidates Read:\n    %d\n\n", wordsRead)
-	fmt.Fprintf(w, "Jobs Produced:\n    %d\n\n", jobsProduced)
-	fmt.Fprintf(w, "Requests Sent:\n    %d\n\n", reqsSent)
-	fmt.Fprintf(w, "Responses Received:\n    %d\n\n", respsRecv)
-	fmt.Fprintf(w, "Results Produced:\n    %d\n\n", resultsProd)
-	fmt.Fprintf(w, "Results Consumed:\n    %d\n\n", resultsCons)
-	fmt.Fprintf(w, "Wildcards Detected:\n    %d\n\n", wildcards)
-	fmt.Fprintf(w, "Wildcard Filtered:\n    %d\n\n", reqsFiltered)
-
-	fmt.Fprintf(w, "Status:\n    %s\n\n", statusStr)
-	fmt.Fprintln(w, "---------------------------------------------------------")
+	output.RenderBlock(w, "PIPELINE RECONCILIATION SUMMARY", items, 0)
 }

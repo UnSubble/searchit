@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/unsubble/searchit/internal/output"
 )
 
 type PerformanceInfo struct {
@@ -11,7 +13,7 @@ type PerformanceInfo struct {
 	RequestsSent int64
 }
 
-func PrintPerformance(w io.Writer, info PerformanceInfo) {
+func GetPerformanceItems(info PerformanceInfo) []output.Item {
 	elapsed := time.Since(info.StartTime)
 	wallTimeSec := elapsed.Seconds()
 
@@ -20,8 +22,15 @@ func PrintPerformance(w io.Writer, info PerformanceInfo) {
 		reqPerSec = int64(float64(info.RequestsSent) / wallTimeSec)
 	}
 
-	fmt.Fprintln(w, "Performance:")
-	fmt.Fprintf(w, "    %s%.2f sec\n", padDots("Wall Time"), wallTimeSec)
-	fmt.Fprintf(w, "    %s%d\n", padDots("Req/sec"), reqPerSec)
-	fmt.Fprintln(w)
+	return []output.Item{
+		{Key: "Wall Time", Value: fmt.Sprintf("%.2f sec", wallTimeSec)},
+		{Key: "Req/sec", Value: fmt.Sprintf("%d", reqPerSec)},
+	}
+}
+
+func PrintPerformance(w io.Writer, info PerformanceInfo) {
+	items := GetPerformanceItems(info)
+	for _, item := range items {
+		fmt.Fprintln(w, output.FormatRow(item.Key, item.Value, 0))
+	}
 }

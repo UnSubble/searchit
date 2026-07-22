@@ -1,8 +1,11 @@
 package telemetry
 
 import (
-	"fmt"
 	"io"
+	"strconv"
+	"strings"
+
+	"github.com/unsubble/searchit/internal/output"
 )
 
 type AdaptiveInfo struct {
@@ -16,46 +19,30 @@ type AdaptiveInfo struct {
 	LowPriorityCount    int
 }
 
+func PrintAdaptiveWithWidth(w io.Writer, info AdaptiveInfo, width int) {
+	techStr := "None detected"
+	if len(info.Technologies) > 0 {
+		techStr = strings.Join(info.Technologies, ", ")
+	}
+	discStr := "None"
+	if len(info.Discoveries) > 0 {
+		discStr = strings.Join(info.Discoveries, ", ")
+	}
+
+	items := []output.Item{
+		{Key: "Technologies", Value: techStr},
+		{Key: "Discoveries", Value: discStr},
+		{Key: "DFS Policies", Value: strconv.Itoa(info.DFSCount)},
+		{Key: "BFS Policies", Value: strconv.Itoa(info.BFSCount)},
+		{Key: "Eager Policies", Value: strconv.Itoa(info.EagerCount)},
+		{Key: "High Priority", Value: strconv.Itoa(info.HighPriorityCount)},
+		{Key: "Medium Priority", Value: strconv.Itoa(info.MediumPriorityCount)},
+		{Key: "Low Priority", Value: strconv.Itoa(info.LowPriorityCount)},
+	}
+
+	output.RenderBlock(w, "ADAPTIVE SUMMARY", items, width)
+}
+
 func PrintAdaptive(w io.Writer, info AdaptiveInfo) {
-	fmt.Fprintln(w, "---------------------------------------------------------")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "ADAPTIVE SUMMARY")
-	fmt.Fprintln(w)
-
-	fmt.Fprintln(w, "Technologies:")
-	if len(info.Technologies) == 0 {
-		fmt.Fprintln(w, "    None detected")
-	} else {
-		for _, tech := range info.Technologies {
-			fmt.Fprintf(w, "    %s\n", tech)
-		}
-	}
-	fmt.Fprintln(w)
-
-	fmt.Fprintln(w, "Discoveries:")
-	if len(info.Discoveries) == 0 {
-		fmt.Fprintln(w, "    None")
-	} else {
-		for _, disc := range info.Discoveries {
-			fmt.Fprintf(w, "    %s\n", disc)
-		}
-	}
-	fmt.Fprintln(w)
-
-	fmt.Fprintln(w, "Policies:")
-	fmt.Fprintf(w, "    %s%d\n", padDots("DFS"), info.DFSCount)
-	fmt.Fprintf(w, "    %s%d\n", padDots("BFS"), info.BFSCount)
-	fmt.Fprintf(w, "    %s%d\n\n", padDots("EAGER"), info.EagerCount)
-
-	fmt.Fprintln(w, "Candidates:")
-	fmt.Fprintf(w, "    %s%d\n", padDots("High priority"), info.HighPriorityCount)
-	fmt.Fprintf(w, "    %s%d\n", padDots("Medium priority"), info.MediumPriorityCount)
-	fmt.Fprintf(w, "    %s%d\n\n", padDots("Low priority"), info.LowPriorityCount)
-
-	fmt.Fprintln(w, "Adaptive:")
-	fmt.Fprintln(w, "    Target aware prioritization")
-	fmt.Fprintln(w, "    Deterministic scheduling")
-	fmt.Fprintln(w, "    Signal based traversal")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "---------------------------------------------------------")
+	PrintAdaptiveWithWidth(w, info, 0)
 }

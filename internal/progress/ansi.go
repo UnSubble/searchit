@@ -3,6 +3,7 @@ package progress
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -183,9 +184,12 @@ func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
 	etaStr := "-"
 	if snap.RequestsPerSecond > 0 && snap.QueuedJobs > 0 {
 		etaSecs := float64(snap.QueuedJobs) / snap.RequestsPerSecond
+		if etaSecs < 1.0 {
+			etaSecs = 1.0
+		}
 		eh := int(etaSecs / 3600)
 		em := int(etaSecs/60) % 60
-		es := int(etaSecs) % 60
+		es := int(math.Ceil(etaSecs)) % 60
 		etaStr = fmt.Sprintf("%02d:%02d:%02d", eh, em, es)
 	}
 
