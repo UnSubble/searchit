@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/recursion"
+	"github.com/unsubble/searchit/internal/targets"
 )
 
 func runScanProfileTest(args []string, hook func(config.Config)) error {
@@ -295,7 +296,7 @@ func TestScanProfile_OutputText(t *testing.T) {
 	flagRate = 0
 	flagConnectTimeout = "3s"
 	flagProfiles = []string{"scan/quick"}
-	resolvedTargets = []string{"http://localhost"}
+	resolvedTargets = []targets.Target{{URL: "http://localhost"}}
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
@@ -353,7 +354,7 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 	flagRate = 0
 	flagConnectTimeout = "3s"
 	flagProfiles = []string{"scan/quick"}
-	resolvedTargets = []string{"http://localhost"}
+	resolvedTargets = []targets.Target{{URL: "http://localhost"}}
 
 	cmd := rootCmd
 	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })

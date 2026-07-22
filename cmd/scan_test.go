@@ -9,9 +9,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/targets"
 )
 
 func resetFlagsForTest() {
@@ -395,8 +397,9 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
+			// Provide enough time for startup info to print, but don't hang if there's no server
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
 
 			rootCmd.SetContext(ctx)
 			scanCmd.SetContext(ctx)
@@ -594,7 +597,11 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 
 	_ = cmd.ExecuteContext(ctx)
 
-	wantTargets := []string{"http://a.com", "http://b.com", "http://c.com"}
+	wantTargets := []targets.Target{
+		{URL: "http://a.com", ID: 1},
+		{URL: "http://b.com", ID: 2},
+		{URL: "http://c.com", ID: 3},
+	}
 	if !reflect.DeepEqual(resolvedTargets, wantTargets) {
 		t.Errorf("resolvedTargets = %v, want %v", resolvedTargets, wantTargets)
 	}

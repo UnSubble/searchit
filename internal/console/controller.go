@@ -120,6 +120,11 @@ func (c *Controller) Start(ctx context.Context) {
 				case c.ch <- CommandStop:
 				default:
 				}
+			case 'a':
+				select {
+				case c.ch <- CommandAbort:
+				default:
+				}
 			}
 		}
 	}

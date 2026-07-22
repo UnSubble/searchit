@@ -34,7 +34,7 @@ func TestController_Keys(t *testing.T) {
 		{
 			name:     "unknown keys ignored",
 			input:    "x y z p q a s",
-			expected: []console.Command{console.CommandProgress, console.CommandStop, console.CommandStats},
+			expected: []console.Command{console.CommandProgress, console.CommandStop, console.CommandAbort, console.CommandStats},
 		},
 	}
 

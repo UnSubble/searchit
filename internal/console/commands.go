@@ -8,6 +8,8 @@ const (
 	CommandProgress Command = iota
 	// CommandStats triggers extended statistics rendering.
 	CommandStats
-	// CommandStop requests graceful scan shutdown.
+	// CommandStop requests graceful shutdown of the current target.
 	CommandStop
+	// CommandAbort requests immediate abort of all targets.
+	CommandAbort
 )

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,12 +37,14 @@ import (
 	"github.com/unsubble/searchit/internal/state"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
+	"github.com/unsubble/searchit/internal/targets"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
 )
 
 var (
 	flagFuzzURL         string
+	flagFuzzURLFile     string
 	flagFuzzWordlist    string
 	flagFuzzExt         []string
 	flagFuzzFoo         string
@@ -80,6 +83,8 @@ var (
 	flagFuzzProfiles        []string
 	flagFuzzFollowRedirects bool
 	flagFuzzMaxRedirects    int
+
+	resolvedFuzzTargets []targets.Target
 )
 
 var fuzzCmd = &cobra.Command{
@@ -93,60 +98,64 @@ var fuzzCmd = &cobra.Command{
 			return fmt.Errorf("threads must be at least 1")
 		}
 
-		// Ensure that at least one placeholder wordlist is provided
-		hasPlaceholder := strings.Contains(flagFuzzURL, "FUZZ") ||
-			strings.Contains(flagFuzzURL, "FOO") ||
-			strings.Contains(flagFuzzURL, "BAR") ||
-			strings.Contains(flagFuzzURL, "BUZZ") ||
-			strings.Contains(flagFuzzData, "FUZZ") ||
-			strings.Contains(flagFuzzData, "FOO") ||
-			strings.Contains(flagFuzzData, "BAR") ||
-			strings.Contains(flagFuzzData, "BUZZ")
-
-		for _, h := range flagFuzzHeaders {
-			if strings.Contains(h, "FUZZ") || strings.Contains(h, "FOO") || strings.Contains(h, "BAR") || strings.Contains(h, "BUZZ") {
-				hasPlaceholder = true
-			}
+		var errParse error
+		resolvedFuzzTargets, errParse = targets.Parse(targets.ParseOptions{
+			URL:         flagFuzzURL,
+			URLFile:     flagFuzzURLFile,
+			RequestFile: flagFuzzRequestFile,
+		})
+		if errParse != nil {
+			return errParse
 		}
 
-		if flagFuzzRequestFile != "" {
-			content, err := os.ReadFile(flagFuzzRequestFile)
-			if err != nil {
-				return fmt.Errorf("failed to read request template file: %w", err)
-			}
-			contentStr := string(content)
-			if strings.Contains(contentStr, "FUZZ") ||
-				strings.Contains(contentStr, "FOO") ||
-				strings.Contains(contentStr, "BAR") ||
-				strings.Contains(contentStr, "BUZZ") {
-				hasPlaceholder = true
-			}
-		}
-
-		if !hasPlaceholder {
-			return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body or headers")
-		}
-
-		usesFUZZ := strings.Contains(flagFuzzURL, "FUZZ") || strings.Contains(flagFuzzData, "FUZZ")
-		usesFOO := strings.Contains(flagFuzzURL, "FOO") || strings.Contains(flagFuzzData, "FOO")
-		usesBAR := strings.Contains(flagFuzzURL, "BAR") || strings.Contains(flagFuzzData, "BAR")
-		usesBUZZ := strings.Contains(flagFuzzURL, "BUZZ") || strings.Contains(flagFuzzData, "BUZZ")
-
-		if flagFuzzRequestFile != "" {
-			content, _ := os.ReadFile(flagFuzzRequestFile)
-			contentStr := string(content)
-			if strings.Contains(contentStr, "FUZZ") {
+		usesFUZZ, usesFOO, usesBAR, usesBUZZ := false, false, false, false
+		for _, t := range resolvedFuzzTargets {
+			if strings.Contains(t.URL, "FUZZ") || strings.Contains(t.Body, "FUZZ") {
 				usesFUZZ = true
 			}
-			if strings.Contains(contentStr, "FOO") {
+			if strings.Contains(t.URL, "FOO") || strings.Contains(t.Body, "FOO") {
 				usesFOO = true
 			}
-			if strings.Contains(contentStr, "BAR") {
+			if strings.Contains(t.URL, "BAR") || strings.Contains(t.Body, "BAR") {
 				usesBAR = true
 			}
-			if strings.Contains(contentStr, "BUZZ") {
+			if strings.Contains(t.URL, "BUZZ") || strings.Contains(t.Body, "BUZZ") {
 				usesBUZZ = true
 			}
+
+			for _, h := range t.Headers {
+				if strings.Contains(h, "FUZZ") {
+					usesFUZZ = true
+				}
+				if strings.Contains(h, "FOO") {
+					usesFOO = true
+				}
+				if strings.Contains(h, "BAR") {
+					usesBAR = true
+				}
+				if strings.Contains(h, "BUZZ") {
+					usesBUZZ = true
+				}
+			}
+		}
+
+		for _, h := range flagFuzzHeaders {
+			if strings.Contains(h, "FUZZ") {
+				usesFUZZ = true
+			}
+			if strings.Contains(h, "FOO") {
+				usesFOO = true
+			}
+			if strings.Contains(h, "BAR") {
+				usesBAR = true
+			}
+			if strings.Contains(h, "BUZZ") {
+				usesBUZZ = true
+			}
+		}
+
+		if !usesFUZZ && !usesFOO && !usesBAR && !usesBUZZ {
+			return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body or headers")
 		}
 
 		if usesFUZZ {
@@ -485,313 +494,339 @@ var fuzzCmd = &cobra.Command{
 			totalCandidates *= countFileLines(flagFuzzBuzz)
 		}
 
-		stateMgr := state.NewManager()
-		stateMgr.Transition(state.PhaseStarting)
+		targetManager := targets.NewManager(resolvedFuzzTargets)
+		globalSummary := targets.NewGlobalSummary(len(resolvedFuzzTargets))
 
-		// 1. Create a fresh TerminalManager for the fuzz lifecycle.
-		tm := terminal.New(os.Stdout)
-		if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
-			return err
-		}
+		errExecute := targetManager.Execute(ctx, func(tCtx targets.TargetContext) error {
+			fuzzCtx := tCtx.Ctx
+			cancelSig := tCtx.Cancel
+			targetURL := tCtx.Target.URL
 
-		// 2. Formatters & Telemetry output setup.
-		var fmttr output.Formatter
-		if outWriter == os.Stdout {
-			fmttr = output.NewWithManager(outFormat, tm, terminal.OwnerProgress, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-		} else {
-			fmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-		}
+			stateMgr := state.NewManager()
+			stateMgr.Transition(state.PhaseStarting)
 
-		if !cfg.Quiet {
-			wordlistsCount := 0
-			var placeholders []string
-			if flagFuzzWordlist != "" {
-				wordlistsCount++
-				placeholders = append(placeholders, "FUZZ")
-			}
-			if flagFuzzFoo != "" {
-				wordlistsCount++
-				placeholders = append(placeholders, "FOO")
-			}
-			if flagFuzzBar != "" {
-				wordlistsCount++
-				placeholders = append(placeholders, "BAR")
-			}
-			if flagFuzzBuzz != "" {
-				wordlistsCount++
-				placeholders = append(placeholders, "BUZZ")
-			}
-			placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(placeholders, ", "), len(placeholders))
-
-			excludeStatusStr := cfg.Status.Exclude.String()
-			if excludeStatusStr == "" {
-				excludeStatusStr = "none"
+			// 1. Create a fresh TerminalManager for the fuzz lifecycle.
+			tm := terminal.New(os.Stdout)
+			if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
+				return err
 			}
 
-			info := telemetry.ConfigInfo{
-				Target:          flagFuzzURL,
-				Method:          cfg.Method,
-				Workers:         cfg.Threads,
-				Strategy:        cfg.FuzzStrategy,
-				AdaptiveEnabled: cfg.Adaptive,
-				WordlistsCount:  wordlistsCount,
-				PrimaryWordlist: flagFuzzWordlist,
-				Placeholders:    placeholdersStr,
-				HTTPVersion:     "auto",
-				FollowRedirects: cfg.FollowRedirects,
-				FilterStatus:    excludeStatusStr,
-				TotalCandidates: totalCandidates,
-				IsFuzz:          true,
-				Extensions:      cfg.Extensions,
-			}
-			if flagDebug {
-				telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
+			// 2. Formatters & Telemetry output setup.
+			var fmttr output.Formatter
+			if outWriter == os.Stdout {
+				fmttr = output.NewWithManager(outFormat, tm, terminal.OwnerProgress, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 			} else {
-				telemetry.PrintNormalConfiguration(tm, terminal.OwnerConfiguration, info)
-			}
-		}
-
-		// Transition out of Starting, into Running, and hand over to Progress.
-		if err := tm.TransitionAndRelease(terminal.PhaseRunning, terminal.OwnerConfiguration); err != nil {
-			return err
-		}
-		if err := tm.AcquireOwner(terminal.OwnerProgress); err != nil {
-			return err
-		}
-
-		ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
-		defer cancelSig()
-
-		collector := stats.NewCollector()
-
-		var progMgr *progress.Manager
-		var renderer *progress.ANSIRenderer
-		var progCmdChan chan console.Command
-		var consoleCtrl *console.Controller
-
-		enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress)
-		interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
-
-		var progDone chan struct{}
-		progCtx, cancelProg := context.WithCancel(ctx)
-		defer cancelProg()
-
-		termCtx, cancelTerm := context.WithCancel(ctx)
-		defer cancelTerm()
-
-		if enableProgress {
-			modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
-			renderer = progress.NewANSIRenderer(tm, flagFuzzURL, nil, modeStr)
-			progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
-			progMgr.ConfiguredThreads = cfg.Threads
-			progMgr.Formatter = fmttr
-
-			if interactive {
-				consoleCtrl = console.NewController(os.Stdin)
-				progCmdChan = make(chan console.Command, 10)
-				go consoleCtrl.Start(termCtx)
-
-				go func() {
-					for c := range consoleCtrl.Commands() {
-						switch c {
-						case console.CommandProgress, console.CommandStats:
-							select {
-							case progCmdChan <- c:
-							default:
-							}
-						case console.CommandStop:
-							cancelSig()
-						}
-					}
-					close(progCmdChan)
-				}()
+				fmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 			}
 
-			progDone = make(chan struct{})
-			go func() {
-				defer close(progDone)
-				progMgr.Start(progCtx, progCmdChan)
-			}()
-		}
-
-		stateMgr.Transition(state.PhaseRunning)
-
-		// Setup the primary wordlist reader if provided
-		var reader wordlist.Reader
-		var primaryChan chan string
-		if flagFuzzWordlist != "" {
-			reader = wordlist.FileReader{Path: flagFuzzWordlist}
-			primaryChan = make(chan string, 100)
-			go func() {
-				defer close(primaryChan)
-				tempChan := make(chan string, 100)
-				go func() {
-					defer close(tempChan)
-					_ = reader.Read(ctx, tempChan)
-				}()
-				for w := range tempChan {
-					atomic.AddInt64(&stats.GlobalInstrumentation.WordsRead, 1)
-					variants := extensions.GenerateVariants(w, cfg.Extensions)
-					for _, v := range variants {
-						select {
-						case <-ctx.Done():
-							return
-						case primaryChan <- v:
-						}
-					}
+			if !cfg.Quiet {
+				wordlistsCount := 0
+				var placeholders []string
+				if flagFuzzWordlist != "" {
+					wordlistsCount++
+					placeholders = append(placeholders, "FUZZ")
 				}
-			}()
-		}
-
-		appState := app.New(ctx, cfg)
-
-		fs, err := filter.NewFilterSuite(
-			cfg.Status.Include.String(),
-			cfg.Status.Exclude.String(),
-			cfg.IncludeSize.String(),
-			cfg.ExcludeSize.String(),
-			cfg.MatchRegex,
-			cfg.FilterRegex,
-			cfg.MatchContent,
-			cfg.FilterContent,
-		)
-		if err != nil {
-			return err
-		}
-		fs.ShowHeaders = cfg.ShowHeaders
-		fs.ShowTitle = cfg.ShowTitle
-
-		runner := &fuzz.Runner{
-			TargetURL:       flagFuzzURL,
-			Method:          strings.ToUpper(flagFuzzMethod),
-			BodyTemplate:    flagFuzzData,
-			HeaderTemplates: headers,
-			CookieTemplate:  flagFuzzCookie,
-			FooWords:        fooWords,
-			BarWords:        barWords,
-			BuzzWords:       buzzWords,
-			Client:          appState.HTTPClient,
-			FS:              fs,
-			Threads:         cfg.Threads,
-			Delay:           delay,
-			Limiter:         limiter,
-			Collector:       collector,
-			Quiet:           cfg.Quiet,
-			ShowHeaders:     cfg.ShowHeaders,
-			ShowTitle:       cfg.ShowTitle,
-			Adaptive:        cfg.Adaptive,
-			Cache:           appState.FingerprintCache,
-		}
-
-		collector.SetQueuedJobs(int64(totalCandidates))
-
-		err = runner.Run(ctx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
-			collector.DecrementQueuedJobs()
-			if r.Accepted {
-				engRes := engine.Result{
-					URL:        r.URL,
-					StatusCode: r.StatusCode,
-					Length:     r.Length,
-					Accepted:   r.Accepted,
-					Err:        r.Err,
-					Origin:     "fuzz",
-					Title:      r.Title,
-					Headers:    r.Headers,
+				if flagFuzzFoo != "" {
+					wordlistsCount++
+					placeholders = append(placeholders, "FOO")
 				}
-				if progMgr != nil {
-					progMgr.HandleResult(engRes)
+				if flagFuzzBar != "" {
+					wordlistsCount++
+					placeholders = append(placeholders, "BAR")
+				}
+				if flagFuzzBuzz != "" {
+					wordlistsCount++
+					placeholders = append(placeholders, "BUZZ")
+				}
+				placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(placeholders, ", "), len(placeholders))
+
+				excludeStatusStr := cfg.Status.Exclude.String()
+				if excludeStatusStr == "" {
+					excludeStatusStr = "none"
+				}
+
+				info := telemetry.ConfigInfo{
+					Target:          flagFuzzURL,
+					Method:          cfg.Method,
+					Workers:         cfg.Threads,
+					Strategy:        cfg.FuzzStrategy,
+					AdaptiveEnabled: cfg.Adaptive,
+					WordlistsCount:  wordlistsCount,
+					PrimaryWordlist: flagFuzzWordlist,
+					Placeholders:    placeholdersStr,
+					HTTPVersion:     "auto",
+					FollowRedirects: cfg.FollowRedirects,
+					FilterStatus:    excludeStatusStr,
+					TotalCandidates: totalCandidates,
+					IsFuzz:          true,
+					Extensions:      cfg.Extensions,
+				}
+				if flagDebug {
+					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				} else {
-					_ = fmttr.Print(engRes)
-				}
-			} else if r.Err != nil {
-				errStr := r.Err.Error()
-				if strings.Contains(errStr, "maximum redirect limit exceeded") {
-					fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
-				} else if strings.Contains(errStr, "redirect loop detected") {
-					fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+					telemetry.PrintNormalConfiguration(tm, terminal.OwnerConfiguration, info)
 				}
 			}
+
+			// Transition out of Starting, into Running, and hand over to Progress.
+			if err := tm.TransitionAndRelease(terminal.PhaseRunning, terminal.OwnerConfiguration); err != nil {
+				return err
+			}
+			if err := tm.AcquireOwner(terminal.OwnerProgress); err != nil {
+				return err
+			}
+
+			ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
+			defer cancelSig()
+
+			collector := stats.NewCollector()
+
+			var progMgr *progress.Manager
+			var renderer *progress.ANSIRenderer
+			var progCmdChan chan console.Command
+			var consoleCtrl *console.Controller
+
+			enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress)
+			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
+
+			var progDone chan struct{}
+			progCtx, cancelProg := context.WithCancel(ctx)
+			defer cancelProg()
+
+			termCtx, cancelTerm := context.WithCancel(ctx)
+			defer cancelTerm()
+
+			if enableProgress {
+				modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
+				renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr)
+				progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
+				progMgr.ConfiguredThreads = cfg.Threads
+				progMgr.Formatter = fmttr
+
+				if interactive {
+					consoleCtrl = console.NewController(os.Stdin)
+					progCmdChan = make(chan console.Command, 10)
+					go consoleCtrl.Start(termCtx)
+
+					go func() {
+						for c := range consoleCtrl.Commands() {
+							switch c {
+							case console.CommandProgress, console.CommandStats:
+								select {
+								case progCmdChan <- c:
+								default:
+								}
+							case console.CommandStop:
+								cancelSig()
+							}
+						}
+						close(progCmdChan)
+					}()
+				}
+
+				progDone = make(chan struct{})
+				go func() {
+					defer close(progDone)
+					progMgr.Start(progCtx, progCmdChan)
+				}()
+			}
+
+			stateMgr.Transition(state.PhaseRunning)
+
+			// Setup the primary wordlist reader if provided
+			var reader wordlist.Reader
+			var primaryChan chan string
+			if flagFuzzWordlist != "" {
+				reader = wordlist.FileReader{Path: flagFuzzWordlist}
+				primaryChan = make(chan string, 100)
+				go func() {
+					defer close(primaryChan)
+					tempChan := make(chan string, 100)
+					go func() {
+						defer close(tempChan)
+						_ = reader.Read(ctx, tempChan)
+					}()
+					for w := range tempChan {
+						atomic.AddInt64(&stats.GlobalInstrumentation.WordsRead, 1)
+						variants := extensions.GenerateVariants(w, cfg.Extensions)
+						for _, v := range variants {
+							select {
+							case <-ctx.Done():
+								return
+							case primaryChan <- v:
+							}
+						}
+					}
+				}()
+			}
+
+			appState := app.New(fuzzCtx, cfg)
+
+			fs, err := filter.NewFilterSuite(
+				cfg.Status.Include.String(),
+				cfg.Status.Exclude.String(),
+				cfg.IncludeSize.String(),
+				cfg.ExcludeSize.String(),
+				cfg.MatchRegex,
+				cfg.FilterRegex,
+				cfg.MatchContent,
+				cfg.FilterContent,
+			)
+			if err != nil {
+				return err
+			}
+			fs.ShowHeaders = cfg.ShowHeaders
+			fs.ShowTitle = cfg.ShowTitle
+
+			runner := &fuzz.Runner{
+				TargetURL:       targetURL,
+				Method:          strings.ToUpper(flagFuzzMethod),
+				BodyTemplate:    flagFuzzData,
+				HeaderTemplates: headers,
+				CookieTemplate:  flagFuzzCookie,
+				FooWords:        fooWords,
+				BarWords:        barWords,
+				BuzzWords:       buzzWords,
+				Client:          appState.HTTPClient,
+				FS:              fs,
+				Threads:         cfg.Threads,
+				Delay:           delay,
+				Limiter:         limiter,
+				Collector:       collector,
+				Quiet:           cfg.Quiet,
+				ShowHeaders:     cfg.ShowHeaders,
+				ShowTitle:       cfg.ShowTitle,
+				Adaptive:        cfg.Adaptive,
+				Cache:           appState.FingerprintCache,
+			}
+
+			collector.SetQueuedJobs(int64(totalCandidates))
+
+			runErr := runner.Run(fuzzCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
+				collector.DecrementQueuedJobs()
+				if r.Accepted {
+					engRes := engine.Result{
+						URL:        r.URL,
+						StatusCode: r.StatusCode,
+						Length:     r.Length,
+						Accepted:   r.Accepted,
+						Err:        r.Err,
+						Origin:     "fuzz",
+						Title:      r.Title,
+						Headers:    r.Headers,
+					}
+					if progMgr != nil {
+						progMgr.HandleResult(engRes)
+					} else {
+						_ = fmttr.Print(engRes)
+					}
+				} else if r.Err != nil {
+					errStr := r.Err.Error()
+					if strings.Contains(errStr, "maximum redirect limit exceeded") {
+						fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+					} else if strings.Contains(errStr, "redirect loop detected") {
+						fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+					}
+				}
+			})
+			if runErr != nil {
+				return runErr
+			}
+
+			if fmttr != nil {
+				_ = fmttr.Close()
+			}
+
+			stateMgr.Transition(state.PhaseWaitingWorkers)
+			_ = tm.TransitionTo(terminal.PhaseWaitingWorkers)
+
+			stateMgr.Transition(state.PhaseFinalizing)
+			_ = tm.TransitionTo(terminal.PhaseFinalizing)
+
+			if enableProgress && renderer != nil {
+				cancelProg()
+				if progDone != nil {
+					<-progDone
+				}
+			}
+
+			stateMgr.Transition(state.PhaseTerminalShutdown)
+			_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
+
+			if enableProgress && renderer != nil {
+				if interactive && consoleCtrl != nil {
+					cancelTerm()
+					<-consoleCtrl.Done()
+				}
+				_ = renderer.Close(terminal.OwnerProgress)
+			}
+			_ = tm.ReleaseOwner(terminal.OwnerProgress)
+
+			stateMgr.Transition(state.PhaseSummary)
+			_ = tm.AcquireAndTransition(terminal.OwnerSummary, terminal.PhaseSummary)
+
+			if !cfg.Quiet {
+				snap := runner.Collector.Snapshot()
+				candidatesCount := int(atomic.LoadInt64(&stats.GlobalInstrumentation.JobsProduced))
+				if candidatesCount == 0 {
+					candidatesCount = int(snap.RequestsSent)
+				}
+
+				telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
+					IsFuzz:          true,
+					Strategy:        cfg.FuzzStrategy,
+					AdaptiveEnabled: cfg.Adaptive,
+					Candidates:      candidatesCount,
+					Findings:        int(snap.Discovered),
+					Snapshot:        snap,
+				}, flagDebug)
+				_ = tm.TransitionAndRelease(terminal.PhasePipeline, terminal.OwnerSummary)
+
+				stateMgr.Transition(state.PhasePipeline)
+				_ = tm.AcquireOwner(terminal.OwnerPipeline)
+
+				if flagDebug {
+					if cfg.Adaptive && runner.Summary != nil {
+						techs := append([]string(nil), runner.Summary.Technologies...)
+						sort.Strings(techs)
+
+						telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
+							Technologies:        techs,
+							Discoveries:         runner.Summary.Discoveries,
+							DFSCount:            int(runner.Summary.DFSCount),
+							BFSCount:            int(runner.Summary.BFSCount),
+							EagerCount:          int(runner.Summary.EagerCount),
+							HighPriorityCount:   int(runner.Summary.HighPriorityCount),
+							MediumPriorityCount: int(runner.Summary.MediumPriorityCount),
+							LowPriorityCount:    int(runner.Summary.LowPriorityCount),
+						})
+					}
+
+					telemetry.PrintPipelineReconciliation(tm, terminal.OwnerPipeline)
+				}
+				_ = tm.TransitionAndRelease(terminal.PhaseDone, terminal.OwnerPipeline)
+			} else {
+				_ = tm.TransitionTo(terminal.PhasePipeline)
+				stateMgr.Transition(state.PhasePipeline)
+				_ = tm.TransitionTo(terminal.PhaseDone)
+			}
+
+			stateMgr.Transition(state.PhaseDone)
+
+			globalSummary.AddSnapshot(runner.Collector.Snapshot())
+
+			return nil
 		})
-		if err != nil {
-			return err
+
+		if errExecute != nil && !errors.Is(errExecute, context.Canceled) {
+			return errExecute
 		}
 
-		if fmttr != nil {
-			_ = fmttr.Close()
+		if len(resolvedFuzzTargets) > 1 && !cfg.Quiet {
+			fmt.Printf("\n[*] Global Summary:\n    Targets scanned: %d/%d\n    Total Requests: %d\n    Total Discoveries: %d\n    Duration: %s\n",
+				globalSummary.TargetsRun, globalSummary.TargetsTotal, globalSummary.TotalJobs, globalSummary.TotalFound, globalSummary.Duration())
 		}
 
-		stateMgr.Transition(state.PhaseWaitingWorkers)
-		_ = tm.TransitionTo(terminal.PhaseWaitingWorkers)
-
-		stateMgr.Transition(state.PhaseFinalizing)
-		_ = tm.TransitionTo(terminal.PhaseFinalizing)
-
-		stateMgr.Transition(state.PhaseTerminalShutdown)
-		_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
-
-		if enableProgress && renderer != nil {
-			cancelProg()
-			if progDone != nil {
-				<-progDone
-			}
-			if interactive && consoleCtrl != nil {
-				cancelTerm()
-				<-consoleCtrl.Done()
-			}
-			_ = renderer.Close(terminal.OwnerProgress)
-		}
-		_ = tm.ReleaseOwner(terminal.OwnerProgress)
-
-		stateMgr.Transition(state.PhaseSummary)
-		_ = tm.AcquireAndTransition(terminal.OwnerSummary, terminal.PhaseSummary)
-
-		if !cfg.Quiet {
-			snap := runner.Collector.Snapshot()
-			candidatesCount := int(atomic.LoadInt64(&stats.GlobalInstrumentation.JobsProduced))
-			if candidatesCount == 0 {
-				candidatesCount = int(snap.RequestsSent)
-			}
-
-			telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
-				IsFuzz:          true,
-				Strategy:        cfg.FuzzStrategy,
-				AdaptiveEnabled: cfg.Adaptive,
-				Candidates:      candidatesCount,
-				Findings:        int(snap.Discovered),
-				Snapshot:        snap,
-			}, flagDebug)
-			_ = tm.TransitionAndRelease(terminal.PhasePipeline, terminal.OwnerSummary)
-
-			stateMgr.Transition(state.PhasePipeline)
-			_ = tm.AcquireOwner(terminal.OwnerPipeline)
-
-			if flagDebug {
-				if cfg.Adaptive && runner.Summary != nil {
-					techs := append([]string(nil), runner.Summary.Technologies...)
-					sort.Strings(techs)
-
-					telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
-						Technologies:        techs,
-						Discoveries:         runner.Summary.Discoveries,
-						DFSCount:            int(runner.Summary.DFSCount),
-						BFSCount:            int(runner.Summary.BFSCount),
-						EagerCount:          int(runner.Summary.EagerCount),
-						HighPriorityCount:   int(runner.Summary.HighPriorityCount),
-						MediumPriorityCount: int(runner.Summary.MediumPriorityCount),
-						LowPriorityCount:    int(runner.Summary.LowPriorityCount),
-					})
-				}
-
-				telemetry.PrintPipelineReconciliation(tm, terminal.OwnerPipeline)
-			}
-			_ = tm.TransitionAndRelease(terminal.PhaseDone, terminal.OwnerPipeline)
-		} else {
-			_ = tm.TransitionTo(terminal.PhasePipeline)
-			stateMgr.Transition(state.PhasePipeline)
-			_ = tm.TransitionTo(terminal.PhaseDone)
-		}
-
-		stateMgr.Transition(state.PhaseDone)
 		return nil
 	},
 }

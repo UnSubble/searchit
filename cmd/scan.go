@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -91,7 +92,7 @@ var (
 	flagShowTitle     bool
 	flagRequestFile   string
 
-	resolvedTargets []string
+	resolvedTargets []targets.Target
 
 	testHookConfigApplied func(config.Config)
 )
@@ -274,24 +275,14 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		resolvedTargets = nil
-		if flagURL != "" {
-			for _, val := range strings.Split(flagURL, ",") {
-				t := strings.TrimSpace(val)
-				if t != "" {
-					resolvedTargets = append(resolvedTargets, t)
-				}
-			}
-		}
-		if flagURLFile != "" {
-			fileTargets, err := targets.ReadFile(flagURLFile)
-			if err != nil {
-				return fmt.Errorf("failed to read url file: %w", err)
-			}
-			resolvedTargets = append(resolvedTargets, fileTargets...)
-		}
-		if len(resolvedTargets) == 0 && flagRequestFile == "" {
-			return fmt.Errorf("at least one target is required")
+		var errParse error
+		resolvedTargets, errParse = targets.Parse(targets.ParseOptions{
+			URL:         flagURL,
+			URLFile:     flagURLFile,
+			RequestFile: flagRequestFile,
+		})
+		if errParse != nil {
+			return errParse
 		}
 
 		if flagTech != "" {
@@ -376,7 +367,7 @@ var scanCmd = &cobra.Command{
 		if cfg.RequestFile != "" {
 			var baseTarget string
 			if len(resolvedTargets) > 0 {
-				baseTarget = resolvedTargets[0]
+				baseTarget = resolvedTargets[0].URL
 			}
 			tmpl, err := requesttemplate.ParseFile(cfg.RequestFile, baseTarget)
 			if err != nil {
@@ -402,7 +393,7 @@ var scanCmd = &cobra.Command{
 			}
 
 			cfg.URLs = []string{tmpl.URL}
-			resolvedTargets = []string{tmpl.URL}
+			resolvedTargets = []targets.Target{{URL: tmpl.URL}}
 		}
 
 		if cfg.OutputFormat == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {
@@ -504,10 +495,14 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		for _, targetURL := range cfg.URLs {
-			scanCtx, scanCancel := context.WithCancel(ctx)
-			// Ensure the cancel function is always called to avoid context leaks
-			// even if we return early from within the loop.
+		targetManager := targets.NewManager(resolvedTargets)
+		globalSummary := targets.NewGlobalSummary(len(resolvedTargets))
+
+		err = targetManager.Execute(ctx, func(tCtx targets.TargetContext) error {
+			targetURL := tCtx.Target.URL
+			scanCtx := tCtx.Ctx
+			scanCancel := tCtx.Cancel
+			// ensure cancel is invoked (though manager also cleans up)
 			defer scanCancel()
 
 			// 1. Create a fresh TerminalManager for this target's lifecycle.
@@ -742,21 +737,21 @@ var scanCmd = &cobra.Command{
 			stateMgr.Transition(state.PhaseFinalizing)
 			_ = tm.TransitionTo(terminal.PhaseFinalizing)
 
+			if enableProgress && renderer != nil {
+				cancelProg()
+				if progDone != nil {
+					<-progDone
+				}
+			}
+
 			stateMgr.Transition(state.PhaseTerminalShutdown)
 			_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
 
 			if enableProgress && renderer != nil {
-				cancelProg()
-				// The progDone channel signals the Start loop is fully exited.
-				if progDone != nil {
-					<-progDone
-				}
 				if interactive && consoleCtrl != nil {
 					cancelTerm()
 					<-consoleCtrl.Done()
 				}
-				// Now we know no more background progress tasks are running,
-				// so we can safely Close (which writes cursor-show)
 				_ = renderer.Close(terminal.OwnerProgress)
 			}
 			_ = tm.ReleaseOwner(terminal.OwnerProgress)
@@ -822,6 +817,21 @@ var scanCmd = &cobra.Command{
 
 			stateMgr.Transition(state.PhaseDone)
 			scanCancel()
+
+			// Accumulate snapshot into global summary
+			globalSummary.AddSnapshot(collector.Snapshot())
+
+			return nil
+		})
+
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
+
+		// Optionally print global summary if multiple targets
+		if len(resolvedTargets) > 1 && !cfg.Quiet {
+			fmt.Printf("\n[*] Global Summary:\n    Targets scanned: %d/%d\n    Total Requests: %d\n    Total Discoveries: %d\n    Duration: %s\n",
+				globalSummary.TargetsRun, globalSummary.TargetsTotal, globalSummary.TotalJobs, globalSummary.TotalFound, globalSummary.Duration())
 		}
 
 		return nil
@@ -832,7 +842,11 @@ var scanCmd = &cobra.Command{
 // that the user explicitly provided. This ensures that profile values
 // are not overridden by default flag values.
 func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
-	cfg.URLs = resolvedTargets
+	var urls []string
+	for _, t := range resolvedTargets {
+		urls = append(urls, t.URL)
+	}
+	cfg.URLs = urls
 
 	if cmd.Flags().Changed("wordlist") {
 		cfg.Wordlist = flagWordlist
