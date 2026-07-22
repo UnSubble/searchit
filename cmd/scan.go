@@ -30,7 +30,6 @@ import (
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/recursion"
-	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/signals"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/state"
@@ -364,36 +363,19 @@ var scanCmd = &cobra.Command{
 
 		applyCLIOverrides(cmd, &cfg)
 
-		if cfg.RequestFile != "" {
-			var baseTarget string
-			if len(resolvedTargets) > 0 {
-				baseTarget = resolvedTargets[0].URL
-			}
-			tmpl, err := requesttemplate.ParseFile(cfg.RequestFile, baseTarget)
-			if err != nil {
-				return err
-			}
-			cfg.Method = tmpl.Method
-			cfg.Data = string(tmpl.Body)
+		if cfg.RequestFile != "" && len(resolvedTargets) > 0 {
+			t := resolvedTargets[0]
+			cfg.Method = t.Method
+			cfg.Data = t.Body
 
-			cookies := requesttemplate.ExtractCookiesFromHeaders(tmpl.Headers)
-			if len(cookies) > 0 {
-				var cookiePairs []string
-				for _, c := range cookies {
-					cookiePairs = append(cookiePairs, c.String())
-				}
-				cfg.Cookies = strings.Join(cookiePairs, "; ")
+			if t.Cookies != "" {
+				cfg.Cookies = t.Cookies
 			}
 
 			cfg.Headers = nil
-			for k, values := range tmpl.Headers {
-				for _, v := range values {
-					cfg.Headers = append(cfg.Headers, fmt.Sprintf("%s: %s", k, v))
-				}
-			}
+			cfg.Headers = append(cfg.Headers, t.Headers...)
 
-			cfg.URLs = []string{tmpl.URL}
-			resolvedTargets = []targets.Target{{URL: tmpl.URL}}
+			cfg.URLs = []string{t.URL}
 		}
 
 		if cfg.OutputFormat == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {

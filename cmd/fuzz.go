@@ -31,7 +31,6 @@ import (
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/progress"
-	"github.com/unsubble/searchit/internal/requesttemplate"
 	"github.com/unsubble/searchit/internal/signals"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/state"
@@ -466,19 +465,17 @@ var fuzzCmd = &cobra.Command{
 		}
 
 		var headers http.Header
-		if flagFuzzRequestFile != "" {
-			tmpl, err := requesttemplate.ParseFile(flagFuzzRequestFile, flagFuzzURL)
-			if err != nil {
-				return err
-			}
-			flagFuzzURL = tmpl.URL
-			flagFuzzMethod = tmpl.Method
-			flagFuzzData = string(tmpl.Body)
+		if flagFuzzRequestFile != "" && len(resolvedFuzzTargets) > 0 {
+			t := resolvedFuzzTargets[0]
+			flagFuzzURL = t.URL
+			flagFuzzMethod = t.Method
+			flagFuzzData = t.Body
 
 			headers = make(http.Header)
-			for k, values := range tmpl.Headers {
-				for _, v := range values {
-					headers.Add(k, v)
+			for _, h := range t.Headers {
+				idx := strings.Index(h, ":")
+				if idx != -1 {
+					headers.Add(strings.TrimSpace(h[:idx]), strings.TrimSpace(h[idx+1:]))
 				}
 			}
 
@@ -492,13 +489,8 @@ var fuzzCmd = &cobra.Command{
 				}
 			}
 
-			cookies := requesttemplate.ExtractCookiesFromHeaders(tmpl.Headers)
-			if len(cookies) > 0 {
-				var cookiePairs []string
-				for _, c := range cookies {
-					cookiePairs = append(cookiePairs, c.String())
-				}
-				flagFuzzCookie = strings.Join(cookiePairs, "; ")
+			if t.Cookies != "" {
+				flagFuzzCookie = t.Cookies
 			}
 		} else {
 			cliHeaders, err := parseFuzzHeaderFlags(cfg.Headers)
