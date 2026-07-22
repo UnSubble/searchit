@@ -67,7 +67,7 @@ func (d *Detector) Add(host string, depth uint16, sig Signature) (Signature, boo
 		ratio := float64(maxCount) / float64(len(samples))
 		if ratio >= d.threshold {
 			d.wildcards[key] = modalSig
-			return modalSig, true
+			return modalSig, sig == modalSig
 		}
 	}
 
