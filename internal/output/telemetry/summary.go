@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
@@ -20,7 +20,9 @@ type SummaryInfo struct {
 	Snapshot        stats.Snapshot
 }
 
-func PrintSummaryWithWidth(w io.Writer, info SummaryInfo, debugMode bool, width int) {
+// PrintSummary prints the end-of-scan summary block.
+// All output is routed through tm.Emit(owner, fn).
+func PrintSummary(tm *terminal.Manager, owner terminal.Owner, info SummaryInfo, debugMode bool) {
 	title := "SCAN SUMMARY"
 	if info.IsFuzz {
 		title = "FUZZ SUMMARY"
@@ -33,7 +35,7 @@ func PrintSummaryWithWidth(w io.Writer, info SummaryInfo, debugMode bool, width 
 		reqPerSec = int64(float64(info.Snapshot.RequestsSent) / wallTimeSec)
 	}
 
-	items := []output.Item{
+	items := []terminal.Item{
 		{Key: "Candidates", Value: strconv.Itoa(info.Candidates)},
 		{Key: "Findings", Value: strconv.Itoa(info.Findings)},
 		{Key: "Wall Time", Value: fmt.Sprintf("%.2f sec", wallTimeSec)},
@@ -46,10 +48,10 @@ func PrintSummaryWithWidth(w io.Writer, info SummaryInfo, debugMode bool, width 
 			adaptiveStr = "enabled"
 		}
 		items = append(items,
-			output.Item{Key: "Strategy", Value: info.Strategy},
-			output.Item{Key: "Adaptive", Value: adaptiveStr},
-			output.Item{Key: "Requests Sent", Value: strconv.FormatInt(info.Snapshot.RequestsSent, 10)},
-			output.Item{Key: "Requests Completed", Value: strconv.FormatInt(info.Snapshot.ResponsesReceived, 10)},
+			terminal.Item{Key: "Strategy", Value: info.Strategy},
+			terminal.Item{Key: "Adaptive", Value: adaptiveStr},
+			terminal.Item{Key: "Requests Sent", Value: strconv.FormatInt(info.Snapshot.RequestsSent, 10)},
+			terminal.Item{Key: "Requests Completed", Value: strconv.FormatInt(info.Snapshot.ResponsesReceived, 10)},
 		)
 
 		var codes []int
@@ -59,17 +61,15 @@ func PrintSummaryWithWidth(w io.Writer, info SummaryInfo, debugMode bool, width 
 		sort.Ints(codes)
 		for _, c := range codes {
 			count := info.Snapshot.StatusCodes[c]
-			items = append(items, output.Item{
+			items = append(items, terminal.Item{
 				Key:   fmt.Sprintf("Status %d", c),
 				Value: strconv.FormatInt(count, 10),
 			})
 		}
-		items = append(items, output.Item{Key: "Requests Filtered", Value: strconv.FormatInt(info.Snapshot.RequestsFiltered, 10)})
+		items = append(items, terminal.Item{Key: "Requests Filtered", Value: strconv.FormatInt(info.Snapshot.RequestsFiltered, 10)})
 	}
 
-	output.RenderBlock(w, title, items, width)
-}
-
-func PrintSummary(w io.Writer, info SummaryInfo, debugMode bool) {
-	PrintSummaryWithWidth(w, info, debugMode, 0)
+	_ = tm.Emit(owner, func(w io.Writer) {
+		terminal.RenderBlock(w, title, items, tm.ContentWidth())
+	})
 }

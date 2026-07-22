@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 )
 
 type ConfigInfo struct {
@@ -25,7 +25,9 @@ type ConfigInfo struct {
 	Extensions      []string
 }
 
-func PrintNormalConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) {
+// PrintNormalConfiguration prints a compact configuration block.
+// All output is routed through tm.Emit(owner, fn).
+func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigInfo) {
 	adaptiveStr := "disabled"
 	if info.AdaptiveEnabled {
 		adaptiveStr = "enabled"
@@ -36,7 +38,7 @@ func PrintNormalConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) 
 		wl = "embedded"
 	}
 
-	items := []output.Item{
+	items := []terminal.Item{
 		{Key: "Target", Value: info.Target},
 		{Key: "Strategy", Value: info.Strategy},
 		{Key: "Adaptive", Value: adaptiveStr},
@@ -44,23 +46,23 @@ func PrintNormalConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) 
 	}
 
 	if len(info.Extensions) > 0 {
-		items = append(items, output.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
+		items = append(items, terminal.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
 	}
-	items = append(items, output.Item{Key: "Workers", Value: strconv.Itoa(info.Workers)})
+	items = append(items, terminal.Item{Key: "Workers", Value: strconv.Itoa(info.Workers)})
 
 	title := "SCAN CONFIGURATION"
 	if info.IsFuzz {
 		title = "FUZZ CONFIGURATION"
 	}
 
-	output.RenderBlock(w, title, items, width)
+	_ = tm.Emit(owner, func(w io.Writer) {
+		terminal.RenderBlock(w, title, items, tm.ContentWidth())
+	})
 }
 
-func PrintNormalConfiguration(w io.Writer, info ConfigInfo) {
-	PrintNormalConfigurationWithWidth(w, info, 0)
-}
-
-func PrintConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) {
+// PrintConfiguration prints the full configuration block including HTTP details.
+// All output is routed through tm.Emit(owner, fn).
+func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigInfo) {
 	adaptiveStr := "disabled"
 	if info.AdaptiveEnabled {
 		adaptiveStr = "enabled"
@@ -81,7 +83,7 @@ func PrintConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) {
 		candStr = strconv.Itoa(info.TotalCandidates)
 	}
 
-	items := []output.Item{
+	items := []terminal.Item{
 		{Key: "Target", Value: info.Target},
 		{Key: "Method", Value: info.Method},
 		{Key: "Workers", Value: strconv.Itoa(info.Workers)},
@@ -91,16 +93,16 @@ func PrintConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) {
 
 	if info.IsFuzz {
 		items = append(items,
-			output.Item{Key: "Wordlists", Value: strconv.Itoa(info.WordlistsCount)},
-			output.Item{Key: "Primary Wordlist", Value: wl},
-			output.Item{Key: "Placeholders", Value: info.Placeholders},
+			terminal.Item{Key: "Wordlists", Value: strconv.Itoa(info.WordlistsCount)},
+			terminal.Item{Key: "Primary Wordlist", Value: wl},
+			terminal.Item{Key: "Placeholders", Value: info.Placeholders},
 		)
 	} else {
-		items = append(items, output.Item{Key: "Wordlist", Value: wl})
+		items = append(items, terminal.Item{Key: "Wordlist", Value: wl})
 	}
 
 	if len(info.Extensions) > 0 {
-		items = append(items, output.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
+		items = append(items, terminal.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
 	}
 
 	httpVer := info.HTTPVersion
@@ -109,10 +111,10 @@ func PrintConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) {
 	}
 
 	items = append(items,
-		output.Item{Key: "HTTP Version", Value: httpVer},
-		output.Item{Key: "Follow Redirects", Value: redirStr},
-		output.Item{Key: "Filter Status", Value: info.FilterStatus},
-		output.Item{Key: "Total Candidates", Value: candStr},
+		terminal.Item{Key: "HTTP Version", Value: httpVer},
+		terminal.Item{Key: "Follow Redirects", Value: redirStr},
+		terminal.Item{Key: "Filter Status", Value: info.FilterStatus},
+		terminal.Item{Key: "Total Candidates", Value: candStr},
 	)
 
 	title := "SCAN CONFIGURATION"
@@ -120,9 +122,7 @@ func PrintConfigurationWithWidth(w io.Writer, info ConfigInfo, width int) {
 		title = "FUZZ CONFIGURATION"
 	}
 
-	output.RenderBlock(w, title, items, width)
-}
-
-func PrintConfiguration(w io.Writer, info ConfigInfo) {
-	PrintConfigurationWithWidth(w, info, 0)
+	_ = tm.Emit(owner, func(w io.Writer) {
+		terminal.RenderBlock(w, title, items, tm.ContentWidth())
+	})
 }

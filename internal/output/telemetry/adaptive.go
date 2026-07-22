@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 )
 
 type AdaptiveInfo struct {
@@ -19,7 +19,9 @@ type AdaptiveInfo struct {
 	LowPriorityCount    int
 }
 
-func PrintAdaptiveWithWidth(w io.Writer, info AdaptiveInfo, width int) {
+// PrintAdaptive prints the adaptive strategy summary block.
+// All output is routed through tm.Emit(owner, fn).
+func PrintAdaptive(tm *terminal.Manager, owner terminal.Owner, info AdaptiveInfo) {
 	techStr := "None detected"
 	if len(info.Technologies) > 0 {
 		techStr = strings.Join(info.Technologies, ", ")
@@ -29,7 +31,7 @@ func PrintAdaptiveWithWidth(w io.Writer, info AdaptiveInfo, width int) {
 		discStr = strings.Join(info.Discoveries, ", ")
 	}
 
-	items := []output.Item{
+	items := []terminal.Item{
 		{Key: "Technologies", Value: techStr},
 		{Key: "Discoveries", Value: discStr},
 		{Key: "DFS Policies", Value: strconv.Itoa(info.DFSCount)},
@@ -40,9 +42,7 @@ func PrintAdaptiveWithWidth(w io.Writer, info AdaptiveInfo, width int) {
 		{Key: "Low Priority", Value: strconv.Itoa(info.LowPriorityCount)},
 	}
 
-	output.RenderBlock(w, "ADAPTIVE SUMMARY", items, width)
-}
-
-func PrintAdaptive(w io.Writer, info AdaptiveInfo) {
-	PrintAdaptiveWithWidth(w, info, 0)
+	_ = tm.Emit(owner, func(w io.Writer) {
+		terminal.RenderBlock(w, "ADAPTIVE SUMMARY", items, tm.ContentWidth())
+	})
 }

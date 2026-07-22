@@ -25,6 +25,7 @@ import (
 	"github.com/unsubble/searchit/internal/fuzz"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/output/telemetry"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
@@ -59,6 +60,7 @@ var (
 	flagFuzzQuiet       bool
 	flagFuzzDelay       string
 	flagFuzzRate        float64
+	flagFuzzNoProgress  bool
 	flagFuzzCookie      string
 	flagFuzzProxy       string
 	flagFuzzStrategy    string
@@ -461,9 +463,43 @@ var fuzzCmd = &cobra.Command{
 			outWriter = f
 		}
 
-		var telemetryWriter io.Writer = os.Stdout
-		if outFormat != output.FormatText {
-			telemetryWriter = os.Stderr
+		if outFormat != output.FormatText && outWriter == os.Stdout {
+			cfg.Quiet = true
+		}
+
+		totalCandidates := 1
+		if flagFuzzWordlist != "" {
+			baseCount := countFileLines(flagFuzzWordlist)
+			if len(cfg.Extensions) > 0 {
+				baseCount *= (1 + len(cfg.Extensions))
+			}
+			totalCandidates *= baseCount
+		}
+		if flagFuzzFoo != "" {
+			totalCandidates *= countFileLines(flagFuzzFoo)
+		}
+		if flagFuzzBar != "" {
+			totalCandidates *= countFileLines(flagFuzzBar)
+		}
+		if flagFuzzBuzz != "" {
+			totalCandidates *= countFileLines(flagFuzzBuzz)
+		}
+
+		stateMgr := state.NewManager()
+		stateMgr.Transition(state.PhaseStarting)
+
+		// 1. Create a fresh TerminalManager for the fuzz lifecycle.
+		tm := terminal.New(os.Stdout)
+		if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
+			return err
+		}
+
+		// 2. Formatters & Telemetry output setup.
+		var fmttr output.Formatter
+		if outWriter == os.Stdout {
+			fmttr = output.NewWithManager(outFormat, tm, terminal.OwnerProgress, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+		} else {
+			fmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 		}
 
 		if !cfg.Quiet {
@@ -487,24 +523,6 @@ var fuzzCmd = &cobra.Command{
 			}
 			placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(placeholders, ", "), len(placeholders))
 
-			totalCandidates := 1
-			if flagFuzzWordlist != "" {
-				baseCount := countFileLines(flagFuzzWordlist)
-				if len(cfg.Extensions) > 0 {
-					baseCount *= (1 + len(cfg.Extensions))
-				}
-				totalCandidates *= baseCount
-			}
-			if flagFuzzFoo != "" {
-				totalCandidates *= countFileLines(flagFuzzFoo)
-			}
-			if flagFuzzBar != "" {
-				totalCandidates *= countFileLines(flagFuzzBar)
-			}
-			if flagFuzzBuzz != "" {
-				totalCandidates *= countFileLines(flagFuzzBuzz)
-			}
-
 			excludeStatusStr := cfg.Status.Exclude.String()
 			if excludeStatusStr == "" {
 				excludeStatusStr = "none"
@@ -527,17 +545,19 @@ var fuzzCmd = &cobra.Command{
 				Extensions:      cfg.Extensions,
 			}
 			if flagDebug {
-				telemetry.PrintConfiguration(telemetryWriter, info)
+				telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 			} else {
-				telemetry.PrintNormalConfiguration(telemetryWriter, info)
+				telemetry.PrintNormalConfiguration(tm, terminal.OwnerConfiguration, info)
 			}
 		}
 
-		fmttr := output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-		defer fmttr.Close()
-
-		stateMgr := state.NewManager()
-		stateMgr.Transition(state.PhaseStarting)
+		// Transition out of Starting, into Running, and hand over to Progress.
+		if err := tm.TransitionAndRelease(terminal.PhaseRunning, terminal.OwnerConfiguration); err != nil {
+			return err
+		}
+		if err := tm.AcquireOwner(terminal.OwnerProgress); err != nil {
+			return err
+		}
 
 		ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
 		defer cancelSig()
@@ -547,25 +567,29 @@ var fuzzCmd = &cobra.Command{
 		var progMgr *progress.Manager
 		var renderer *progress.ANSIRenderer
 		var progCmdChan chan console.Command
+		var consoleCtrl *console.Controller
 
-		enableProgress := shouldEnableProgress(cfg, flagNoProgress)
+		enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress)
 		interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
 		var progDone chan struct{}
 		progCtx, cancelProg := context.WithCancel(ctx)
 		defer cancelProg()
 
+		termCtx, cancelTerm := context.WithCancel(ctx)
+		defer cancelTerm()
+
 		if enableProgress {
 			modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
-			renderer = progress.NewANSIRenderer(os.Stdout, flagFuzzURL, nil, modeStr)
-			progMgr = progress.NewManager(collector, renderer, 1*time.Second)
+			renderer = progress.NewANSIRenderer(tm, flagFuzzURL, nil, modeStr)
+			progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 			progMgr.ConfiguredThreads = cfg.Threads
 			progMgr.Formatter = fmttr
 
 			if interactive {
-				consoleCtrl := console.NewController(os.Stdin)
+				consoleCtrl = console.NewController(os.Stdin)
 				progCmdChan = make(chan console.Command, 10)
-				go consoleCtrl.Start(ctx)
+				go consoleCtrl.Start(termCtx)
 
 				go func() {
 					for c := range consoleCtrl.Commands() {
@@ -659,7 +683,10 @@ var fuzzCmd = &cobra.Command{
 			Cache:           appState.FingerprintCache,
 		}
 
+		collector.SetQueuedJobs(int64(totalCandidates))
+
 		err = runner.Run(ctx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
+			collector.DecrementQueuedJobs()
 			if r.Accepted {
 				engRes := engine.Result{
 					URL:        r.URL,
@@ -689,18 +716,34 @@ var fuzzCmd = &cobra.Command{
 			return err
 		}
 
+		if fmttr != nil {
+			_ = fmttr.Close()
+		}
+
 		stateMgr.Transition(state.PhaseWaitingWorkers)
+		_ = tm.TransitionTo(terminal.PhaseWaitingWorkers)
+
 		stateMgr.Transition(state.PhaseFinalizing)
+		_ = tm.TransitionTo(terminal.PhaseFinalizing)
+
+		stateMgr.Transition(state.PhaseTerminalShutdown)
+		_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
 
 		if enableProgress && renderer != nil {
 			cancelProg()
-			renderer.Close()
 			if progDone != nil {
 				<-progDone
 			}
+			if interactive && consoleCtrl != nil {
+				cancelTerm()
+				<-consoleCtrl.Done()
+			}
+			_ = renderer.Close(terminal.OwnerProgress)
 		}
+		_ = tm.ReleaseOwner(terminal.OwnerProgress)
 
 		stateMgr.Transition(state.PhaseSummary)
+		_ = tm.AcquireAndTransition(terminal.OwnerSummary, terminal.PhaseSummary)
 
 		if !cfg.Quiet {
 			snap := runner.Collector.Snapshot()
@@ -709,7 +752,7 @@ var fuzzCmd = &cobra.Command{
 				candidatesCount = int(snap.RequestsSent)
 			}
 
-			telemetry.PrintSummary(telemetryWriter, telemetry.SummaryInfo{
+			telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 				IsFuzz:          true,
 				Strategy:        cfg.FuzzStrategy,
 				AdaptiveEnabled: cfg.Adaptive,
@@ -717,15 +760,17 @@ var fuzzCmd = &cobra.Command{
 				Findings:        int(snap.Discovered),
 				Snapshot:        snap,
 			}, flagDebug)
+			_ = tm.TransitionAndRelease(terminal.PhasePipeline, terminal.OwnerSummary)
 
 			stateMgr.Transition(state.PhasePipeline)
+			_ = tm.AcquireOwner(terminal.OwnerPipeline)
 
 			if flagDebug {
 				if cfg.Adaptive && runner.Summary != nil {
 					techs := append([]string(nil), runner.Summary.Technologies...)
 					sort.Strings(techs)
 
-					telemetry.PrintAdaptive(telemetryWriter, telemetry.AdaptiveInfo{
+					telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
 						Technologies:        techs,
 						Discoveries:         runner.Summary.Discoveries,
 						DFSCount:            int(runner.Summary.DFSCount),
@@ -737,8 +782,13 @@ var fuzzCmd = &cobra.Command{
 					})
 				}
 
-				telemetry.PrintPipelineReconciliation(telemetryWriter)
+				telemetry.PrintPipelineReconciliation(tm, terminal.OwnerPipeline)
 			}
+			_ = tm.TransitionAndRelease(terminal.PhaseDone, terminal.OwnerPipeline)
+		} else {
+			_ = tm.TransitionTo(terminal.PhasePipeline)
+			stateMgr.Transition(state.PhasePipeline)
+			_ = tm.TransitionTo(terminal.PhaseDone)
 		}
 
 		stateMgr.Transition(state.PhaseDone)
@@ -908,6 +958,7 @@ func init() {
 	fuzzCmd.Flags().BoolVarP(&flagFuzzQuiet, "quiet", "q", false, "disable status prefix printing in stdout")
 	fuzzCmd.Flags().StringVar(&flagFuzzDelay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	fuzzCmd.Flags().Float64Var(&flagFuzzRate, "rate", 0, "maximum requests per second rate limit")
+	fuzzCmd.Flags().BoolVar(&flagFuzzNoProgress, "no-progress", false, "disable progress output")
 	fuzzCmd.Flags().StringVarP(&flagFuzzCookie, "cookie", "b", "", "HTTP request cookies with placeholders")
 	fuzzCmd.Flags().StringVar(&flagFuzzProxy, "proxy", "", "HTTP proxy URL to use for requests")
 

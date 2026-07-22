@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 )
 
 type PerformanceInfo struct {
@@ -13,7 +13,7 @@ type PerformanceInfo struct {
 	RequestsSent int64
 }
 
-func GetPerformanceItems(info PerformanceInfo) []output.Item {
+func GetPerformanceItems(info PerformanceInfo) []terminal.Item {
 	elapsed := time.Since(info.StartTime)
 	wallTimeSec := elapsed.Seconds()
 
@@ -22,7 +22,7 @@ func GetPerformanceItems(info PerformanceInfo) []output.Item {
 		reqPerSec = int64(float64(info.RequestsSent) / wallTimeSec)
 	}
 
-	return []output.Item{
+	return []terminal.Item{
 		{Key: "Wall Time", Value: fmt.Sprintf("%.2f sec", wallTimeSec)},
 		{Key: "Req/sec", Value: fmt.Sprintf("%d", reqPerSec)},
 	}
@@ -31,6 +31,6 @@ func GetPerformanceItems(info PerformanceInfo) []output.Item {
 func PrintPerformance(w io.Writer, info PerformanceInfo) {
 	items := GetPerformanceItems(info)
 	for _, item := range items {
-		fmt.Fprintln(w, output.FormatRow(item.Key, item.Value, 0))
+		fmt.Fprintln(w, terminal.FormatDotRow(item.Key, item.Value, terminal.DefaultPadWidth, 0))
 	}
 }

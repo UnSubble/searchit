@@ -64,6 +64,7 @@ func init() {
 		&flagDebug,
 		"debug",
 		false,
-		"debug output",
+		"enable debug logging",
 	)
+
 }

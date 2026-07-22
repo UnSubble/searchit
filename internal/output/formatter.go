@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/output/terminal"
 )
 
 // Formatter abstracts output presentation to decouple CLI presentation from the scanning engine.
@@ -86,8 +87,8 @@ func FormatFromPath(path string) Format {
 	return FormatFromExtension(filepath.Ext(path))
 }
 
-// New constructs the appropriate Formatter for fmt, writing to w.
-// For FormatText the quiet flag controls whether the status prefix is omitted.
+// New constructs the appropriate Formatter for fmt, writing directly to w.
+// Use this for writing to files or secondary outputs.
 func New(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool) Formatter {
 	switch f {
 	case FormatJSON:
@@ -101,4 +102,38 @@ func New(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool) Fo
 	default:
 		return NewTextFormatter(w, quiet, showHeaders, showTitle)
 	}
+}
+
+// NewWithManager constructs a Formatter that writes through the TerminalManager.
+// Use this for stdout formatting so it respects the global output lock.
+// Currently only FormatText supports this directly via TerminalTextFormatter.
+func NewWithManager(f Format, tm *terminal.Manager, owner terminal.Owner, quiet bool, showHeaders bool, showTitle bool) Formatter {
+	switch f {
+	case FormatText:
+		return NewTerminalTextFormatter(tm, owner, quiet, showHeaders, showTitle)
+	default:
+		// Other formats don't write to the terminal natively, but if someone
+		// passes one, we create an adapter that routes io.Writer calls through TM.
+		// (This covers the edge case where a user requests JSON output to stdout).
+		return New(f, newTerminalAdapter(tm, owner), quiet, showHeaders, showTitle)
+	}
+}
+
+// terminalAdapter wraps a Manager to implement io.Writer for legacy formatters.
+type terminalAdapter struct {
+	tm    *terminal.Manager
+	owner terminal.Owner
+}
+
+func newTerminalAdapter(tm *terminal.Manager, owner terminal.Owner) io.Writer {
+	return &terminalAdapter{tm: tm, owner: owner}
+}
+
+func (t *terminalAdapter) Write(p []byte) (n int, err error) {
+	// Must capture 'p' safely because Emit's closure runs synchronously.
+	// But note: io.Writer contract allows synchronous write, so we can just pass it.
+	_ = t.tm.Emit(t.owner, func(w io.Writer) {
+		n, err = w.Write(p)
+	})
+	return
 }

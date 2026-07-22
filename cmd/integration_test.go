@@ -118,8 +118,8 @@ func TestIntegration_Scans(t *testing.T) {
 			t.Fatalf("command failed: %v", err)
 		}
 
-		if !strings.Contains(out, srv.URL+", "+srv.URL) {
-			t.Errorf("expected targets to be printed in configuration block. Output:\n%s", out)
+		if strings.Count(out, "SCAN CONFIGURATION") != 2 {
+			t.Errorf("expected 2 separate scan configurations for multi-target scan. Output:\n%s", out)
 		}
 	})
 

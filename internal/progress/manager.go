@@ -3,37 +3,40 @@ package progress
 import (
 	"context"
 	"io"
-	"os"
-	"sync"
 	"time"
 
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
 // Manager handles periodic rendering of runtime statistics.
-// It also acts as a central terminal/output manager to prevent concurrent prints to stdout.
+//
+// All terminal output goes through TM.Emit(OwnerProgress, ...) which holds
+// the single global output lock. There is no local mutex: the TerminalManager's
+// sync.Mutex is the ONE global output lock for the entire process.
 type Manager struct {
+	TM                *terminal.Manager
 	Collector         *stats.Collector
-	Renderer          Renderer
+	Renderer          *ANSIRenderer
 	Interval          time.Duration
 	ConfiguredThreads int
+	Formatter         output.Formatter
 
-	// Central terminal/output manager state
-	mu              sync.Mutex
-	Formatter       output.Formatter
 	isStatsActive   bool
 	bufferedResults []engine.Result
 }
 
 // NewManager creates a new progress Manager.
-func NewManager(collector *stats.Collector, renderer Renderer, interval time.Duration) *Manager {
+// tm must have OwnerProgress already acquired by the caller before Start is called.
+func NewManager(tm *terminal.Manager, collector *stats.Collector, renderer *ANSIRenderer, interval time.Duration) *Manager {
 	if interval <= 0 {
 		interval = 1 * time.Second
 	}
 	return &Manager{
+		TM:        tm,
 		Collector: collector,
 		Renderer:  renderer,
 		Interval:  interval,
@@ -41,12 +44,8 @@ func NewManager(collector *stats.Collector, renderer Renderer, interval time.Dur
 }
 
 // Start launches the periodic refresh loop. Blocks until the context is cancelled.
-// It also listens for user commands from cmdChan if provided.
-//
-// The statistics view is implemented as a nested select loop inside Start().
-// While the stats screen is active, all ticker ticks are absorbed and no
-// progress renders occur. The outer loop resumes only after the user presses
-// any key (CommandProgress) or the context is cancelled.
+// The caller must hold OwnerProgress on TM before calling Start and release it
+// after Start returns.
 func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 	ticker := time.NewTicker(m.Interval)
 	defer ticker.Stop()
@@ -54,18 +53,19 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 	for {
 		select {
 		case <-ctx.Done():
-			// Final render before exit.
-			m.mu.Lock()
-			_ = m.Renderer.Render(m.Collector.Snapshot())
-			m.mu.Unlock()
+			// Final render before the goroutine exits.
+			// The global TM lock ensures this cannot interleave with Close().
+			_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+				m.Renderer.renderInto(w, m.Collector.Snapshot())
+			})
 			return
 
 		case <-ticker.C:
-			m.mu.Lock()
 			if !m.isStatsActive {
-				_ = m.Renderer.Render(m.Collector.Snapshot())
+				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+					m.Renderer.renderInto(w, m.Collector.Snapshot())
+				})
 			}
-			m.mu.Unlock()
 
 		case cmd, ok := <-cmdChan:
 			if !ok {
@@ -74,33 +74,24 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 			}
 			switch cmd {
 			case console.CommandProgress:
-				m.mu.Lock()
 				if !m.isStatsActive {
-					_ = m.Renderer.Render(m.Collector.Snapshot())
+					_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+						m.Renderer.renderInto(w, m.Collector.Snapshot())
+					})
 				}
-				m.mu.Unlock()
 
 			case console.CommandStats:
-				m.mu.Lock()
 				m.isStatsActive = true
-				m.mu.Unlock()
-
-				// 1. Render the statistics report (clears terminal internally).
+				// Switch owner to Statistics and render the full-screen report.
+				_ = m.TM.SwitchOwner(terminal.OwnerProgress, terminal.OwnerStatistics)
 				m.renderStatsReport()
-
-				// 2. Block here until the user presses any key (controller
-				//    sends CommandProgress) or the scan context is cancelled.
-				//    All ticker ticks are silently discarded while we wait.
 				m.awaitStatsExit(ctx, ticker, &cmdChan)
 			}
 		}
 	}
 }
 
-// awaitStatsExit blocks the event loop while the statistics view is visible.
-// Ticker ticks are absorbed. The loop exits on CommandProgress (any key),
-// context cancellation, or cmdChan closure. After exiting, the live dashboard
-// is restored by clearing the terminal and re-rendering.
+// awaitStatsExit blocks while the statistics view is visible.
 func (m *Manager) awaitStatsExit(
 	ctx context.Context,
 	ticker *time.Ticker,
@@ -109,7 +100,8 @@ func (m *Manager) awaitStatsExit(
 	for {
 		select {
 		case <-ctx.Done():
-			// Scan is over; no need to restore.
+			// Switch back before exiting.
+			_ = m.TM.SwitchOwner(terminal.OwnerStatistics, terminal.OwnerProgress)
 			return
 
 		case <-ticker.C:
@@ -118,148 +110,94 @@ func (m *Manager) awaitStatsExit(
 		case cmd2, ok2 := <-*cmdChan:
 			if !ok2 {
 				*cmdChan = nil
-				// Channel closed; restore dashboard and stop waiting.
 				m.restoreDashboard()
 				return
 			}
 			switch cmd2 {
 			case console.CommandProgress:
-				// Any key was pressed: restore the live dashboard.
 				m.restoreDashboard()
 				return
 			case console.CommandStop:
-				// Graceful stop is handled by the caller cancelling the
-				// context; we do not need to act here.
+				// Graceful stop is handled by the caller cancelling the context.
 			}
-			// Any other command while in stats view is ignored.
 		}
 	}
 }
 
-// renderStatsReport renders the full-screen statistics report.
-// For ANSI renderers, the terminal is cleared inside RenderStatsViewFull.
+// renderStatsReport renders the full-screen statistics view under OwnerStatistics.
 func (m *Manager) renderStatsReport() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	tr, isANSI := m.Renderer.(*ANSIRenderer)
-	if !isANSI {
-		m.printStatsLocked()
-		return
-	}
-
-	var w io.Writer = os.Stdout
-	if tr.Writer != nil {
-		w = tr.Writer
-	}
-
 	snap := m.Collector.Snapshot()
-	recent := tr.RecentEntries()
-	RenderStatsViewFull(w, snap, m.ConfiguredThreads, recent, tr.Target, tr.Profiles, tr.Mode)
+	recent := m.Renderer.RecentEntries()
+	_ = m.TM.Emit(terminal.OwnerStatistics, func(w io.Writer) {
+		RenderStatsViewFull(w, m.TM.ContentWidth(), snap, m.ConfiguredThreads, recent,
+			m.Renderer.Target, m.Renderer.Profiles, m.Renderer.Mode)
+	})
 }
 
-// restoreDashboard clears the terminal, prints all buffered results, and re-renders the live dashboard.
+// restoreDashboard clears the stats view, prints buffered results, re-renders dashboard.
 func (m *Manager) restoreDashboard() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	_ = m.TM.SwitchOwner(terminal.OwnerStatistics, terminal.OwnerProgress)
 	m.isStatsActive = false
 
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		tr.Clear()
-
-		// Print all buffered results
+	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		m.Renderer.clearInto(w)
 		for _, r := range m.bufferedResults {
 			if m.Formatter != nil {
-				_ = m.Formatter.Print(r)
+				if pt, ok := m.Formatter.(interface {
+					PrintTo(io.Writer, engine.Result) error
+				}); ok {
+					_ = pt.PrintTo(w, r)
+				} else {
+					_ = m.Formatter.Print(r)
+				}
 			}
 		}
 		m.bufferedResults = nil
-
-		// Render the live dashboard
-		_ = tr.Render(m.Collector.Snapshot())
-	} else {
-		// Non-ANSI renderer
-		for _, r := range m.bufferedResults {
-			if m.Formatter != nil {
-				_ = m.Formatter.Print(r)
-			}
-		}
-		m.bufferedResults = nil
-		_ = m.Renderer.Render(m.Collector.Snapshot())
-	}
+		m.Renderer.renderInto(w, m.Collector.Snapshot())
+	})
 }
 
-// PrintStats is the backward-compatible path used by non-ANSI renderers and tests.
-func (m *Manager) PrintStats() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.printStatsLocked()
-}
-
-func (m *Manager) printStatsLocked() {
-	var w io.Writer = os.Stdout
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		w = tr.Writer
-	} else if tr, ok := m.Renderer.(*TextRenderer); ok {
-		w = tr.Writer
-	}
-
-	snap := m.Collector.Snapshot()
-
-	var recent []discoveryEntry
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		recent = tr.RecentEntries()
-	}
-
-	target, profiles, mode := "", []string(nil), ""
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		target, profiles, mode = tr.Target, tr.Profiles, tr.Mode
-	}
-
-	RenderStatsViewFull(w, snap, m.ConfiguredThreads, recent, target, profiles, mode)
-
-	if _, ok := m.Renderer.(*ANSIRenderer); ok {
-		_ = m.Renderer.Render(snap)
-	}
-}
-
-// RecordResult feeds a discovered url into the renderer if it supports results registration.
+// RecordResult feeds a discovered URL into the renderer's recent list.
+// Safe to call from any goroutine (ANSIRenderer.AddResult is protected by its own mu).
 func (m *Manager) RecordResult(statusCode int, urlStr string) {
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		tr.AddResult(statusCode, urlStr)
-	}
+	m.Renderer.AddResult(statusCode, urlStr)
 }
 
-// HandleResult routes a discovered result through the terminal/output manager.
-// If stats view is active, the result is buffered in memory.
-// If live dashboard is active, the dashboard is cleared, the result is formatted and printed,
-// and the dashboard is re-rendered.
+// HandleResult routes a discovered result through the terminal manager.
+// If the statistics view is active, the result is buffered.
+// Otherwise: clear the dashboard, print the result, re-render the dashboard.
+// All of this happens atomically under the TM global lock.
 func (m *Manager) HandleResult(r engine.Result) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	// Record in the renderer's recent list (protected by its own mu).
+	m.Renderer.AddResult(r.StatusCode, r.URL)
 
-	// 1. Record in ANSIRenderer's recent list
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		tr.AddResult(r.StatusCode, r.URL)
-	}
-
-	// 2. Buffer if stats screen is active
 	if m.isStatsActive {
 		m.bufferedResults = append(m.bufferedResults, r)
 		return
 	}
 
-	// 3. Otherwise print result cleanly
-	if tr, ok := m.Renderer.(*ANSIRenderer); ok {
-		tr.Clear()
+	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		m.Renderer.clearInto(w)
 		if m.Formatter != nil {
-			_ = m.Formatter.Print(r)
+			if pt, ok := m.Formatter.(interface {
+				PrintTo(io.Writer, engine.Result) error
+			}); ok {
+				_ = pt.PrintTo(w, r)
+			} else {
+				_ = m.Formatter.Print(r)
+			}
 		}
-		_ = tr.Render(m.Collector.Snapshot())
-	} else {
-		if m.Formatter != nil {
-			_ = m.Formatter.Print(r)
-		}
-	}
+		m.Renderer.renderInto(w, m.Collector.Snapshot())
+	})
+}
+
+// PrintStats renders the full-screen statistics report.
+// Exported for use by cmd layer in non-interactive mode.
+func (m *Manager) PrintStats() {
+	snap := m.Collector.Snapshot()
+	recent := m.Renderer.RecentEntries()
+	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		RenderStatsViewFull(w, m.TM.ContentWidth(), snap, m.ConfiguredThreads, recent,
+			m.Renderer.Target, m.Renderer.Profiles, m.Renderer.Mode)
+	})
 }

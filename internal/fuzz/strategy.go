@@ -16,6 +16,7 @@ import (
 	"github.com/unsubble/searchit/internal/adaptive/types"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
 	"golang.org/x/time/rate"
 )
@@ -613,11 +614,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			return scoredItems[i].score > scoredItems[j].score
 		})
 		for _, item := range scoredItems {
-			dots := strings.Repeat(".", 15-len(item.word))
-			if len(dots) < 3 {
-				dots = "..."
-			}
-			fmt.Printf("    %s %s %d\n", item.word, dots, item.score)
+			fmt.Fprintln(os.Stdout, "    "+terminal.FormatDotRow(item.word, fmt.Sprintf("%d", item.score), 15, 0))
 		}
 		fmt.Fprint(os.Stdout, "\nTraversal decisions:\n\n")
 	}
@@ -691,11 +688,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			engine.Summary.RecordTraversal(dec.Policy)
 
 			if !r.Quiet {
-				dots := strings.Repeat(".", 12-len(fooVal))
-				if len(dots) < 3 {
-					dots = "..."
-				}
-				fmt.Printf("    /%s %s %s (rule: %s)\n", fooVal, dots, dec.Policy, dec.Rule)
+				val := fmt.Sprintf("%s (rule: %s)", dec.Policy, dec.Rule)
+				fmt.Fprintln(os.Stdout, "    "+terminal.FormatDotRow("/"+fooVal, val, 12, 0))
 			}
 
 			decisions = append(decisions, branchDecision{

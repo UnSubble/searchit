@@ -3,16 +3,12 @@ package progress
 import (
 	"fmt"
 	"io"
-	"math"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/unsubble/searchit/internal/console"
-	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
-	"golang.org/x/term"
 )
 
 type discoveryEntry struct {
@@ -21,51 +17,48 @@ type discoveryEntry struct {
 }
 
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
+//
+// All writes go through the TerminalManager (TM), which holds the single global
+// output lock. The renderer's own mu protects only the recent-discoveries slice
+// and lastLineCount, which may be accessed from multiple goroutines concurrently.
 type ANSIRenderer struct {
-	Writer        io.Writer
-	Target        string
-	Profiles      []string
-	Mode          string
-	limit         int
-	lastLineCount int
+	TM       *terminal.Manager
+	Target   string
+	Profiles []string
+	Mode     string
+	limit    int
+	frozen   bool // true if the underlying writer is a real TTY
 
-	mu     sync.Mutex
-	recent []discoveryEntry
-	frozen bool
+	mu            sync.Mutex // protects recent + lastLineCount only
+	recent        []discoveryEntry
+	lastLineCount int
 }
 
-// NewANSIRenderer creates a new ANSIRenderer writing to the provided Writer.
-// Automatically hides terminal cursor.
-func NewANSIRenderer(w io.Writer, target string, profiles []string, mode string) *ANSIRenderer {
-	if w == nil {
-		w = os.Stdout
-	}
-	// Hide cursor: \033[?25l
-	fmt.Fprint(w, "\033[?25l")
-
-	frozen := false
-	if f, ok := w.(*os.File); ok && console.IsTerminal(f.Fd()) {
-		frozen = true
-	}
-
-	return &ANSIRenderer{
-		Writer:   w,
+// NewANSIRenderer creates a new ANSIRenderer.
+// The cursor-hide escape is emitted via TM.Emit so it goes through the global lock.
+func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mode string) *ANSIRenderer {
+	tr := &ANSIRenderer{
+		TM:       tm,
 		Target:   target,
 		Profiles: profiles,
 		Mode:     mode,
 		limit:    5,
-		frozen:   frozen,
+		frozen:   true, // assume TTY; non-TTY writes are harmless
 	}
+	// Hide cursor — goes through global lock.
+	_ = tm.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		fmt.Fprint(w, "\033[?25l")
+	})
+	return tr
 }
 
-// AddResult records a successful discovery path.
+// AddResult records a successful discovery (called from worker goroutines).
 func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string) {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-
 	path := extractPath(tr.Target, urlStr)
 	entry := discoveryEntry{statusCode: statusCode, path: path}
 
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
 	if len(tr.recent) >= tr.limit {
 		tr.recent = append(tr.recent[1:], entry)
 	} else {
@@ -82,64 +75,79 @@ func (tr *ANSIRenderer) RecentEntries() []discoveryEntry {
 	return copied
 }
 
-// Close restores the terminal state by clearing the progress view and showing the cursor.
-func (tr *ANSIRenderer) Close() error {
-	tr.Clear()
-	// Show cursor (\033[?25h)
-	fmt.Fprint(tr.Writer, "\033[?25h")
-	return nil
-}
-
-// ResetLineCount resets the internal line counter so the next Render call
-// prints fresh without attempting to cursor-up over non-existent lines.
-// Call this after an external operation that cleared the terminal.
+// ResetLineCount resets the internal line counter. Call this after an external
+// operation cleared the terminal so the next Render doesn't try to cursor-up
+// over non-existent lines.
 func (tr *ANSIRenderer) ResetLineCount() {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	tr.lastLineCount = 0
 }
 
-// Clear erases the rendered progress block by moving the cursor up and clearing lines.
-func (tr *ANSIRenderer) Clear() {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-
-	if tr.frozen && tr.lastLineCount > 0 {
-		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lastLineCount)
-		for i := 0; i < tr.lastLineCount; i++ {
-			fmt.Fprint(tr.Writer, "\r\033[K\n")
-		}
-		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lastLineCount)
+// Close restores the terminal state (cursor visible).
+// Must be called while the caller holds OwnerProgress on TM.
+func (tr *ANSIRenderer) Close(owner terminal.Owner) error {
+	return tr.TM.Emit(owner, func(w io.Writer) {
+		tr.clearInto(w)
+		// Emitting \n ensures the cursor is firmly at column 0 for subsequent blocks.
+		fmt.Fprint(w, "\033[?25h\n")
+		tr.mu.Lock()
 		tr.lastLineCount = 0
+		tr.mu.Unlock()
+	})
+}
+
+// Render issues a full progress-block render via TM.Emit.
+// Safe to call from any goroutine; serialized by the TM global lock.
+func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
+	return tr.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		tr.renderInto(w, snap)
+	})
+}
+
+// Clear erases the current progress block via TM.Emit.
+func (tr *ANSIRenderer) Clear() error {
+	return tr.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		tr.clearInto(w)
+	})
+}
+
+// ─── Internal write helpers (called inside TM.Emit — TM lock already held) ───
+
+// clearInto erases the rendered progress block. Called INSIDE an Emit closure.
+func (tr *ANSIRenderer) clearInto(w io.Writer) {
+	tr.mu.Lock()
+	lc := tr.lastLineCount
+	tr.mu.Unlock()
+
+	if tr.frozen && lc > 0 {
+		fmt.Fprintf(w, "\033[%dA", lc)
+		for i := 0; i < lc; i++ {
+			fmt.Fprint(w, "\r\033[K\n")
+		}
+		fmt.Fprintf(w, "\033[%dA", lc)
+		tr.mu.Lock()
+		tr.lastLineCount = 0
+		tr.mu.Unlock()
 	}
 }
 
-// Render overwrites the progress block by composing sections and passing them to draw().
-func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
+// renderInto draws the full progress block. Called INSIDE an Emit closure.
+func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
+	contentWidth := tr.TM.ContentWidth()
 
-	// 1. Get Terminal Width dynamically
-	termWidth := 80
-	if f, ok := tr.Writer.(*os.File); ok && console.IsTerminal(f.Fd()) {
-		if w, _, err := term.GetSize(int(f.Fd())); err == nil {
-			termWidth = w
-		}
-	}
-
-	// 2. Content Width (clamp between 72 and 96 columns)
-	contentWidth := clamp(termWidth-8, 72, 96)
-
-	// 3. Profiles string helper
 	profilesStr := "none"
 	if len(tr.Profiles) > 0 {
 		profilesStr = strings.Join(tr.Profiles, " -> ")
 	}
 
-	// 4. Fixed divider around 48 characters
-	divider := strings.Repeat("─", 48)
+	divider := terminal.Separator(contentWidth, terminal.ThinSeparatorChar)
 
-	// 5. Compose the layout parts
+	tr.mu.Lock()
+	recentCopy := make([]discoveryEntry, len(tr.recent))
+	copy(recentCopy, tr.recent)
+	tr.mu.Unlock()
+
 	var lines []string
 	lines = append(lines, tr.renderHeader(profilesStr, contentWidth)...)
 	lines = append(lines, "")
@@ -149,24 +157,16 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 	lines = append(lines, "")
 	lines = append(lines, "Recent discoveries")
 	lines = append(lines, divider)
-	lines = append(lines, tr.renderDiscoveries(contentWidth)...)
+	lines = append(lines, tr.renderDiscoveries(recentCopy, contentWidth)...)
 	lines = append(lines, "")
 	lines = append(lines, tr.renderControls())
 
-	// 6. Draw with a small constant left margin (2 spaces)
-	tr.draw(lines, "  ")
-
-	return nil
+	tr.drawInto(w, lines, "  ")
 }
 
 func (tr *ANSIRenderer) renderHeader(profilesStr string, contentWidth int) []string {
 	formatHeaderLine := func(label, value string) string {
-		maxValLen := contentWidth - 12
-		val := value
-		if len(val) > maxValLen && maxValLen > 3 {
-			val = val[:maxValLen-3] + "..."
-		}
-		return fmt.Sprintf("%-12s%s", label, val)
+		return terminal.FormatDotRow(label, value, 12, contentWidth)
 	}
 	return []string{
 		formatHeaderLine("Target", tr.Target),
@@ -176,26 +176,11 @@ func (tr *ANSIRenderer) renderHeader(profilesStr string, contentWidth int) []str
 }
 
 func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
-	elapsed := time.Since(snap.StartTime)
-	h := int(elapsed.Hours())
-	m := int(elapsed.Minutes()) % 60
-	s := int(elapsed.Seconds()) % 60
-	elapsedStr := fmt.Sprintf("%02d:%02d:%02d", h, m, s)
-
-	etaStr := "-"
-	if snap.RequestsPerSecond > 0 && snap.QueuedJobs > 0 {
-		etaSecs := float64(snap.QueuedJobs) / snap.RequestsPerSecond
-		if etaSecs < 1.0 {
-			etaSecs = 1.0
-		}
-		eh := int(etaSecs / 3600)
-		em := int(etaSecs/60) % 60
-		es := int(math.Ceil(etaSecs)) % 60
-		etaStr = fmt.Sprintf("%02d:%02d:%02d", eh, em, es)
-	}
+	elapsedStr := terminal.FormatElapsed(time.Since(snap.StartTime))
+	etaStr := terminal.FormatETA(snap.QueuedJobs, snap.RequestsPerSecond)
 
 	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
-		return output.FormatTwoColumnRow(leftKey, leftVal, rightKey, rightVal, 0)
+		return terminal.FormatTwoColumnRow(leftKey, leftVal, rightKey, rightVal)
 	}
 
 	return []string{
@@ -209,16 +194,16 @@ func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
 		"",
 		formatStatsRow("Filtered", fmt.Sprintf("%d", snap.RequestsFiltered), "Failed", fmt.Sprintf("%d", snap.RequestsFailed)),
 		"",
-		formatStatsRow("Latency", formatLatency(snap.AverageLatency), "Retries", fmt.Sprintf("%d / %d", snap.Retries, snap.Redirects)),
+		formatStatsRow("Latency", terminal.FormatLatency(snap.AverageLatency), "Retries", fmt.Sprintf("%d / %d", snap.Retries, snap.Redirects)),
 	}
 }
 
-func (tr *ANSIRenderer) renderDiscoveries(contentWidth int) []string {
-	if len(tr.recent) == 0 {
+func (tr *ANSIRenderer) renderDiscoveries(recent []discoveryEntry, contentWidth int) []string {
+	if len(recent) == 0 {
 		return []string{"No discoveries yet."}
 	}
 	var lines []string
-	for _, entry := range tr.recent {
+	for _, entry := range recent {
 		statusPrefix := fmt.Sprintf("%d ", entry.statusCode)
 		maxPathLen := contentWidth - len(statusPrefix)
 		p := entry.path
@@ -234,43 +219,33 @@ func (tr *ANSIRenderer) renderControls() string {
 	return "Controls: p Refresh · s Statistics · q Graceful stop"
 }
 
-func (tr *ANSIRenderer) draw(lines []string, marginStr string) {
-	// 1. Move cursor back up if we rendered before
-	if tr.frozen && tr.lastLineCount > 0 {
-		fmt.Fprintf(tr.Writer, "\033[%dA", tr.lastLineCount)
+// drawInto writes the progress block to w. Called INSIDE an Emit closure.
+func (tr *ANSIRenderer) drawInto(w io.Writer, lines []string, marginStr string) {
+	tr.mu.Lock()
+	lc := tr.lastLineCount
+	tr.mu.Unlock()
+
+	if tr.frozen && lc > 0 {
+		fmt.Fprintf(w, "\033[%dA", lc)
 	}
 
-	// 2. Print the new lines
 	for _, line := range lines {
-		fmt.Fprintf(tr.Writer, "\r\033[K%s%s\n", marginStr, line)
+		fmt.Fprintf(w, "\r\033[K%s%s\n", marginStr, line)
 	}
 
-	// 3. Clear any remaining lines from the previous draw
-	if tr.frozen && tr.lastLineCount > len(lines) {
-		diff := tr.lastLineCount - len(lines)
+	if tr.frozen && lc > len(lines) {
+		diff := lc - len(lines)
 		for i := 0; i < diff; i++ {
-			fmt.Fprint(tr.Writer, "\r\033[K\n")
+			fmt.Fprint(w, "\r\033[K\n")
 		}
-		// Move cursor back up by the diff so it sits exactly at the end of the printed lines
-		fmt.Fprintf(tr.Writer, "\033[%dA", diff)
+		fmt.Fprintf(w, "\033[%dA", diff)
 	}
 
 	if tr.frozen {
+		tr.mu.Lock()
 		tr.lastLineCount = len(lines)
+		tr.mu.Unlock()
 	}
-}
-
-func formatLatency(d time.Duration) string {
-	if d <= 0 {
-		return "-"
-	}
-	if d < time.Millisecond {
-		return fmt.Sprintf("%dµs", d.Microseconds())
-	}
-	if d < time.Second {
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-	return fmt.Sprintf("%.2fs", d.Seconds())
 }
 
 func extractPath(target, urlStr string) string {
@@ -283,14 +258,4 @@ func extractPath(target, urlStr string) string {
 		return p
 	}
 	return urlStr
-}
-
-func clamp(v, min, max int) int {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
 }

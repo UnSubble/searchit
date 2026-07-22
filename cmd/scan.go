@@ -23,6 +23,7 @@ import (
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/output/telemetry"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
@@ -446,7 +447,7 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		// Determine the output writer (file or stdout).
+		// Determine the output writer (file or stdout) for the formatter.
 		var outWriter io.Writer = os.Stdout
 		if cfg.OutputFile != "" {
 			f, err := os.OpenFile(cfg.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
@@ -464,51 +465,9 @@ var scanCmd = &cobra.Command{
 			fmt_ = output.FormatText
 		}
 
-		var telemetryWriter io.Writer = os.Stdout
-		if fmt_ != output.FormatText {
-			telemetryWriter = os.Stderr
+		if cfg.OutputFormat != "text" && outWriter == os.Stdout {
+			cfg.Quiet = true
 		}
-
-		if !cfg.Quiet {
-			targetStr := strings.Join(cfg.URLs, ", ")
-			primaryWl := cfg.Wordlist
-			if primaryWl == "" {
-				primaryWl = "embedded"
-			}
-			strategyStr := cfg.Strategy.String()
-			if cfg.Recursive {
-				strategyStr = fmt.Sprintf("recursive (%s)", strategyStr)
-			} else {
-				strategyStr = "non-recursive"
-			}
-			excludeStatusStr := cfg.Status.Exclude.String()
-			if excludeStatusStr == "" {
-				excludeStatusStr = "none"
-			}
-			info := telemetry.ConfigInfo{
-				Target:          targetStr,
-				Method:          cfg.Method,
-				Workers:         cfg.Threads,
-				Strategy:        strategyStr,
-				AdaptiveEnabled: cfg.Adaptive,
-				WordlistsCount:  1,
-				PrimaryWordlist: primaryWl,
-				HTTPVersion:     "auto",
-				FollowRedirects: cfg.FollowRedirects,
-				FilterStatus:    excludeStatusStr,
-				TotalCandidates: totalWords,
-				IsFuzz:          false,
-				Extensions:      cfg.Extensions,
-			}
-			if flagDebug {
-				telemetry.PrintConfiguration(telemetryWriter, info)
-			} else {
-				telemetry.PrintNormalConfiguration(telemetryWriter, info)
-			}
-		}
-
-		fmttr := output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-		defer fmttr.Close()
 
 		var limiter *rate.Limiter
 		if cfg.Rate > 0 {
@@ -537,8 +496,81 @@ var scanCmd = &cobra.Command{
 		fs.ShowHeaders = cfg.ShowHeaders
 		fs.ShowTitle = cfg.ShowTitle
 
+		var globalFmttr output.Formatter
+		if cfg.OutputFormat != "text" {
+			globalFmttr = output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			if globalFmttr != nil {
+				defer globalFmttr.Close()
+			}
+		}
+
 		for _, targetURL := range cfg.URLs {
 			scanCtx, scanCancel := context.WithCancel(ctx)
+			// Ensure the cancel function is always called to avoid context leaks
+			// even if we return early from within the loop.
+			defer scanCancel()
+
+			// 1. Create a fresh TerminalManager for this target's lifecycle.
+			tm := terminal.New(os.Stdout)
+			if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
+				return err
+			}
+
+			// 2. Formatters & Telemetry output setup.
+			var fmttr output.Formatter
+			if globalFmttr != nil {
+				fmttr = globalFmttr
+			} else if outWriter == os.Stdout {
+				fmttr = output.NewWithManager(fmt_, tm, terminal.OwnerProgress, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			} else {
+				fmttr = output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			}
+
+			if !cfg.Quiet {
+				primaryWl := cfg.Wordlist
+				if primaryWl == "" {
+					primaryWl = "embedded"
+				}
+				strategyStr := cfg.Strategy.String()
+				if cfg.Recursive {
+					strategyStr = fmt.Sprintf("recursive (%s)", strategyStr)
+				} else {
+					strategyStr = "non-recursive"
+				}
+				excludeStatusStr := cfg.Status.Exclude.String()
+				if excludeStatusStr == "" {
+					excludeStatusStr = "none"
+				}
+				info := telemetry.ConfigInfo{
+					Target:          targetURL,
+					Method:          cfg.Method,
+					Workers:         cfg.Threads,
+					Strategy:        strategyStr,
+					AdaptiveEnabled: cfg.Adaptive,
+					WordlistsCount:  1,
+					PrimaryWordlist: primaryWl,
+					HTTPVersion:     "auto",
+					FollowRedirects: cfg.FollowRedirects,
+					FilterStatus:    excludeStatusStr,
+					TotalCandidates: totalWords,
+					IsFuzz:          false,
+					Extensions:      cfg.Extensions,
+				}
+				if flagDebug {
+					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
+				} else {
+					telemetry.PrintNormalConfiguration(tm, terminal.OwnerConfiguration, info)
+				}
+			}
+
+			// Transition out of Starting, into Running, and hand over to Progress.
+			if err := tm.TransitionAndRelease(terminal.PhaseRunning, terminal.OwnerConfiguration); err != nil {
+				return err
+			}
+			if err := tm.AcquireOwner(terminal.OwnerProgress); err != nil {
+				return err
+			}
+
 			collector := stats.NewCollector()
 			if totalWords > 0 {
 				collector.SetQueuedJobs(int64(totalWords))
@@ -546,6 +578,9 @@ var scanCmd = &cobra.Command{
 			var progMgr *progress.Manager
 			var renderer *progress.ANSIRenderer
 			var progCmdChan chan console.Command
+			var consoleCtrl *console.Controller
+			var termCtx context.Context
+			var cancelTerm context.CancelFunc
 
 			enableProgress := shouldEnableProgress(cfg, flagNoProgress)
 			// Interactive keyboard controls require stdin to also be a terminal.
@@ -556,19 +591,22 @@ var scanCmd = &cobra.Command{
 			defer cancelProg()
 
 			if enableProgress {
+				termCtx, cancelTerm = context.WithCancel(scanCtx)
+				defer cancelTerm()
 				modeStr := "Single target"
 				if cfg.Recursive {
 					modeStr = fmt.Sprintf("Recursive (%s)", strings.ToUpper(cfg.Strategy.String()))
 				}
-				renderer = progress.NewANSIRenderer(os.Stdout, targetURL, appliedProfiles, modeStr)
-				progMgr = progress.NewManager(collector, renderer, 1*time.Second)
+
+				renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr)
+				progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 				progMgr.ConfiguredThreads = cfg.Threads
 				progMgr.Formatter = fmttr
 
 				if interactive {
-					consoleCtrl := console.NewController(os.Stdin)
+					consoleCtrl = console.NewController(os.Stdin)
 					progCmdChan = make(chan console.Command, 10)
-					go consoleCtrl.Start(scanCtx)
+					go consoleCtrl.Start(termCtx)
 
 					go func() {
 						for cmd := range consoleCtrl.Commands() {
@@ -592,6 +630,7 @@ var scanCmd = &cobra.Command{
 					progMgr.Start(progCtx, progCmdChan)
 				}()
 			}
+			stateMgr.Transition(state.PhaseRunning)
 			var manager *recursion.Manager
 			if cfg.Recursive {
 
@@ -693,18 +732,37 @@ var scanCmd = &cobra.Command{
 				}
 			}
 
+			if fmttr != nil && globalFmttr == nil {
+				_ = fmttr.Close()
+			}
+
 			stateMgr.Transition(state.PhaseWaitingWorkers)
+			_ = tm.TransitionTo(terminal.PhaseWaitingWorkers)
+
 			stateMgr.Transition(state.PhaseFinalizing)
+			_ = tm.TransitionTo(terminal.PhaseFinalizing)
+
+			stateMgr.Transition(state.PhaseTerminalShutdown)
+			_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
 
 			if enableProgress && renderer != nil {
 				cancelProg()
-				renderer.Close()
+				// The progDone channel signals the Start loop is fully exited.
 				if progDone != nil {
 					<-progDone
 				}
+				if interactive && consoleCtrl != nil {
+					cancelTerm()
+					<-consoleCtrl.Done()
+				}
+				// Now we know no more background progress tasks are running,
+				// so we can safely Close (which writes cursor-show)
+				_ = renderer.Close(terminal.OwnerProgress)
 			}
+			_ = tm.ReleaseOwner(terminal.OwnerProgress)
 
 			stateMgr.Transition(state.PhaseSummary)
+			_ = tm.AcquireAndTransition(terminal.OwnerSummary, terminal.PhaseSummary)
 
 			if !cfg.Quiet {
 				snap := collector.Snapshot()
@@ -720,7 +778,7 @@ var scanCmd = &cobra.Command{
 					candidatesCount = int(snap.RequestsSent)
 				}
 
-				telemetry.PrintSummary(telemetryWriter, telemetry.SummaryInfo{
+				telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 					IsFuzz:          false,
 					Strategy:        strategyStr,
 					AdaptiveEnabled: cfg.Adaptive,
@@ -728,8 +786,10 @@ var scanCmd = &cobra.Command{
 					Findings:        int(snap.Discovered),
 					Snapshot:        snap,
 				}, flagDebug)
+				_ = tm.TransitionAndRelease(terminal.PhasePipeline, terminal.OwnerSummary)
 
 				stateMgr.Transition(state.PhasePipeline)
+				_ = tm.AcquireOwner(terminal.OwnerPipeline)
 
 				if flagDebug {
 					if cfg.Adaptive {
@@ -738,7 +798,7 @@ var scanCmd = &cobra.Command{
 						if manager != nil {
 							techs, discoveries, dfs, bfs, eager, high, med, low = manager.GetAdaptiveMetrics()
 						}
-						telemetry.PrintAdaptive(telemetryWriter, telemetry.AdaptiveInfo{
+						telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
 							Technologies:        techs,
 							Discoveries:         discoveries,
 							DFSCount:            dfs,
@@ -750,8 +810,14 @@ var scanCmd = &cobra.Command{
 						})
 					}
 
-					telemetry.PrintPipelineReconciliation(telemetryWriter)
+					telemetry.PrintPipelineReconciliation(tm, terminal.OwnerPipeline)
 				}
+				_ = tm.TransitionAndRelease(terminal.PhaseDone, terminal.OwnerPipeline)
+			} else {
+				// Quiet mode bypasses the owners but we still must enforce the TM terminal state.
+				_ = tm.TransitionTo(terminal.PhasePipeline)
+				stateMgr.Transition(state.PhasePipeline)
+				_ = tm.TransitionTo(terminal.PhaseDone)
 			}
 
 			stateMgr.Transition(state.PhaseDone)

@@ -6,11 +6,13 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/unsubble/searchit/internal/output"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
-func PrintPipelineReconciliation(w io.Writer) {
+// PrintPipelineReconciliation prints the pipeline reconciliation block.
+// All output is routed through tm.Emit(owner, fn).
+func PrintPipelineReconciliation(tm *terminal.Manager, owner terminal.Owner) {
 	inst := stats.GlobalInstrumentation
 	if atomic.LoadInt32(&inst.Enabled) == 0 {
 		return
@@ -63,7 +65,7 @@ func PrintPipelineReconciliation(w io.Writer) {
 		statusStr = fmt.Sprintf("Mismatch Detected (%s)", mismatchStage)
 	}
 
-	items := []output.Item{
+	items := []terminal.Item{
 		{Key: "Candidates Read", Value: strconv.FormatInt(wordsRead, 10)},
 		{Key: "Jobs Produced", Value: strconv.FormatInt(jobsProduced, 10)},
 		{Key: "Jobs Submitted", Value: strconv.FormatInt(jobsSubmitted, 10)},
@@ -79,5 +81,7 @@ func PrintPipelineReconciliation(w io.Writer) {
 		{Key: "Status", Value: statusStr},
 	}
 
-	output.RenderBlock(w, "PIPELINE RECONCILIATION SUMMARY", items, 0)
+	_ = tm.Emit(owner, func(w io.Writer) {
+		terminal.RenderBlock(w, "PIPELINE RECONCILIATION SUMMARY", items, tm.ContentWidth())
+	})
 }

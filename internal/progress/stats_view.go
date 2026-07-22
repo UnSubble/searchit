@@ -7,17 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
-)
-
-const (
-	reportThinDivider  = "──────────────────────────────────────────────────────────────"
-	reportThickDivider = "══════════════════════════════════════════════════════════════"
 )
 
 // statsReport builds the complete statistics report as a []string, one entry per line.
 // It is a pure formatter: no cursor movement, no column math, no width assumptions.
 func statsReport(
+	contentWidth int,
 	snap stats.Snapshot,
 	configuredThreads int,
 	recent []discoveryEntry,
@@ -27,18 +24,25 @@ func statsReport(
 ) []string {
 	var lines []string
 
+	thinDivider := strings.Repeat(terminal.ThinSeparatorChar, contentWidth)
+	thickDivider := strings.Repeat(terminal.ThickSeparatorChar, contentWidth)
+
 	add := func(s string) { lines = append(lines, s) }
 	blank := func() { lines = append(lines, "") }
 	section := func(name string) {
 		blank()
 		add(name)
-		add(reportThinDivider)
+		add(thinDivider)
 		blank()
+	}
+
+	formatRow := func(label, value string) string {
+		return "  " + terminal.FormatDotRow(label, value, 22, contentWidth-2)
 	}
 
 	// ── Header ──────────────────────────────────────────────────────────────
 	add("Searchit Statistics")
-	add(reportThickDivider)
+	add(thickDivider)
 
 	// ── Scan context ────────────────────────────────────────────────────────
 	section("Target")
@@ -56,33 +60,27 @@ func statsReport(
 
 	// ── General ─────────────────────────────────────────────────────────────
 	section("General")
-	add(fmt.Sprintf("  %-22s  %s", "Requests sent", formatNumber(snap.RequestsSent)))
-	add(fmt.Sprintf("  %-22s  %s", "Responses received", formatNumber(snap.ResponsesReceived)))
-	add(fmt.Sprintf("  %-22s  %s", "Successful", formatNumber(snap.RequestsSucceeded)))
-	add(fmt.Sprintf("  %-22s  %s", "Filtered", formatNumber(snap.RequestsFiltered)))
-	add(fmt.Sprintf("  %-22s  %s", "Failed", formatNumber(snap.RequestsFailed)))
-	add(fmt.Sprintf("  %-22s  %s", "Bytes received", formatNumber(snap.BytesReceived)))
-	add(fmt.Sprintf("  %-22s  %s", "Redirects", formatNumber(snap.Redirects)))
-	add(fmt.Sprintf("  %-22s  %s", "Retries", formatNumber(snap.Retries)))
+	add(formatRow("Requests sent", formatNumber(snap.RequestsSent)))
+	add(formatRow("Responses received", formatNumber(snap.ResponsesReceived)))
+	add(formatRow("Successful", formatNumber(snap.RequestsSucceeded)))
+	add(formatRow("Filtered", formatNumber(snap.RequestsFiltered)))
+	add(formatRow("Failed", formatNumber(snap.RequestsFailed)))
+	add(formatRow("Bytes received", formatNumber(snap.BytesReceived)))
+	add(formatRow("Redirects", formatNumber(snap.Redirects)))
+	add(formatRow("Retries", formatNumber(snap.Retries)))
 
 	// ── Performance ─────────────────────────────────────────────────────────
-	elapsed := time.Since(snap.StartTime)
-	h := int(elapsed.Hours())
-	m := int(elapsed.Minutes()) % 60
-	s := int(elapsed.Seconds()) % 60
-	elapsedStr := fmt.Sprintf("%02d:%02d:%02d", h, m, s)
-
 	section("Performance")
-	add(fmt.Sprintf("  %-22s  %s", "Elapsed", elapsedStr))
-	add(fmt.Sprintf("  %-22s  %s", "Average latency", formatLatency(snap.AverageLatency)))
-	add(fmt.Sprintf("  %-22s  %.0f", "Requests/sec", snap.RequestsPerSecond))
-	add(fmt.Sprintf("  %-22s  %.0f", "Peak requests/sec", snap.PeakRequestsPerSecond))
+	add(formatRow("Elapsed", terminal.FormatElapsed(time.Since(snap.StartTime))))
+	add(formatRow("Average latency", terminal.FormatLatency(snap.AverageLatency)))
+	add(formatRow("Requests/sec", fmt.Sprintf("%.0f", snap.RequestsPerSecond)))
+	add(formatRow("Peak requests/sec", fmt.Sprintf("%.0f", snap.PeakRequestsPerSecond)))
 
 	// ── Workers ─────────────────────────────────────────────────────────────
 	section("Workers")
-	add(fmt.Sprintf("  %-22s  %d", "Configured", configuredThreads))
-	add(fmt.Sprintf("  %-22s  %d", "Active", snap.ActiveWorkers))
-	add(fmt.Sprintf("  %-22s  %d", "Queue", snap.QueuedJobs))
+	add(formatRow("Configured", fmt.Sprintf("%d", configuredThreads)))
+	add(formatRow("Active", fmt.Sprintf("%d", snap.ActiveWorkers)))
+	add(formatRow("Queue", fmt.Sprintf("%d", snap.QueuedJobs)))
 
 	// ── Response Codes ──────────────────────────────────────────────────────
 	section("Response Codes")
@@ -113,7 +111,7 @@ func statsReport(
 
 	// ── Footer ───────────────────────────────────────────────────────────────
 	blank()
-	add(reportThickDivider)
+	add(thickDivider)
 	blank()
 	add("Press any key to return...")
 
@@ -123,13 +121,13 @@ func statsReport(
 // RenderStatsView clears the terminal, prints the sequential statistics report,
 // and returns. It does not position the cursor or assume any terminal dimensions.
 func RenderStatsView(w io.Writer, snap stats.Snapshot, configuredThreads int, recent []discoveryEntry) {
-	RenderStatsViewFull(w, snap, configuredThreads, recent, "", nil, "")
+	RenderStatsViewFull(w, 80, snap, configuredThreads, recent, "", nil, "")
 }
 
-// RenderStatsViewFull is the full-featured entry point that includes scan context
-// (target, profiles, mode) in the report header.
+// RenderStatsViewFull renders the complete statistics view to w.
 func RenderStatsViewFull(
 	w io.Writer,
+	contentWidth int,
 	snap stats.Snapshot,
 	configuredThreads int,
 	recent []discoveryEntry,
@@ -137,7 +135,8 @@ func RenderStatsViewFull(
 	profiles []string,
 	mode string,
 ) {
-	lines := statsReport(snap, configuredThreads, recent, target, profiles, mode)
+	fmt.Fprint(w, "\033[H\033[2J")
+	lines := statsReport(contentWidth, snap, configuredThreads, recent, target, profiles, mode)
 	for _, line := range lines {
 		fmt.Fprintf(w, "\r%s\r\n", line)
 	}

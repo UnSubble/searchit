@@ -16,6 +16,7 @@ const (
 	PhaseStopping
 	PhaseWaitingWorkers
 	PhaseFinalizing
+	PhaseTerminalShutdown
 	PhaseSummary
 	PhasePipeline
 	PhaseDone
@@ -35,6 +36,8 @@ func (p Phase) String() string {
 		return "WAITING WORKERS"
 	case PhaseFinalizing:
 		return "FINALIZING"
+	case PhaseTerminalShutdown:
+		return "TERMINAL_SHUTDOWN"
 	case PhaseSummary:
 		return "SUMMARY"
 	case PhasePipeline:

@@ -9,12 +9,48 @@ import (
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/output/telemetry"
+	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
+func TestUnifiedDesignLanguageConsistency(t *testing.T) {
+	// Verify that Scan and Fuzz configurations share identical separator and block structures
+	var scanBuf, fuzzBuf bytes.Buffer
+
+	scanTm := terminal.New(&scanBuf)
+	_ = scanTm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(scanTm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
+		Target:          "http://127.0.0.1:8080",
+		Method:          "GET",
+		Workers:         32,
+		Strategy:        "bfs",
+		AdaptiveEnabled: false,
+		PrimaryWordlist: "words.txt",
+		IsFuzz:          false,
+	})
+
+	fuzzTm := terminal.New(&fuzzBuf)
+	_ = fuzzTm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(fuzzTm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
+		Target:          "http://127.0.0.1:8080/FUZZ",
+		Method:          "GET",
+		Workers:         32,
+		Strategy:        "bfs",
+		AdaptiveEnabled: false,
+		PrimaryWordlist: "words.txt",
+		IsFuzz:          true,
+	})
+	got := scanBuf.String()
+	if !strings.Contains(got, "Target .................... http://127.0.0.1:8080") {
+		t.Errorf("Scan snapshot target line mismatch:\n%s", got)
+	}
+}
+
 func TestSnapshot_Scan(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintConfiguration(&buf, telemetry.ConfigInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         32,
@@ -35,7 +71,9 @@ func TestSnapshot_Scan(t *testing.T) {
 
 func TestSnapshot_Fuzz(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintConfiguration(&buf, telemetry.ConfigInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
 		Target:          "http://127.0.0.1:8080/api?user=FUZZ",
 		Method:          "POST",
 		Workers:         32,
@@ -58,7 +96,9 @@ func TestSnapshot_Fuzz(t *testing.T) {
 
 func TestSnapshot_Recursive(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintConfiguration(&buf, telemetry.ConfigInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         64,
@@ -75,7 +115,9 @@ func TestSnapshot_Recursive(t *testing.T) {
 
 func TestSnapshot_Adaptive(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintAdaptive(&buf, telemetry.AdaptiveInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerPipeline)
+	telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
 		Technologies:        []string{"Laravel", "WordPress"},
 		Discoveries:         []string{"robots.txt", "sitemap.xml"},
 		DFSCount:            10,
@@ -97,7 +139,9 @@ func TestSnapshot_Adaptive(t *testing.T) {
 
 func TestSnapshot_SmartStrategy(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintConfiguration(&buf, telemetry.ConfigInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
 		Target:          "http://127.0.0.1:8080/FUZZ",
 		Method:          "GET",
 		Workers:         32,
@@ -116,7 +160,9 @@ func TestSnapshot_SmartStrategy(t *testing.T) {
 
 func TestSnapshot_Profiles(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintConfiguration(&buf, telemetry.ConfigInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         32,
@@ -133,7 +179,9 @@ func TestSnapshot_Profiles(t *testing.T) {
 
 func TestSnapshot_RequestTemplates(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintConfiguration(&buf, telemetry.ConfigInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, telemetry.ConfigInfo{
 		Target:          "http://127.0.0.1:8080/api/v1",
 		Method:          "POST",
 		Workers:         32,
@@ -198,7 +246,9 @@ func TestSnapshot_MarkdownFormatter(t *testing.T) {
 
 func TestSnapshot_SummaryFormat(t *testing.T) {
 	var buf bytes.Buffer
-	telemetry.PrintSummary(&buf, telemetry.SummaryInfo{
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerSummary)
+	telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 		IsFuzz:          false,
 		Strategy:        "bfs",
 		AdaptiveEnabled: false,
