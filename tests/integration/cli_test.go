@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/unsubble/searchit/internal/version"
 )
 
 var binPath string
@@ -50,13 +52,14 @@ func setupMockServer(releasesBody string, releasesStatus int) *httptest.Server {
 	}))
 }
 
-func verifyGolden(t *testing.T, actual, goldenFile string) {
+func verifyGolden(t *testing.T, actual string, goldenFile string) {
 	goldenPath := filepath.Join("..", "..", "testdata", goldenFile)
 	actual = strings.ReplaceAll(actual, "\r\n", "\n")
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		actualForGolden := strings.ReplaceAll(actual, version.Version, "{{CURRENT_VERSION}}")
 		os.MkdirAll(filepath.Dir(goldenPath), 0755)
-		os.WriteFile(goldenPath, []byte(actual), 0644)
+		os.WriteFile(goldenPath, []byte(actualForGolden), 0644)
 	}
 
 	expected, err := os.ReadFile(goldenPath)
@@ -64,6 +67,7 @@ func verifyGolden(t *testing.T, actual, goldenFile string) {
 		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
 	}
 	expectedStr := strings.ReplaceAll(string(expected), "\r\n", "\n")
+	expectedStr = strings.ReplaceAll(expectedStr, "{{CURRENT_VERSION}}", version.Version)
 
 	if expectedStr != actual {
 		t.Errorf("output does not match golden file %s.\nExpected:\n%s\nGot:\n%s\n", goldenPath, expectedStr, actual)
