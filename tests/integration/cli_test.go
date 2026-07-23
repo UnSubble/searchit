@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,12 @@ func TestMain(m *testing.M) {
 
 	// We are running in tests/integration
 	projectRoot := filepath.Dir(filepath.Dir(dir))
-	binPath = filepath.Join(projectRoot, "searchit-test-bin")
+
+	binName := "searchit-test-bin"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath = filepath.Join(projectRoot, binName)
 
 	cmd := exec.Command("go", "build", "-o", binPath, projectRoot)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -44,7 +50,7 @@ func setupMockServer(releasesBody string, releasesStatus int) *httptest.Server {
 	}))
 }
 
-func verifyGolden(t *testing.T, testName string, actual string, goldenFile string) {
+func verifyGolden(t *testing.T, actual, goldenFile string) {
 	goldenPath := filepath.Join("..", "..", "testdata", goldenFile)
 	actual = strings.ReplaceAll(actual, "\r\n", "\n")
 
@@ -89,9 +95,12 @@ func TestUpdateCheck(t *testing.T) {
 	}
 	cmd.Dir = tempDir
 
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
 
-	verifyGolden(t, "update_check", string(out), "update/update_check.golden")
+	verifyGolden(t, string(out), "update/update_check.golden")
 }
 
 func TestDoctorCommand(t *testing.T) {
@@ -112,9 +121,12 @@ func TestDoctorCommand(t *testing.T) {
 	}
 	cmd.Dir = tempDir
 
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
 
-	verifyGolden(t, "doctor", string(out), "doctor/healthy.golden")
+	verifyGolden(t, string(out), "doctor/healthy.golden")
 }
 
 func TestNewsCommand(t *testing.T) {
@@ -125,9 +137,12 @@ func TestNewsCommand(t *testing.T) {
 
 	cmd := exec.Command(binPath, "news", "v0.5.0")
 	cmd.Dir = tempDir
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
 
-	verifyGolden(t, "news", string(out), "news/news.golden")
+	verifyGolden(t, string(out), "news/news.golden")
 }
 
 func TestRollbackCommand(t *testing.T) {
@@ -147,9 +162,12 @@ func TestRollbackCommand(t *testing.T) {
 	}
 	cmd.Dir = tempDir
 
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
 
-	verifyGolden(t, "rollback", string(out), "update/rollback.golden")
+	verifyGolden(t, string(out), "update/rollback.golden")
 }
 
 func TestDowngradeCommand(t *testing.T) {
@@ -170,7 +188,10 @@ func TestDowngradeCommand(t *testing.T) {
 	}
 	cmd.Dir = tempDir
 
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
 
-	verifyGolden(t, "downgrade", string(out), "update/downgrade.golden")
+	verifyGolden(t, string(out), "update/downgrade.golden")
 }
