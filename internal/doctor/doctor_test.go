@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/unsubble/searchit/internal/testutil/command"
@@ -32,11 +33,14 @@ func TestRunAllChecks(t *testing.T) {
 			name:       "healthy_system",
 			ghBody:     `[{"tag_name": "v1.0.0", "draft": false}]`,
 			ghStatus:   200,
-			wantStatus: true,
+			wantStatus: false, // INSTALLATION METHOD will be WARNING
 			checkHas: map[string]string{
 				"UPDATE SYSTEM":       "PASS",
 				"GITHUB CONNECTIVITY": "PASS",
 				"GO VERSION":          "PASS",
+				"ACTIVE EXECUTABLE":   "PASS",
+				"MULTIPLE BINARIES":   "PASS",
+				"INSTALLATION METHOD": "WARNING", // mock will fail to detect gobin
 			},
 		},
 		{
@@ -48,6 +52,9 @@ func TestRunAllChecks(t *testing.T) {
 				"UPDATE SYSTEM":       "MAY BE INVALID",
 				"GITHUB CONNECTIVITY": "FAIL",
 				"GO VERSION":          "PASS",
+				"ACTIVE EXECUTABLE":   "PASS",
+				"MULTIPLE BINARIES":   "PASS",
+				"INSTALLATION METHOD": "WARNING",
 			},
 		},
 	}
@@ -60,6 +67,10 @@ func TestRunAllChecks(t *testing.T) {
 			originalTransport := http.DefaultTransport
 			http.DefaultTransport = &mockTransport{serverURL: server.URL}
 			defer func() { http.DefaultTransport = originalTransport }()
+
+			originalPath := os.Getenv("PATH")
+			os.Setenv("PATH", "")
+			defer os.Setenv("PATH", originalPath)
 
 			doc := NewDoctor()
 			doc.Executor = &command.MockExecutor{

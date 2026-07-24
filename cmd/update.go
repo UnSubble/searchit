@@ -3,10 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/unsubble/searchit/internal/env"
 	"github.com/unsubble/searchit/internal/update"
 )
 
@@ -77,7 +76,12 @@ var updateCmd = &cobra.Command{
 			action = "rollback"
 		}
 
-		ctxInfo := mgr.ResolveInstallContext()
+		ctxInfo := env.ResolveInstallContext(nil)
+
+		if ctxInfo.InstallationMethod == "UNKNOWN INSTALLATION" {
+			fmt.Printf("    WARNING\n\n            Installation method\n            could not be determined\n            safely.\n\n            Manual installation is\n            recommended.\n\n")
+			return
+		}
 
 		if updateDryRun {
 			mgr.PreviewAction(res, action, ctxInfo)
@@ -129,31 +133,11 @@ var updateCmd = &cobra.Command{
 }
 
 func checkMultipleInstallations(activeExe string) {
-	cmd := exec.Command("which", "-a", "searchit")
-	out, err := cmd.Output()
-	if err != nil {
-		return
-	}
-
-	paths := strings.Split(strings.TrimSpace(string(out)), "\n")
-	uniquePaths := make([]string, 0)
-	seen := make(map[string]bool)
-	for _, p := range paths {
-		p = strings.TrimSpace(p)
-		if p != "" && !seen[p] {
-			seen[p] = true
-			uniquePaths = append(uniquePaths, p)
-		}
-	}
-
-	if len(uniquePaths) > 1 {
+	result := env.CheckMultipleInstallations(nil)
+	if result.HasMultiple {
 		fmt.Printf("    MULTIPLE INSTALLATIONS DETECTED\n\n")
-		for _, p := range uniquePaths {
-			vOut, _ := exec.Command(p, "--version").Output()
-			vStr := strings.TrimSpace(string(vOut))
-			if vStr == "" {
-				vStr = "unknown version"
-			}
+		for _, p := range result.UniquePaths {
+			vStr := result.Versions[p]
 			fmt.Printf("            %s\n                    %s\n\n", p, vStr)
 		}
 		fmt.Printf("    ACTIVE EXECUTABLE\n\n            %s\n\n\n", activeExe)

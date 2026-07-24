@@ -28,9 +28,19 @@
                 PASS
 
 
-        INSTALLATION
+        MULTIPLE BINARIES
 
                 PASS
+
+
+        ACTIVE EXECUTABLE
+
+                PASS
+
+
+        INSTALLATION METHOD
+
+                WARNING
 
 
         GO VERSION
@@ -40,5 +50,5 @@
 
         STATUS
 
-                HEALTHY
+                NOT READY
 

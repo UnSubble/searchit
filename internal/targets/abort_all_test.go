@@ -338,7 +338,6 @@ func TestAbortAllNoGoroutineLeak(t *testing.T) {
 	initialGoroutines := runtime.NumGoroutine()
 
 	srv := slowServer(10 * time.Millisecond)
-	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
@@ -351,7 +350,11 @@ func TestAbortAllNoGoroutineLeak(t *testing.T) {
 	for range resChan {
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	// Close resources BEFORE measuring final goroutines
+	srv.Close()
+	http.DefaultClient.CloseIdleConnections()
+
+	time.Sleep(150 * time.Millisecond) // Give more time for goroutines to clean up
 	runtime.GC()
 	finalGoroutines := runtime.NumGoroutine()
 

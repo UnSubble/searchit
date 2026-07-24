@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/unsubble/searchit/internal/env"
 	"github.com/unsubble/searchit/internal/news"
 	"github.com/unsubble/searchit/internal/semver"
 	"github.com/unsubble/searchit/internal/testutil/command"
@@ -181,7 +182,7 @@ func TestPreviewAction(t *testing.T) {
 		Status:        "UPDATE AVAILABLE",
 		IsUpdate:      true,
 	}
-	ctx := InstallContext{}
+	ctx := env.InstallContext{}
 	mgr.PreviewAction(res, "update", ctx)
 
 	res.IsDowngrade = true

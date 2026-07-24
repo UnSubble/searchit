@@ -1,35 +1,9 @@
-        CURRENT VERSION
+    WARNING
 
-                {{CURRENT_VERSION}}
+            Installation method
+            could not be determined
+            safely.
 
+            Manual installation is
+            recommended.
 
-        ACTIVE EXECUTABLE
-
-                {{ACTIVE_EXECUTABLE}}
-
-
-        INSTALLATION METHOD
-
-                UNKNOWN INSTALLATION
-
-
-        TARGET VERSION
-
-                v0.4.0
-
-
-        RELEASE CHANNEL
-
-                stable
-
-
-        NEWS
-                NOT VERIFIED (no news available for v0.4.0)
-
-
-        ACTION SUMMARY
-
-                DOWNGRADE to v0.4.0
-
-
-        READY TO INSTALL

@@ -118,6 +118,7 @@ func TestDoctorCommand(t *testing.T) {
 
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
+		"PATH":              tempDir, // Empty directory, so it won't find multiple binaries
 	}
 
 	cmd := exec.Command(binPath, "doctor")

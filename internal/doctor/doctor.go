@@ -3,6 +3,7 @@ package doctor
 import (
 	"runtime"
 
+	"github.com/unsubble/searchit/internal/env"
 	"github.com/unsubble/searchit/internal/github"
 	"github.com/unsubble/searchit/internal/testutil/command"
 	"github.com/unsubble/searchit/internal/update"
@@ -57,8 +58,35 @@ func (d *Doctor) RunAllChecks() ([]CheckResult, bool) {
 	// RELEASE CHANNEL
 	results = append(results, CheckResult{"RELEASE CHANNEL", "PASS"})
 
-	// INSTALLATION
-	results = append(results, CheckResult{"INSTALLATION", "PASS"})
+	// MULTIPLE BINARIES
+	mult := env.CheckMultipleInstallations(d.Executor)
+	if mult.HasMultiple {
+		results = append(results, CheckResult{"MULTIPLE BINARIES", "WARNING"})
+		allHealthy = false
+	} else {
+		results = append(results, CheckResult{"MULTIPLE BINARIES", "PASS"})
+	}
+
+	// INSTALLATION / ACTIVE EXECUTABLE
+	ctx := env.ResolveInstallContext(d.Executor)
+	if ctx.ActiveExecutable != "UNKNOWN" {
+		results = append(results, CheckResult{"ACTIVE EXECUTABLE", "PASS"})
+	} else {
+		results = append(results, CheckResult{"ACTIVE EXECUTABLE", "WARNING"})
+		allHealthy = false
+	}
+
+	if ctx.InstallationMethod == "GO INSTALLATION" {
+		results = append(results, CheckResult{"INSTALLATION METHOD", "PASS"})
+	} else {
+		results = append(results, CheckResult{"INSTALLATION METHOD", "WARNING"})
+		allHealthy = false
+	}
+
+	// RECOMMENDATION
+	if mult.HasMultiple {
+		results = append(results, CheckResult{"RECOMMENDATION", "Multiple Searchit installations were detected. Consider removing unused executables or adjusting your PATH."})
+	}
 
 	// GO VERSION
 	goVer := runtime.Version()
