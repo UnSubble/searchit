@@ -181,12 +181,13 @@ func TestPreviewAction(t *testing.T) {
 		Status:        "UPDATE AVAILABLE",
 		IsUpdate:      true,
 	}
-	mgr.PreviewAction(res, "update")
+	ctx := InstallContext{}
+	mgr.PreviewAction(res, "update", ctx)
 
 	res.IsDowngrade = true
-	mgr.PreviewAction(res, "update")
+	mgr.PreviewAction(res, "update", ctx)
 
-	mgr.PreviewAction(res, "rollback")
+	mgr.PreviewAction(res, "rollback", ctx)
 }
 
 func TestExecute(t *testing.T) {

@@ -58,6 +58,7 @@ func verifyGolden(t *testing.T, actual string, goldenFile string) {
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
 		actualForGolden := strings.ReplaceAll(actual, version.Version, "{{CURRENT_VERSION}}")
+		actualForGolden = strings.ReplaceAll(actualForGolden, binPath, "{{ACTIVE_EXECUTABLE}}")
 		os.MkdirAll(filepath.Dir(goldenPath), 0755)
 		os.WriteFile(goldenPath, []byte(actualForGolden), 0644)
 	}
@@ -68,6 +69,7 @@ func verifyGolden(t *testing.T, actual string, goldenFile string) {
 	}
 	expectedStr := strings.ReplaceAll(string(expected), "\r\n", "\n")
 	expectedStr = strings.ReplaceAll(expectedStr, "{{CURRENT_VERSION}}", version.Version)
+	expectedStr = strings.ReplaceAll(expectedStr, "{{ACTIVE_EXECUTABLE}}", binPath)
 
 	if expectedStr != actual {
 		t.Errorf("output does not match golden file %s.\nExpected:\n%s\nGot:\n%s\n", goldenPath, expectedStr, actual)

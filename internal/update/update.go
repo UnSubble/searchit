@@ -17,6 +17,66 @@ type Manager struct {
 	Executor command.Executor
 }
 
+type InstallContext struct {
+	ActiveExecutable    string
+	InstallationMethod  string
+	InstalledExecutable string
+}
+
+func (m *Manager) ResolveInstallContext() InstallContext {
+	ctx := InstallContext{}
+	exe, err := os.Executable()
+	if err == nil {
+		ctx.ActiveExecutable = exe
+	} else {
+		ctx.ActiveExecutable = "UNKNOWN"
+	}
+
+	gobin, _ := m.getGoEnv("GOBIN")
+	if gobin == "" {
+		gopath, _ := m.getGoEnv("GOPATH")
+		if gopath != "" {
+			gobin = strings.Split(gopath, string(os.PathListSeparator))[0] + "/bin"
+		} else {
+			home, _ := os.UserHomeDir()
+			if home != "" {
+				gobin = home + "/go/bin"
+			}
+		}
+	}
+
+	if gobin != "" {
+		ctx.InstalledExecutable = gobin + "/searchit"
+	} else {
+		ctx.InstalledExecutable = "UNKNOWN"
+	}
+
+	if ctx.ActiveExecutable != "UNKNOWN" && ctx.InstalledExecutable != "UNKNOWN" {
+		if ctx.ActiveExecutable == ctx.InstalledExecutable {
+			ctx.InstallationMethod = "GO INSTALLATION"
+		} else {
+			if strings.HasPrefix(ctx.ActiveExecutable, "/usr/") || strings.HasPrefix(ctx.ActiveExecutable, "/opt/") || strings.HasPrefix(ctx.ActiveExecutable, "/usr/local/") {
+				ctx.InstallationMethod = "SYSTEM INSTALLATION"
+			} else {
+				ctx.InstallationMethod = "UNKNOWN INSTALLATION"
+			}
+		}
+	} else {
+		ctx.InstallationMethod = "UNKNOWN INSTALLATION"
+	}
+
+	return ctx
+}
+
+func (m *Manager) getGoEnv(key string) (string, error) {
+	cmd := m.Executor.Command("go", "env", key)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func NewManager() *Manager {
 	return &Manager{
 		Client:   github.NewClient(),
@@ -109,8 +169,14 @@ func (m *Manager) Check(experimental bool, targetVersionStr string, isRollback b
 }
 
 // PreviewAction dry-runs an update/rollback, reporting but not modifying.
-func (m *Manager) PreviewAction(res CheckResult, action string) {
+func (m *Manager) PreviewAction(res CheckResult, action string, ctx InstallContext) {
 	fmt.Printf("        CURRENT VERSION\n\n                %s\n\n\n", res.CurrentVersion.Original)
+	if ctx.ActiveExecutable != "" {
+		fmt.Printf("        ACTIVE EXECUTABLE\n\n                %s\n\n\n", ctx.ActiveExecutable)
+	}
+	if ctx.InstallationMethod != "" {
+		fmt.Printf("        INSTALLATION METHOD\n\n                %s\n\n\n", ctx.InstallationMethod)
+	}
 	fmt.Printf("        TARGET VERSION\n\n                %s\n\n\n", res.TargetVersion.Original)
 	fmt.Printf("        RELEASE CHANNEL\n\n                %s\n\n\n", res.TargetVersion.Channel())
 
