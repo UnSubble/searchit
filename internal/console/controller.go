@@ -104,25 +104,25 @@ func (c *Controller) Start(ctx context.Context) {
 				continue
 			}
 			switch res.b {
-			case 'p':
+			case 'p', 'P':
 				select {
 				case c.ch <- CommandProgress:
 				default:
 				}
-			case 's':
+			case 's', 'S':
 				inStatsView = true
 				select {
 				case c.ch <- CommandStats:
 				default:
 				}
-			case 'q':
+			case 'q', 'Q':
 				select {
-				case c.ch <- CommandStop:
+				case c.ch <- CommandStopTarget:
 				default:
 				}
-			case 'a':
+			case 3, 'a', 'A': // 3 is Ctrl+C in raw mode
 				select {
-				case c.ch <- CommandAbort:
+				case c.ch <- CommandAbortAll:
 				default:
 				}
 			}

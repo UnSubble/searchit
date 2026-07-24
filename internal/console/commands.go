@@ -8,8 +8,12 @@ const (
 	CommandProgress Command = iota
 	// CommandStats triggers extended statistics rendering.
 	CommandStats
-	// CommandStop requests graceful shutdown of the current target.
-	CommandStop
-	// CommandAbort requests immediate abort of all targets.
-	CommandAbort
+	// CommandStopTarget requests graceful shutdown of the current target.
+	CommandStopTarget
+	// CommandAbortAll requests immediate abort of all targets.
+	CommandAbortAll
+
+	// Backward-compatible aliases
+	CommandStop  = CommandStopTarget
+	CommandAbort = CommandAbortAll
 )

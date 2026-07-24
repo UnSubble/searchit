@@ -664,7 +664,10 @@ var fuzzCmd = &cobra.Command{
 								case progCmdChan <- c:
 								default:
 								}
-							case console.CommandStop:
+							case console.CommandStopTarget, console.CommandAbortAll:
+								if stateMgr != nil && stateMgr.Current() < state.PhaseStopping {
+									stateMgr.Transition(state.PhaseStopping)
+								}
 								cancelSig()
 							}
 						}

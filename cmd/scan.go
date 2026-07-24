@@ -593,8 +593,13 @@ var scanCmd = &cobra.Command{
 								case progCmdChan <- cmd:
 								default:
 								}
-							case console.CommandStop:
+							case console.CommandStopTarget:
 								scanCancel()
+							case console.CommandAbortAll:
+								if stateMgr != nil && stateMgr.Current() < state.PhaseStopping {
+									stateMgr.Transition(state.PhaseStopping)
+								}
+								cancelSig()
 							}
 						}
 						close(progCmdChan)

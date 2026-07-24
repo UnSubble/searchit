@@ -216,7 +216,7 @@ func (tr *ANSIRenderer) renderDiscoveries(recent []discoveryEntry, contentWidth 
 }
 
 func (tr *ANSIRenderer) renderControls() string {
-	return "Controls: p Refresh · s Statistics · q Graceful stop"
+	return "Controls: p Pause/Resume · s Statistics · q Stop target · a Abort all"
 }
 
 // drawInto writes the progress block to w. Called INSIDE an Emit closure.

@@ -32,9 +32,14 @@ func TestController_Keys(t *testing.T) {
 			expected: []console.Command{console.CommandStop},
 		},
 		{
+			name:     "abort commands",
+			input:    "aA\x03",
+			expected: []console.Command{console.CommandAbortAll, console.CommandAbortAll, console.CommandAbortAll},
+		},
+		{
 			name:     "unknown keys ignored",
 			input:    "x y z p q a s",
-			expected: []console.Command{console.CommandProgress, console.CommandStop, console.CommandAbort, console.CommandStats},
+			expected: []console.Command{console.CommandProgress, console.CommandStopTarget, console.CommandAbortAll, console.CommandStats},
 		},
 	}
 

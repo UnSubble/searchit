@@ -117,8 +117,8 @@ func (m *Manager) awaitStatsExit(
 			case console.CommandProgress:
 				m.restoreDashboard()
 				return
-			case console.CommandStop:
-				// Graceful stop is handled by the caller cancelling the context.
+			case console.CommandStopTarget, console.CommandAbortAll:
+				// Graceful stop/abort is handled by the caller cancelling the context.
 			}
 		}
 	}
