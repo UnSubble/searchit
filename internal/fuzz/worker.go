@@ -76,6 +76,9 @@ func Worker(
 
 		process(ctx, client, fs, item, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
+		if collector != nil {
+			collector.DecrementQueuedJobs()
+		}
 
 		if delay > 0 {
 			select {

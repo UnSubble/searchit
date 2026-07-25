@@ -62,6 +62,7 @@ type Manager struct {
 	HighPriorityCount   int
 	MediumPriorityCount int
 	LowPriorityCount    int
+	baseWordlistSize    int
 }
 
 // SetRequestManipulation configures custom outbound request templates for scanning.
@@ -119,6 +120,11 @@ func NewManager(
 	}
 }
 
+// SetBaseWordlistSize sets the size of the base wordlist for accurate progress accounting.
+func (m *Manager) SetBaseWordlistSize(size int) {
+	m.baseWordlistSize = size
+}
+
 // SetStats sets the statistics collector for the manager.
 func (m *Manager) SetStats(c *stats.Collector) {
 	m.stats = c
@@ -158,6 +164,9 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 				m.MediumPriorityCount++
+				if m.stats != nil {
+					m.stats.AddQueuedJobs(1)
+				}
 				frontier.Push(NewSliceGenerator([]engine.Job{{URL: u, Depth: 0, Origin: engine.OriginProfile}}))
 			}
 		}
@@ -165,10 +174,6 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		if len(seeds) > 0 {
 			robotsSitemaps := m.discoverRobots(ctx, seeds[0], frontier, visited)
 			m.discoverSitemaps(ctx, seeds[0], robotsSitemaps, frontier, visited)
-		}
-
-		if m.stats != nil {
-			m.stats.SetQueuedJobs(int64(frontier.Len()))
 		}
 
 		jobs := make(chan engine.Job, workers)
@@ -354,6 +359,9 @@ func (m *Manager) handleResult(
 			visited[key] = struct{}{}
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+			if m.stats != nil {
+				m.stats.AddQueuedJobs(1)
+			}
 			frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
 		}
 		return
@@ -429,6 +437,9 @@ func (m *Manager) handleResult(
 						}
 					}
 					if len(jobs) > 0 {
+						if m.stats != nil {
+							m.stats.AddQueuedJobs(int64(len(jobs)))
+						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
@@ -456,6 +467,9 @@ func (m *Manager) handleResult(
 						}
 					}
 					if len(jobs) > 0 {
+						if m.stats != nil {
+							m.stats.AddQueuedJobs(int64(len(jobs)))
+						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
@@ -483,6 +497,9 @@ func (m *Manager) handleResult(
 						}
 					}
 					if len(jobs) > 0 {
+						if m.stats != nil {
+							m.stats.AddQueuedJobs(int64(len(jobs)))
+						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
@@ -528,6 +545,9 @@ func (m *Manager) handleResult(
 				}
 			}
 			if len(jobs) > 0 {
+				if m.stats != nil {
+					m.stats.AddQueuedJobs(int64(len(jobs)))
+				}
 				frontier.PushFront(NewSliceGenerator(jobs))
 			}
 		}
@@ -583,6 +603,10 @@ func (m *Manager) handleResult(
 				}
 			}
 		}
+	}
+
+	if m.stats != nil {
+		m.stats.AddQueuedJobs(int64(m.baseWordlistSize))
 	}
 
 	gen := NewDirectoryGenerator(
@@ -722,7 +746,10 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 		visited[key] = struct{}{}
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-		m.HighPriorityCount++
+		m.MediumPriorityCount++
+		if m.stats != nil {
+			m.stats.AddQueuedJobs(1)
+		}
 		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: engine.OriginRobots}}))
 	}
 
@@ -778,7 +805,10 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 		visited[key] = struct{}{}
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-		m.HighPriorityCount++
+		m.MediumPriorityCount++
+		if m.stats != nil {
+			m.stats.AddQueuedJobs(1)
+		}
 		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: origin}}))
 	})
 }

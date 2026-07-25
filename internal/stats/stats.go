@@ -135,6 +135,11 @@ func (c *Collector) SetQueuedJobs(jobs int64) {
 	atomic.StoreInt64(&c.queuedJobs, jobs)
 }
 
+// AddQueuedJobs adds the specified number of jobs to the queue.
+func (c *Collector) AddQueuedJobs(jobs int64) {
+	atomic.AddInt64(&c.queuedJobs, jobs)
+}
+
 // DecrementQueuedJobs decrements the number of queued jobs by 1.
 func (c *Collector) DecrementQueuedJobs() {
 	atomic.AddInt64(&c.queuedJobs, -1)

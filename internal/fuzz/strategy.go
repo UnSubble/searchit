@@ -367,15 +367,11 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			vars := map[string]string{"FOO": w}
 			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
-				if r.Collector != nil {
-					r.Collector.DecrementQueuedJobs()
-				}
+
 				return
 			}
 			res, err := e.Execute(job)
-			if r.Collector != nil {
-				r.Collector.DecrementQueuedJobs()
-			}
+
 			if err == nil {
 				results1[idx] = jobResult{word: w, res: res}
 			}
@@ -427,15 +423,11 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			vars := map[string]string{"FOO": info.foo, "BAR": info.bar}
 			job, err := r.buildJob(cTmpl2, vars)
 			if err != nil {
-				if r.Collector != nil {
-					r.Collector.DecrementQueuedJobs()
-				}
+
 				return
 			}
 			res, err := e.Execute(job)
-			if r.Collector != nil {
-				r.Collector.DecrementQueuedJobs()
-			}
+
 			if err == nil {
 				results2[info.idx] = jobResult{word: info.foo + "/" + info.bar, res: res}
 			}
@@ -485,15 +477,11 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			vars := map[string]string{"FOO": info.foo, "BAR": info.bar, "BUZZ": info.buzz}
 			job, err := r.buildJob(r.compiledReq.targetURL, vars)
 			if err != nil {
-				if r.Collector != nil {
-					r.Collector.DecrementQueuedJobs()
-				}
+
 				return
 			}
 			res, err := e.Execute(job)
-			if r.Collector != nil {
-				r.Collector.DecrementQueuedJobs()
-			}
+
 			if err == nil {
 				results3[info.idx] = jobResult{word: info.foo + "/" + info.bar + "/" + info.buzz, res: res}
 			}
@@ -538,15 +526,11 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					vars := map[string]string{"FOO": w}
 					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
-						if r.Collector != nil {
-							r.Collector.DecrementQueuedJobs()
-						}
+
 						return
 					}
 					res, err := e.Execute(job)
-					if r.Collector != nil {
-						r.Collector.DecrementQueuedJobs()
-					}
+
 					if err == nil {
 						results[idx] = res
 					}
@@ -574,15 +558,11 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					vars := map[string]string{"FOO": parentFoo, "BAR": w}
 					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
-						if r.Collector != nil {
-							r.Collector.DecrementQueuedJobs()
-						}
+
 						return
 					}
 					res, err := e.Execute(job)
-					if r.Collector != nil {
-						r.Collector.DecrementQueuedJobs()
-					}
+
 					if err == nil {
 						results[idx] = res
 					}
@@ -608,15 +588,11 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					vars := map[string]string{"FOO": parentFoo, "BAR": parentBar, "BUZZ": w}
 					job, err := r.buildJob(r.compiledReq.targetURL, vars)
 					if err != nil {
-						if r.Collector != nil {
-							r.Collector.DecrementQueuedJobs()
-						}
+
 						return
 					}
 					res, err := e.Execute(job)
-					if r.Collector != nil {
-						r.Collector.DecrementQueuedJobs()
-					}
+
 					if err == nil {
 						results[idx] = res
 					}
@@ -688,15 +664,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			vars := map[string]string{"FOO": p.word}
 			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
-				if r.Collector != nil {
-					r.Collector.DecrementQueuedJobs()
-				}
+
 				return
 			}
 			res, err := e.Execute(job)
-			if r.Collector != nil {
-				r.Collector.DecrementQueuedJobs()
-			}
+
 			if err == nil {
 				results1[idx] = res
 			}
@@ -808,15 +780,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							vars := map[string]string{"FOO": d.foo, "BAR": bVal}
 							job, err := r.buildJob(cTmpl2, vars)
 							if err != nil {
-								if r.Collector != nil {
-									r.Collector.DecrementQueuedJobs()
-								}
+
 								return
 							}
 							res, err := e.Execute(job)
-							if r.Collector != nil {
-								r.Collector.DecrementQueuedJobs()
-							}
+
 							if err == nil {
 								results[i] = res
 							}
@@ -865,15 +833,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							vars := map[string]string{"FOO": d.foo, "BAR": info.bar, "BUZZ": info.buzz}
 							job, err := r.buildJob(r.compiledReq.targetURL, vars)
 							if err != nil {
-								if r.Collector != nil {
-									r.Collector.DecrementQueuedJobs()
-								}
+
 								return
 							}
 							res, err := e.Execute(job)
-							if r.Collector != nil {
-								r.Collector.DecrementQueuedJobs()
-							}
+
 							if err == nil {
 								results[i] = res
 							}
@@ -917,15 +881,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 					vars := map[string]string{"FOO": d.foo, "BAR": p.word}
 					job, err := r.buildJob(cTmpl2, vars)
 					if err != nil {
-						if r.Collector != nil {
-							r.Collector.DecrementQueuedJobs()
-						}
+
 						return
 					}
 					res, err := e.Execute(job)
-					if r.Collector != nil {
-						r.Collector.DecrementQueuedJobs()
-					}
+
 					if err == nil {
 						barResults[idx] = res
 					}
@@ -969,15 +929,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 								vars := map[string]string{"FOO": d.foo, "BAR": barVal, "BUZZ": p.word}
 								job, err := r.buildJob(r.compiledReq.targetURL, vars)
 								if err != nil {
-									if r.Collector != nil {
-										r.Collector.DecrementQueuedJobs()
-									}
+
 									return
 								}
 								r3, err := e.Execute(job)
-								if r.Collector != nil {
-									r.Collector.DecrementQueuedJobs()
-								}
+
 								if err == nil {
 									buzzResults[idx] = r3
 								}
@@ -1055,15 +1011,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							vars := map[string]string{"FOO": fooVal, "BAR": barVal, "BUZZ": p.word}
 							job, err := r.buildJob(r.compiledReq.targetURL, vars)
 							if err != nil {
-								if r.Collector != nil {
-									r.Collector.DecrementQueuedJobs()
-								}
+
 								return
 							}
 							r3, err := e.Execute(job)
-							if r.Collector != nil {
-								r.Collector.DecrementQueuedJobs()
-							}
+
 							if err == nil {
 								buzzResults[idx] = r3
 							}

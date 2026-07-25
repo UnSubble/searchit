@@ -641,6 +641,7 @@ var scanCmd = &cobra.Command{
 				manager.SetFilterSuite(fs)
 				manager.SetStats(collector)
 				manager.SetExtensions(cfg.Extensions)
+				manager.SetBaseWordlistSize(totalWords)
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
 					if r.Accepted {
@@ -709,7 +710,6 @@ var scanCmd = &cobra.Command{
 							}
 						}
 					}
-					collector.DecrementQueuedJobs()
 				}
 			}
 
