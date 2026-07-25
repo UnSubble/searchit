@@ -132,6 +132,13 @@ func (tr *ANSIRenderer) clearInto(w io.Writer) {
 	}
 }
 
+// Reset clears the renderer's state so it doesn't attempt to erase previous output.
+func (tr *ANSIRenderer) Reset() {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	tr.lastLineCount = 0
+}
+
 // renderInto draws the full progress block. Called INSIDE an Emit closure.
 func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 	contentWidth := tr.TM.ContentWidth()

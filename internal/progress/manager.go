@@ -2,6 +2,7 @@ package progress
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -25,8 +26,8 @@ type Manager struct {
 	ConfiguredThreads int
 	Formatter         output.Formatter
 
-	isStatsActive   bool
-	bufferedResults []engine.Result
+	isStatsActive  bool
+	deferredOutput []engine.Result
 }
 
 // NewManager creates a new progress Manager.
@@ -134,14 +135,20 @@ func (m *Manager) renderStatsReport() {
 	})
 }
 
-// restoreDashboard clears the stats view, prints buffered results, re-renders dashboard.
+// restoreDashboard prints the resuming message and switches back to the progress owner.
 func (m *Manager) restoreDashboard() {
 	_ = m.TM.SwitchOwner(terminal.OwnerStatistics, terminal.OwnerProgress)
 	m.isStatsActive = false
 
 	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-		m.Renderer.clearInto(w)
-		for _, r := range m.bufferedResults {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Resuming scan...")
+		fmt.Fprintln(w)
+		// Reset the renderer state so it doesn't try to clear the statistics block
+		m.Renderer.Reset()
+
+		// Flush any results that were discovered while the stats view was blocking terminal output.
+		for _, r := range m.deferredOutput {
 			if m.Formatter != nil {
 				if pt, ok := m.Formatter.(interface {
 					PrintTo(io.Writer, engine.Result) error
@@ -152,7 +159,9 @@ func (m *Manager) restoreDashboard() {
 				}
 			}
 		}
-		m.bufferedResults = nil
+		m.deferredOutput = nil
+
+		// Re-render the fresh dashboard below the flushed results
 		m.Renderer.renderInto(w, m.Collector.Snapshot())
 	})
 }
@@ -172,7 +181,11 @@ func (m *Manager) HandleResult(r engine.Result) {
 	m.Renderer.AddResult(r.StatusCode, r.URL)
 
 	if m.isStatsActive {
-		m.bufferedResults = append(m.bufferedResults, r)
+		// When stats is active, the terminal is owned by OwnerStatistics.
+		// Any attempt to Emit(OwnerProgress) will fail and drop the output.
+		// We queue the result here to ensure discoveries are never lost from
+		// synchronous output sinks (like JSON/TXT files) that rely on the Formatter.
+		m.deferredOutput = append(m.deferredOutput, r)
 		return
 	}
 
