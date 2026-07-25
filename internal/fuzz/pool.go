@@ -21,7 +21,7 @@ func Start(
 	workers int,
 	delay time.Duration,
 	limiter *rate.Limiter,
-	jobs <-chan RequestDTO,
+	jobs <-chan WorkItem,
 	collector *stats.Collector,
 ) <-chan Result {
 	results := make(chan Result, workers)

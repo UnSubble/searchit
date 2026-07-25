@@ -30,12 +30,8 @@ type Executor struct {
 	delay       time.Duration
 	limiter     *rate.Limiter
 	collector   *stats.Collector
-	jobsChan    chan RequestDTO
+	jobsChan    chan WorkItem
 	resultsChan <-chan Result
-
-	mu      sync.Mutex
-	pending map[uint64]chan Result
-	nextID  uint64
 }
 
 // NewExecutor initializes and starts the worker pool.
@@ -48,7 +44,7 @@ func NewExecutor(
 	limiter *rate.Limiter,
 	collector *stats.Collector,
 ) *Executor {
-	jobsChan := make(chan RequestDTO, workers*2)
+	jobsChan := make(chan WorkItem, workers*2)
 	resultsChan := Start(ctx, client, fs, workers, delay, limiter, jobsChan, collector)
 
 	e := &Executor{
@@ -61,44 +57,18 @@ func NewExecutor(
 		collector:   collector,
 		jobsChan:    jobsChan,
 		resultsChan: resultsChan,
-		pending:     make(map[uint64]chan Result),
 	}
-
-	go e.routeResults()
 
 	return e
 }
 
-func (e *Executor) routeResults() {
-	for res := range e.resultsChan {
-		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-		id, ok := res.UserData.(uint64)
-		if !ok {
-			continue
-		}
-		e.mu.Lock()
-		ch, found := e.pending[id]
-		if found {
-			delete(e.pending, id)
-		}
-		e.mu.Unlock()
-		if found {
-			ch <- res
-			close(ch)
-		}
-	}
-}
-
 // Execute schedules a job and blocks until its result is received.
 func (e *Executor) Execute(job RequestDTO) (Result, error) {
-	e.mu.Lock()
-	id := e.nextID
-	e.nextID++
 	ch := make(chan Result, 1)
-	e.pending[id] = ch
-	e.mu.Unlock()
-
-	job.UserData = id
+	item := WorkItem{
+		Req:   job,
+		Reply: ch,
+	}
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 	atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
@@ -106,7 +76,7 @@ func (e *Executor) Execute(job RequestDTO) (Result, error) {
 	select {
 	case <-e.ctx.Done():
 		return Result{}, e.ctx.Err()
-	case e.jobsChan <- job:
+	case e.jobsChan <- item:
 	}
 
 	select {

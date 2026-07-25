@@ -67,6 +67,13 @@ func TestFuzz_ConcurrencyAndDeterminism(t *testing.T) {
 			}()
 
 			fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+			wiChan := make(chan fuzz.WorkItem, tc)
+			go func() {
+				for j := range jobs {
+					wiChan <- fuzz.WorkItem{Req: j}
+				}
+				close(wiChan)
+			}()
 			results := fuzz.Start(
 				ctx,
 				client,
@@ -74,7 +81,7 @@ func TestFuzz_ConcurrencyAndDeterminism(t *testing.T) {
 				tc,
 				0,
 				nil,
-				jobs,
+				wiChan,
 				nil,
 			)
 
@@ -142,6 +149,13 @@ func TestFuzz_TimeoutAndCancellation(t *testing.T) {
 	}()
 
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
+	wiChan := make(chan fuzz.WorkItem, 5)
+	go func() {
+		for j := range jobs {
+			wiChan <- fuzz.WorkItem{Req: j}
+		}
+		close(wiChan)
+	}()
 	results := fuzz.Start(
 		ctx,
 		client,
@@ -149,7 +163,7 @@ func TestFuzz_TimeoutAndCancellation(t *testing.T) {
 		4,
 		0,
 		nil,
-		jobs,
+		wiChan,
 		nil,
 	)
 
@@ -193,7 +207,14 @@ func TestFuzz_ResponseFiltering(t *testing.T) {
 		t.Fatalf("failed to build FilterSuite: %v", err)
 	}
 
-	results := fuzz.Start(ctx, client, fs, 1, 0, nil, jobs, nil)
+	wiChan := make(chan fuzz.WorkItem, 10)
+	go func() {
+		for j := range jobs {
+			wiChan <- fuzz.WorkItem{Req: j}
+		}
+		close(wiChan)
+	}()
+	results := fuzz.Start(ctx, client, fs, 1, 0, nil, wiChan, nil)
 	var res []fuzz.Result
 	for r := range results {
 		res = append(res, r)
@@ -234,7 +255,14 @@ func TestFuzz_ShowPresentation(t *testing.T) {
 	fs.ShowHeaders = true
 	fs.ShowTitle = true
 
-	results := fuzz.Start(ctx, client, fs, 1, 0, nil, jobs, nil)
+	wiChan := make(chan fuzz.WorkItem, 10)
+	go func() {
+		for j := range jobs {
+			wiChan <- fuzz.WorkItem{Req: j}
+		}
+		close(wiChan)
+	}()
+	results := fuzz.Start(ctx, client, fs, 1, 0, nil, wiChan, nil)
 	var res []fuzz.Result
 	for r := range results {
 		res = append(res, r)

@@ -19,9 +19,19 @@ import (
 const bodyReadLimit = 4096
 const bodyRegexLimit = 1024 * 1024
 
-func sendResult(results chan<- Result, res Result) {
+// WorkItem encapsulates a RequestDTO and an optional channel to send the Result to.
+type WorkItem struct {
+	Req   RequestDTO
+	Reply chan<- Result
+}
+
+func sendResult(results chan<- Result, item WorkItem, res Result) {
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsProduced, 1)
-	results <- res
+	if item.Reply != nil {
+		item.Reply <- res
+	} else {
+		results <- res
+	}
 }
 
 func drainAndClose(body io.ReadCloser) {
@@ -39,7 +49,7 @@ func Worker(
 	fs *filter.FilterSuite,
 	delay time.Duration,
 	limiter *rate.Limiter,
-	jobs <-chan RequestDTO,
+	jobs <-chan WorkItem,
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
@@ -54,7 +64,7 @@ func Worker(
 		defer collector.DecrementActiveWorkers()
 	}
 
-	for job := range jobs {
+	for item := range jobs {
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
 		if limiter != nil {
 			err := limiter.Wait(ctx)
@@ -64,7 +74,7 @@ func Worker(
 			}
 		}
 
-		process(ctx, client, fs, job, results, collector)
+		process(ctx, client, fs, item, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 		if delay > 0 {
@@ -82,7 +92,7 @@ func process(
 	ctx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
-	job RequestDTO,
+	item WorkItem,
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
@@ -91,25 +101,25 @@ func process(
 	}
 
 	var bodyReader io.Reader
-	if len(job.Body) > 0 {
-		bodyReader = strings.NewReader(job.Body)
+	if len(item.Req.Body) > 0 {
+		bodyReader = strings.NewReader(item.Req.Body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, job.Method, job.URL, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, item.Req.Method, item.Req.URL, bodyReader)
 	if err != nil {
 		if collector != nil {
 			collector.RecordRequestFailed()
 		}
-		sendResult(results, Result{
-			URL:      job.URL,
+		sendResult(results, item, Result{
+			URL:      item.Req.URL,
 			Accepted: false,
 			Err:      err,
-			UserData: job.UserData,
+			UserData: item.Req.UserData,
 		})
 		return
 	}
 
-	for k, values := range job.Headers {
+	for k, values := range item.Req.Headers {
 		if strings.EqualFold(k, "Host") && len(values) > 0 {
 			req.Host = values[0]
 			continue
@@ -119,7 +129,7 @@ func process(
 		}
 	}
 
-	for _, c := range job.Cookies {
+	for _, c := range item.Req.Cookies {
 		req.Header.Add("Cookie", c)
 	}
 
@@ -132,11 +142,11 @@ func process(
 		if collector != nil {
 			collector.RecordRequestFailed()
 		}
-		sendResult(results, Result{
-			URL:      job.URL,
+		sendResult(results, item, Result{
+			URL:      item.Req.URL,
 			Accepted: false,
 			Err:      err,
-			UserData: job.UserData,
+			UserData: item.Req.UserData,
 		})
 		return
 	}
@@ -156,12 +166,12 @@ func process(
 			collector.RecordResponseReceived(resp.StatusCode, length)
 			collector.RecordRequestFiltered()
 		}
-		sendResult(results, Result{
-			URL:        job.URL,
+		sendResult(results, item, Result{
+			URL:        item.Req.URL,
 			StatusCode: resp.StatusCode,
 			Length:     length,
 			Accepted:   false,
-			UserData:   job.UserData,
+			UserData:   item.Req.UserData,
 		})
 		return
 	}
@@ -182,13 +192,13 @@ func process(
 				collector.RecordResponseReceived(resp.StatusCode, length)
 				collector.RecordRequestFiltered()
 			}
-			sendResult(results, Result{
-				URL:        job.URL,
+			sendResult(results, item, Result{
+				URL:        item.Req.URL,
 				StatusCode: resp.StatusCode,
 				Length:     length,
 				Accepted:   false,
 				Err:        readErr,
-				UserData:   job.UserData,
+				UserData:   item.Req.UserData,
 			})
 			return
 		}
@@ -200,13 +210,13 @@ func process(
 				collector.RecordResponseReceived(resp.StatusCode, length)
 				collector.RecordRequestSucceeded()
 			}
-			sendResult(results, Result{
-				URL:        job.URL,
+			sendResult(results, item, Result{
+				URL:        item.Req.URL,
 				StatusCode: resp.StatusCode,
 				Length:     length,
 				Accepted:   true,
 				Err:        err,
-				UserData:   job.UserData,
+				UserData:   item.Req.UserData,
 			})
 			return
 		}
@@ -228,14 +238,14 @@ func process(
 		collector.RecordRequestSucceeded()
 	}
 
-	sendResult(results, Result{
-		URL:        job.URL,
+	sendResult(results, item, Result{
+		URL:        item.Req.URL,
 		StatusCode: resp.StatusCode,
 		Length:     length,
 		Accepted:   true,
 		Title:      title,
 		Headers:    resHeaders,
-		UserData:   job.UserData,
+		UserData:   item.Req.UserData,
 	})
 }
 

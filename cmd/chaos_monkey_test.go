@@ -211,13 +211,16 @@ func TestMonkey_RandomScans(t *testing.T) {
 				}
 			} else {
 				// Fuzzing loop
-				jobs := make(chan fuzz.RequestDTO, workers)
+				jobs := make(chan fuzz.WorkItem, workers)
 				go func() {
 					defer close(jobs)
 					for _, word := range wlWords {
-						jobs <- fuzz.RequestDTO{
-							URL:    srv.URL + "/" + word,
-							Method: "GET",
+						jobs <- fuzz.WorkItem{
+							Req: fuzz.RequestDTO{
+								URL:    srv.URL + "/" + word,
+								Method: "GET",
+							},
+							Reply: make(chan fuzz.Result, 1),
 						}
 					}
 				}()
