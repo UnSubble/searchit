@@ -3,6 +3,7 @@ package env
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/unsubble/searchit/internal/testutil/command"
@@ -107,8 +108,12 @@ func CheckMultipleInstallations(executor command.Executor) MultipleBinaryResult 
 		candidate := dir + string(os.PathSeparator) + "searchit"
 		info, err := os.Stat(candidate)
 		if err == nil && !info.IsDir() {
-			if !seen[candidate] {
-				seen[candidate] = true
+			canonical, err := filepath.EvalSymlinks(candidate)
+			if err != nil {
+				canonical = candidate
+			}
+			if !seen[canonical] {
+				seen[canonical] = true
 				result.UniquePaths = append(result.UniquePaths, candidate)
 			}
 		}

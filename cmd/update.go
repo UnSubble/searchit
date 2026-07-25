@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/unsubble/searchit/internal/env"
@@ -115,14 +116,14 @@ var updateCmd = &cobra.Command{
 			fmt.Printf("    PASS\n\n")
 			fmt.Printf("    CURRENT VERSION\n\n            %s\n\n\n", res.CurrentVersion.Original)
 			fmt.Printf("    UPDATED VERSION\n\n            %s\n\n\n", res.TargetVersion.Original)
-			fmt.Printf("    STATUS\n\n            SUCCESS\n\n")
+			fmt.Printf("    STATUS\n\n            %s COMPLETED\n\n", strings.ToUpper(action))
 		} else {
 			fmt.Printf("    WARNING\n\n")
 			fmt.Printf("    CURRENT VERSION\n\n            %s\n\n\n", res.CurrentVersion.Original)
 			fmt.Printf("    INSTALLED VERSION\n\n            %s\n\n\n", res.TargetVersion.Original)
 			fmt.Printf("    ACTIVE EXECUTABLE\n\n            %s\n\n\n", ctxInfo.ActiveExecutable)
 			fmt.Printf("    INSTALLED EXECUTABLE\n\n            %s\n\n\n", ctxInfo.InstalledExecutable)
-			fmt.Printf("    STATUS\n\n            INSTALLATION COMPLETED\n\n")
+			fmt.Printf("    STATUS\n\n            %s REQUIRES\n            MANUAL ACTION\n\n", strings.ToUpper(action))
 			fmt.Printf("    WARNING\n\n            Searchit was successfully\n            installed but the active\n            executable has NOT been\n            updated.\n\n")
 			fmt.Printf("    ACTION REQUIRED\n\n            sudo install -m 755 \\\n            %s \\\n            %s\n\n\n", ctxInfo.InstalledExecutable, ctxInfo.ActiveExecutable)
 			fmt.Printf("    NOTE\n\n            Root privileges are required\n            to replace the currently\n            active executable.\n\n")
