@@ -124,7 +124,7 @@ func (m *Manager) PreviewAction(res CheckResult, action string, ctx env.InstallC
 	fmt.Println("        NEWS")
 	n, err := news.Fetch(res.TargetVersion.Original)
 	if err != nil {
-		fmt.Printf("                NOT VERIFIED (%s)\n\n\n", err.Error())
+		fmt.Printf("                UNAVAILABLE (%s)\n\n\n", err.Error())
 	} else {
 		lines := strings.Split(n.Content, "\n")
 		for _, l := range lines {

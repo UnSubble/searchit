@@ -152,7 +152,7 @@ func TestNewsCommand(t *testing.T) {
 	verifyGolden(t, string(out), "news/news.golden")
 }
 
-func TestRollbackCommand(t *testing.T) {
+func TestRollbackCommandRequiresManualAction(t *testing.T) {
 	releasesJSON := `[{"tag_name": "v1.0.0", "draft": false}, {"tag_name": "v0.4.0", "draft": false}]`
 	server := setupMockServer(releasesJSON, 200)
 	defer server.Close()
@@ -160,6 +160,7 @@ func TestRollbackCommand(t *testing.T) {
 	tempDir := t.TempDir()
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
+		// Empty GOBIN/GOPATH means InstalledExecutable won't match binPath (which is in a temp build dir)
 	}
 
 	cmd := exec.Command(binPath, "update", "--rollback", "v0.4.0", "--dry-run")
@@ -174,10 +175,10 @@ func TestRollbackCommand(t *testing.T) {
 		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
 	}
 
-	verifyGolden(t, string(out), "update/rollback.golden")
+	verifyGolden(t, string(out), "update/rollback_requires_manual.golden")
 }
 
-func TestDowngradeCommand(t *testing.T) {
+func TestRollbackCommandCompleted(t *testing.T) {
 	releasesJSON := `[{"tag_name": "v1.0.0", "draft": false}, {"tag_name": "v0.4.0", "draft": false}]`
 	server := setupMockServer(releasesJSON, 200)
 	defer server.Close()
@@ -185,9 +186,35 @@ func TestDowngradeCommand(t *testing.T) {
 	tempDir := t.TempDir()
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
+		"GOBIN":             filepath.Dir(binPath), // Matches ActiveExecutable
 	}
 
-	// current version is v0.5.0
+	cmd := exec.Command(binPath, "update", "--rollback", "v0.4.0", "--dry-run")
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
+
+	verifyGolden(t, string(out), "update/rollback_completed.golden")
+}
+
+func TestUpdateCommandRequiresManualAction(t *testing.T) {
+	releasesJSON := `[{"tag_name": "v1.0.0", "draft": false}, {"tag_name": "v0.4.0", "draft": false}]`
+	server := setupMockServer(releasesJSON, 200)
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	env := map[string]string{
+		"SEARCHIT_API_BASE": server.URL,
+		// Empty GOBIN/GOPATH means InstalledExecutable won't match binPath
+	}
+
 	cmd := exec.Command(binPath, "update", "--install", "v0.4.0", "--dry-run")
 	cmd.Env = os.Environ()
 	for k, v := range env {
@@ -200,5 +227,31 @@ func TestDowngradeCommand(t *testing.T) {
 		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
 	}
 
-	verifyGolden(t, string(out), "update/downgrade.golden")
+	verifyGolden(t, string(out), "update/update_requires_manual.golden")
+}
+
+func TestUpdateCommandCompleted(t *testing.T) {
+	releasesJSON := `[{"tag_name": "v1.0.0", "draft": false}, {"tag_name": "v0.4.0", "draft": false}]`
+	server := setupMockServer(releasesJSON, 200)
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	env := map[string]string{
+		"SEARCHIT_API_BASE": server.URL,
+		"GOBIN":             filepath.Dir(binPath), // Matches ActiveExecutable
+	}
+
+	cmd := exec.Command(binPath, "update", "--install", "v0.4.0", "--dry-run")
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
+
+	verifyGolden(t, string(out), "update/update_completed.golden")
 }
