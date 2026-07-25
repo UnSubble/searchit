@@ -224,14 +224,6 @@ func (r *Runner) Run(ctx context.Context, strategy string, primaryChan <-chan st
 	}
 }
 
-type eagerJobInfo struct {
-	foo  string
-	bar  string
-	buzz string
-	fuzz string
-	idx  int
-}
-
 func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan string, yield ResultCallback) error {
 	fooList := r.FooWords
 	if len(fooList) == 0 {
@@ -246,147 +238,108 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		buzzList = []string{""}
 	}
 
-	if primaryChan != nil {
-		var currentBatch []string
-		batchSize := r.Threads * 4
-		if batchSize < 32 {
-			batchSize = 32
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case word, ok := <-primaryChan:
-				if !ok {
-					if len(currentBatch) > 0 {
-						r.executeEagerBatch(e, currentBatch, fooList, barList, buzzList, yield)
-					}
-					return nil
-				}
-				currentBatch = append(currentBatch, word)
-				if len(currentBatch) >= batchSize {
-					r.executeEagerBatch(e, currentBatch, fooList, barList, buzzList, yield)
-					currentBatch = nil
-				}
-			}
-		}
-	} else {
-		var allJobs []eagerJobInfo
-		idx := 0
-		for _, fooVal := range fooList {
-			for _, barVal := range barList {
-				for _, buzzVal := range buzzList {
-					allJobs = append(allJobs, eagerJobInfo{
-						foo:  fooVal,
-						bar:  barVal,
-						buzz: buzzVal,
-						idx:  idx,
-					})
-					idx++
-				}
-			}
-		}
+	batchSize := r.Threads * 4
+	if batchSize < 32 {
+		batchSize = 32
+	}
 
-		batchSize := r.Threads * 4
-		if batchSize < 32 {
-			batchSize = 32
-		}
+	jobChan := make(chan chan Result, batchSize)
 
-		for start := 0; start < len(allJobs); start += batchSize {
-			end := start + batchSize
-			if end > len(allJobs) {
-				end = len(allJobs)
-			}
+	// Declare WaitGroup first so it is pushed onto the defer stack FIRST.
+	// This ensures it executes LAST during stack unwinding.
+	var producerWg sync.WaitGroup
+	defer producerWg.Wait()
 
-			batch := allJobs[start:end]
-			batchResults := make([]Result, len(batch))
-			var wg sync.WaitGroup
+	// Declare context cancellation next so it is pushed onto the defer stack SECOND.
+	// This ensures it executes FIRST during stack unwinding.
+	producerCtx, cancelProducer := context.WithCancel(ctx)
+	defer cancelProducer()
 
-			for i, info := range batch {
-				wg.Add(1)
-				go func(localIdx int, jobInfo eagerJobInfo) {
-					defer wg.Done()
-					vars := map[string]string{"FOO": jobInfo.foo, "BAR": jobInfo.bar, "BUZZ": jobInfo.buzz}
-					job, err := r.buildJob(r.compiledReq.targetURL, vars)
-					if err != nil {
-						if r.Collector != nil {
-							r.Collector.DecrementQueuedJobs()
-						}
+	producerWg.Add(1)
+	go func() {
+		defer producerWg.Done()
+		defer close(jobChan)
+
+		if primaryChan != nil {
+			for {
+				select {
+				case <-producerCtx.Done():
+					return
+				case word, ok := <-primaryChan:
+					if !ok {
 						return
 					}
-					res, err := e.Execute(job)
-					if r.Collector != nil {
-						r.Collector.DecrementQueuedJobs()
+					for _, fooVal := range fooList {
+						for _, barVal := range barList {
+							for _, buzzVal := range buzzList {
+								resCh := make(chan Result, 1)
+								select {
+								case <-producerCtx.Done():
+									return
+								case jobChan <- resCh:
+								}
+								producerWg.Add(1)
+								go func(f, foo, bar, buzz string, ch chan<- Result) {
+									defer producerWg.Done()
+									job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FUZZ": f, "FOO": foo, "BAR": bar, "BUZZ": buzz})
+									if err != nil {
+										ch <- Result{Err: err}
+										return
+									}
+									res, err := e.Execute(job)
+									if err != nil {
+										res.Err = err
+									}
+									ch <- res
+								}(word, fooVal, barVal, buzzVal, resCh)
+							}
+						}
 					}
-					if err == nil {
-						batchResults[localIdx] = res
-					}
-				}(i, info)
-			}
-			wg.Wait()
-
-			for _, res := range batchResults {
-				if res.Accepted {
-					yield(res)
 				}
+			}
+		} else {
+			for _, fooVal := range fooList {
+				for _, barVal := range barList {
+					for _, buzzVal := range buzzList {
+						resCh := make(chan Result, 1)
+						select {
+						case <-producerCtx.Done():
+							return
+						case jobChan <- resCh:
+						}
+						producerWg.Add(1)
+						go func(foo, bar, buzz string, ch chan<- Result) {
+							defer producerWg.Done()
+							job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FOO": foo, "BAR": bar, "BUZZ": buzz})
+							if err != nil {
+								ch <- Result{Err: err}
+								return
+							}
+							res, err := e.Execute(job)
+							if err != nil {
+								res.Err = err
+							}
+							ch <- res
+						}(fooVal, barVal, buzzVal, resCh)
+					}
+				}
+			}
+		}
+	}()
+
+	for resCh := range jobChan {
+		select {
+		case <-ctx.Done():
+			// DO NOT break, we must drain the remaining jobChan to allow background workers to send and finish
+		case res := <-resCh:
+			// Yield results OR errors, preserving determinism for chaotic networks
+			if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
+				yield(res)
 			}
 		}
 	}
 
 	return nil
-}
-
-func (r *Runner) executeEagerBatch(e *Executor, fuzzVals, fooList, barList, buzzList []string, yield ResultCallback) {
-	var batch []eagerJobInfo
-	idx := 0
-	for _, fuzzVal := range fuzzVals {
-		for _, fooVal := range fooList {
-			for _, barVal := range barList {
-				for _, buzzVal := range buzzList {
-					batch = append(batch, eagerJobInfo{
-						foo:  fooVal,
-						bar:  barVal,
-						buzz: buzzVal,
-						fuzz: fuzzVal,
-						idx:  idx,
-					})
-					idx++
-				}
-			}
-		}
-	}
-
-	batchResults := make([]Result, len(batch))
-	var wg sync.WaitGroup
-
-	for i, info := range batch {
-		wg.Add(1)
-		go func(localIdx int, jobInfo eagerJobInfo) {
-			defer wg.Done()
-			vars := map[string]string{"FUZZ": jobInfo.fuzz, "FOO": jobInfo.foo, "BAR": jobInfo.bar, "BUZZ": jobInfo.buzz}
-			job, err := r.buildJob(r.compiledReq.targetURL, vars)
-			if err != nil {
-				if r.Collector != nil {
-					r.Collector.DecrementQueuedJobs()
-				}
-				return
-			}
-			res, err := e.Execute(job)
-			if r.Collector != nil {
-				r.Collector.DecrementQueuedJobs()
-			}
-			if err == nil {
-				batchResults[localIdx] = res
-			}
-		}(i, info)
-	}
-	wg.Wait()
-
-	for _, res := range batchResults {
-		if res.Accepted {
-			yield(res)
-		}
-	}
 }
 
 func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) error {
@@ -431,9 +384,11 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 	wg.Wait()
 
 	for _, jr := range results1 {
-		if jr.res.Accepted {
+		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
 			yield(jr.res)
-			foundFOO = append(foundFOO, jr.word)
+			if jr.res.Accepted {
+				foundFOO = append(foundFOO, jr.word)
+			}
 		}
 	}
 
@@ -490,9 +445,14 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	for _, bj := range barJobs {
 		jr := results2[bj.idx]
-		if jr.res.Accepted {
+		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
 			yield(jr.res)
-			foundBAR = append(foundBAR, struct{ foo, bar string }{bj.foo, bj.bar})
+			if jr.res.Accepted {
+				foundBAR = append(foundBAR, struct {
+					foo string
+					bar string
+				}{foo: bj.foo, bar: bj.bar})
+			}
 		}
 	}
 
@@ -543,7 +503,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	for _, bj := range buzzJobs {
 		jr := results3[bj.idx]
-		if jr.res.Accepted {
+		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
 			yield(jr.res)
 		}
 	}
@@ -595,9 +555,9 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			wg.Wait()
 
 			for i, res := range results {
-				if res.Accepted {
+				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 					yield(res)
-					if maxDepth >= 2 {
+					if res.Accepted && maxDepth >= 2 {
 						dfsVisit(r.FooWords[i], "", 2)
 					}
 				}
@@ -631,9 +591,9 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			wg.Wait()
 
 			for i, res := range results {
-				if res.Accepted {
+				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 					yield(res)
-					if maxDepth >= 3 {
+					if res.Accepted && maxDepth >= 3 {
 						dfsVisit(parentFoo, r.BarWords[i], 3)
 					}
 				}
@@ -665,7 +625,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			wg.Wait()
 
 			for _, res := range results {
-				if res.Accepted {
+				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 					yield(res)
 				}
 			}
@@ -677,6 +637,11 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 }
 
 func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallback) error {
+	type payload struct {
+		word    string
+		origIdx int
+	}
+
 	engine := adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
 	r.Summary = engine.Summary
 	if err := engine.Discover(ctx); err != nil {
@@ -706,24 +671,21 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
 	cTmpl1 := CompileTemplate(tmpl1, fuzzPlaceholders)
 
-	sortedFoo := make([]string, len(r.FooWords))
-	copy(sortedFoo, r.FooWords)
-	sort.SliceStable(sortedFoo, func(i, j int) bool {
-		return engine.GetScore(sortedFoo[i], nil, 1, "") > engine.GetScore(sortedFoo[j], nil, 1, "")
-	})
-
-	sortedIndices := make(map[string]int)
-	for i, w := range sortedFoo {
-		sortedIndices[w] = i
+	payloads1 := make([]payload, len(r.FooWords))
+	for i, w := range r.FooWords {
+		payloads1[i] = payload{word: w, origIdx: i}
 	}
+	sort.SliceStable(payloads1, func(i, j int) bool {
+		return engine.GetScore(payloads1[i].word, nil, 1, "") > engine.GetScore(payloads1[j].word, nil, 1, "")
+	})
 
 	results1 := make([]Result, len(r.FooWords))
 	var wg sync.WaitGroup
-	for _, word := range sortedFoo {
+	for i, p := range payloads1 {
 		wg.Add(1)
-		go func(w string) {
+		go func(idx int, p payload) {
 			defer wg.Done()
-			vars := map[string]string{"FOO": w}
+			vars := map[string]string{"FOO": p.word}
 			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
 				if r.Collector != nil {
@@ -736,26 +698,21 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 				r.Collector.DecrementQueuedJobs()
 			}
 			if err == nil {
-				results1[sortedIndices[w]] = res
+				results1[idx] = res
 			}
-		}(word)
+		}(i, p)
 	}
 	wg.Wait()
-
-	originalFooIndices := make(map[string]int)
-	for i, w := range r.FooWords {
-		originalFooIndices[w] = i
-	}
 
 	type orderedResult struct {
 		res   Result
 		index int
 	}
 	var orderedRes1 []orderedResult
-	for _, w := range sortedFoo {
-		res := results1[sortedIndices[w]]
-		if res.Accepted {
-			orderedRes1 = append(orderedRes1, orderedResult{res: res, index: originalFooIndices[w]})
+	for i, p := range payloads1 {
+		res := results1[i]
+		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
+			orderedRes1 = append(orderedRes1, orderedResult{res: res, index: p.origIdx})
 		}
 	}
 	sort.Slice(orderedRes1, func(i, j int) bool {
@@ -764,6 +721,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 
 	type branchDecision struct {
 		foo        string
+		fooIdx     int
 		res        Result
 		policy     types.Policy
 		policyRule string
@@ -789,6 +747,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 
 			decisions = append(decisions, branchDecision{
 				foo:        fooVal,
+				fooIdx:     or.index,
 				res:        or.res,
 				policy:     dec.Policy,
 				policyRule: dec.Rule,
@@ -866,11 +825,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 					eagerWg.Wait()
 
 					for barIdx, res := range results {
-						if res.Accepted {
+						if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 							arMutex.Lock()
 							allResults = append(allResults, adaptiveResult{
 								res:     res,
-								fooIdx:  originalFooIndices[d.foo],
+								fooIdx:  d.fooIdx,
 								barIdx:  barIdx,
 								buzzIdx: -1,
 								depth:   2,
@@ -922,14 +881,14 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 					}
 					eagerWg.Wait()
 
-					for idx, res := range results {
-						if res.Accepted {
+					for i, res := range results {
+						if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 							arMutex.Lock()
 							allResults = append(allResults, adaptiveResult{
 								res:     res,
-								fooIdx:  originalFooIndices[d.foo],
-								barIdx:  jobs[idx].barIdx,
-								buzzIdx: jobs[idx].buzzIdx,
+								fooIdx:  d.fooIdx,
+								barIdx:  jobs[i].barIdx,
+								buzzIdx: jobs[i].buzzIdx,
 								depth:   3,
 							})
 							arMutex.Unlock()
@@ -940,25 +899,22 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			}
 
 			// BFS or DFS policies
-			sortedBar := make([]string, len(r.BarWords))
-			copy(sortedBar, r.BarWords)
-			sort.SliceStable(sortedBar, func(i, j int) bool {
-				ct := d.res.Headers.Get("Content-Type")
-				return engine.GetScore(sortedBar[i], []string{d.foo}, 2, ct) > engine.GetScore(sortedBar[j], []string{d.foo}, 2, ct)
-			})
-
-			sortedBarIndices := make(map[string]int)
-			for i, w := range sortedBar {
-				sortedBarIndices[w] = i
+			payloads2 := make([]payload, len(r.BarWords))
+			for i, w := range r.BarWords {
+				payloads2[i] = payload{word: w, origIdx: i}
 			}
+			sort.SliceStable(payloads2, func(i, j int) bool {
+				ct := d.res.Headers.Get("Content-Type")
+				return engine.GetScore(payloads2[i].word, []string{d.foo}, 2, ct) > engine.GetScore(payloads2[j].word, []string{d.foo}, 2, ct)
+			})
 
 			barResults := make([]Result, len(r.BarWords))
 			var innerWg sync.WaitGroup
-			for _, barVal := range sortedBar {
+			for i, p := range payloads2 {
 				innerWg.Add(1)
-				go func(bVal string) {
+				go func(idx int, p payload) {
 					defer innerWg.Done()
-					vars := map[string]string{"FOO": d.foo, "BAR": bVal}
+					vars := map[string]string{"FOO": d.foo, "BAR": p.word}
 					job, err := r.buildJob(cTmpl2, vars)
 					if err != nil {
 						if r.Collector != nil {
@@ -971,22 +927,18 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						r.Collector.DecrementQueuedJobs()
 					}
 					if err == nil {
-						barResults[sortedBarIndices[bVal]] = res
+						barResults[idx] = res
 					}
-				}(barVal)
+				}(i, p)
 			}
 			innerWg.Wait()
 
-			originalBarIndices := make(map[string]int)
-			for i, w := range r.BarWords {
-				originalBarIndices[w] = i
-			}
-
-			for _, barVal := range sortedBar {
-				res := barResults[sortedBarIndices[barVal]]
-				if res.Accepted {
-					fooIdx := originalFooIndices[d.foo]
-					barIdx := originalBarIndices[barVal]
+			for i, p := range payloads2 {
+				res := barResults[i]
+				barVal := p.word
+				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
+					fooIdx := d.fooIdx
+					barIdx := p.origIdx
 
 					arMutex.Lock()
 					allResults = append(allResults, adaptiveResult{
@@ -999,25 +951,22 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 					arMutex.Unlock()
 
 					if d.policy == types.PolicyDFS && maxDepth >= 3 {
-						sortedBuzz := make([]string, len(r.BuzzWords))
-						copy(sortedBuzz, r.BuzzWords)
-						sort.SliceStable(sortedBuzz, func(i, j int) bool {
-							ct := res.Headers.Get("Content-Type")
-							return engine.GetScore(sortedBuzz[i], []string{d.foo, barVal}, 3, ct) > engine.GetScore(sortedBuzz[j], []string{d.foo, barVal}, 3, ct)
-						})
-
-						sortedBuzzIndices := make(map[string]int)
-						for i, w := range sortedBuzz {
-							sortedBuzzIndices[w] = i
+						payloads3 := make([]payload, len(r.BuzzWords))
+						for i, w := range r.BuzzWords {
+							payloads3[i] = payload{word: w, origIdx: i}
 						}
+						sort.SliceStable(payloads3, func(i, j int) bool {
+							ct := res.Headers.Get("Content-Type")
+							return engine.GetScore(payloads3[i].word, []string{d.foo, barVal}, 3, ct) > engine.GetScore(payloads3[j].word, []string{d.foo, barVal}, 3, ct)
+						})
 
 						buzzResults := make([]Result, len(r.BuzzWords))
 						var leafWg sync.WaitGroup
-						for _, buzzVal := range sortedBuzz {
+						for i, p := range payloads3 {
 							leafWg.Add(1)
-							go func(bzVal string) {
+							go func(idx int, p payload) {
 								defer leafWg.Done()
-								vars := map[string]string{"FOO": d.foo, "BAR": barVal, "BUZZ": bzVal}
+								vars := map[string]string{"FOO": d.foo, "BAR": barVal, "BUZZ": p.word}
 								job, err := r.buildJob(r.compiledReq.targetURL, vars)
 								if err != nil {
 									if r.Collector != nil {
@@ -1030,21 +979,16 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 									r.Collector.DecrementQueuedJobs()
 								}
 								if err == nil {
-									buzzResults[sortedBuzzIndices[bzVal]] = r3
+									buzzResults[idx] = r3
 								}
-							}(buzzVal)
+							}(i, p)
 						}
 						leafWg.Wait()
 
-						originalBuzzIndices := make(map[string]int)
-						for i, w := range r.BuzzWords {
-							originalBuzzIndices[w] = i
-						}
-
-						for _, buzzVal := range sortedBuzz {
-							r3 := buzzResults[sortedBuzzIndices[buzzVal]]
+						for i, p := range payloads3 {
+							r3 := buzzResults[i]
 							if r3.Accepted {
-								buzzIdx := originalBuzzIndices[buzzVal]
+								buzzIdx := p.origIdx
 								arMutex.Lock()
 								allResults = append(allResults, adaptiveResult{
 									res:     r3,
@@ -1093,25 +1037,22 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 					fooVal := r.FooWords[n.fooIdx]
 					barVal := r.BarWords[n.barIdx]
 
-					sortedBuzz := make([]string, len(r.BuzzWords))
-					copy(sortedBuzz, r.BuzzWords)
-					sort.SliceStable(sortedBuzz, func(i, j int) bool {
-						ct := n.res.Headers.Get("Content-Type")
-						return engine.GetScore(sortedBuzz[i], []string{fooVal, barVal}, 3, ct) > engine.GetScore(sortedBuzz[j], []string{fooVal, barVal}, 3, ct)
-					})
-
-					sortedBuzzIndices := make(map[string]int)
-					for i, w := range sortedBuzz {
-						sortedBuzzIndices[w] = i
+					payloads3 := make([]payload, len(r.BuzzWords))
+					for i, w := range r.BuzzWords {
+						payloads3[i] = payload{word: w, origIdx: i}
 					}
+					sort.SliceStable(payloads3, func(i, j int) bool {
+						ct := n.res.Headers.Get("Content-Type")
+						return engine.GetScore(payloads3[i].word, []string{fooVal, barVal}, 3, ct) > engine.GetScore(payloads3[j].word, []string{fooVal, barVal}, 3, ct)
+					})
 
 					buzzResults := make([]Result, len(r.BuzzWords))
 					var leafWg sync.WaitGroup
-					for _, buzzVal := range sortedBuzz {
+					for i, p := range payloads3 {
 						leafWg.Add(1)
-						go func(bzVal string) {
+						go func(idx int, p payload) {
 							defer leafWg.Done()
-							vars := map[string]string{"FOO": fooVal, "BAR": barVal, "BUZZ": bzVal}
+							vars := map[string]string{"FOO": fooVal, "BAR": barVal, "BUZZ": p.word}
 							job, err := r.buildJob(r.compiledReq.targetURL, vars)
 							if err != nil {
 								if r.Collector != nil {
@@ -1124,21 +1065,16 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 								r.Collector.DecrementQueuedJobs()
 							}
 							if err == nil {
-								buzzResults[sortedBuzzIndices[bzVal]] = r3
+								buzzResults[idx] = r3
 							}
-						}(buzzVal)
+						}(i, p)
 					}
 					leafWg.Wait()
 
-					originalBuzzIndices := make(map[string]int)
-					for i, w := range r.BuzzWords {
-						originalBuzzIndices[w] = i
-					}
-
-					for _, buzzVal := range sortedBuzz {
-						r3 := buzzResults[sortedBuzzIndices[buzzVal]]
+					for i, p := range payloads3 {
+						r3 := buzzResults[i]
 						if r3.Accepted {
-							buzzIdx := originalBuzzIndices[buzzVal]
+							buzzIdx := p.origIdx
 							arMutex.Lock()
 							allResults = append(allResults, adaptiveResult{
 								res:     r3,

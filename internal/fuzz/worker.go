@@ -134,10 +134,34 @@ func process(
 	}
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)
+	var resp *http.Response
+	maxRetries := 3
+	var startTime time.Time
+	for i := 0; i < maxRetries; i++ {
+		if req.GetBody != nil {
+			newBody, err := req.GetBody()
+			if err == nil {
+				req.Body = newBody
+			}
+		}
 
-	startTime := time.Now()
-	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsSent, 1)
-	resp, err := client.Do(req)
+		startTime = time.Now()
+		atomic.AddInt64(&stats.GlobalInstrumentation.RequestsSent, 1)
+		resp, err = client.Do(req)
+		if err == nil {
+			if collector != nil {
+				collector.RecordLatency(time.Since(startTime))
+			}
+			break
+		}
+		// Check context before retrying
+		if ctx.Err() != nil {
+			err = ctx.Err()
+			break
+		}
+		time.Sleep(10 * time.Millisecond * time.Duration(i+1))
+	}
+
 	if err != nil {
 		if collector != nil {
 			collector.RecordRequestFailed()
