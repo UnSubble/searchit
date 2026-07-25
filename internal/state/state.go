@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -53,14 +54,17 @@ func (p Phase) String() string {
 type Manager struct {
 	current   int32
 	mu        sync.Mutex
+	cond      *sync.Cond
 	listeners []func(oldPhase, newPhase Phase)
 }
 
 // NewManager initializes a state machine starting in PhaseStarting.
 func NewManager() *Manager {
-	return &Manager{
+	m := &Manager{
 		current: int32(PhaseStarting),
 	}
+	m.cond = sync.NewCond(&m.mu)
+	return m
 }
 
 // Current returns the current execution phase.
@@ -79,6 +83,7 @@ func (m *Manager) Transition(to Phase) Phase {
 	}
 
 	atomic.StoreInt32(&m.current, int32(to))
+	m.cond.Broadcast()
 
 	for _, listener := range m.listeners {
 		listener(old, to)
@@ -92,4 +97,34 @@ func (m *Manager) OnTransition(fn func(oldPhase, newPhase Phase)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.listeners = append(m.listeners, fn)
+}
+
+// WaitUntilRunning blocks until the phase is no longer PhasePaused or the context is done.
+func (m *Manager) WaitUntilRunning(ctx context.Context) error {
+	if m.Current() != PhasePaused {
+		return nil
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			m.mu.Lock()
+			m.cond.Broadcast() // Wake up the Wait if context cancels
+			m.mu.Unlock()
+		case <-done:
+		}
+	}()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for atomic.LoadInt32(&m.current) == int32(PhasePaused) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		m.cond.Wait()
+	}
+	return nil
 }

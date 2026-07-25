@@ -41,6 +41,7 @@ type Manager struct {
 	limiter          *rate.Limiter
 	stats            *stats.Collector
 	fingerprintCache *fingerprint.Cache
+	PauseBlocker     func(context.Context) error
 	wildcardDetector *wildcard.Detector
 	disableWildcard  bool
 
@@ -158,6 +159,11 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		injectedExpress := make(map[string]bool)
 
 		for _, u := range seeds {
+			if m.PauseBlocker != nil {
+				if err := m.PauseBlocker(ctx); err != nil {
+					return
+				}
+			}
 			key := normalizeURL(u)
 			if _, seen := visited[key]; !seen {
 				visited[key] = struct{}{}

@@ -23,15 +23,16 @@ import (
 
 // Executor manages a concurrent worker pool for executing jobs.
 type Executor struct {
-	ctx         context.Context
-	client      *http.Client
-	fs          *filter.FilterSuite
-	workers     int
-	delay       time.Duration
-	limiter     *rate.Limiter
-	collector   *stats.Collector
-	jobsChan    chan WorkItem
-	resultsChan <-chan Result
+	ctx          context.Context
+	client       *http.Client
+	fs           *filter.FilterSuite
+	workers      int
+	delay        time.Duration
+	limiter      *rate.Limiter
+	collector    *stats.Collector
+	jobsChan     chan WorkItem
+	resultsChan  <-chan Result
+	PauseBlocker func(context.Context) error
 }
 
 // NewExecutor initializes and starts the worker pool.
@@ -64,6 +65,12 @@ func NewExecutor(
 
 // Execute schedules a job and blocks until its result is received.
 func (e *Executor) Execute(job RequestDTO) (Result, error) {
+	if e.PauseBlocker != nil {
+		if err := e.PauseBlocker(e.ctx); err != nil {
+			return Result{}, err
+		}
+	}
+
 	ch := make(chan Result, 1)
 	item := WorkItem{
 		Req:   job,
@@ -121,6 +128,8 @@ type Runner struct {
 	Adaptive bool
 	Cache    *fingerprint.Cache
 	Summary  *summary.Summary
+
+	PauseBlocker func(context.Context) error
 
 	compiledReq *compiledRequest
 }
@@ -201,6 +210,7 @@ func TruncateTemplate(urlTemplate string, depth int) string {
 func (r *Runner) Run(ctx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
 	r.compiledReq = r.compileRequest()
 	e := NewExecutor(ctx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector)
+	e.PauseBlocker = r.PauseBlocker
 	defer e.Close()
 
 	maxDepth := GetTargetDepth(r.TargetURL)

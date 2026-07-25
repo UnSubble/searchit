@@ -6,6 +6,8 @@ type Command int
 const (
 	// CommandProgress triggers immediate progress rendering.
 	CommandProgress Command = iota
+	// CommandPauseToggle toggles the global pause/resume state.
+	CommandPauseToggle
 	// CommandStats triggers extended statistics rendering.
 	CommandStats
 	// CommandStopTarget requests graceful shutdown of the current target.

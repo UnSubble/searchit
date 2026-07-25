@@ -106,7 +106,7 @@ func (c *Controller) Start(ctx context.Context) {
 			switch res.b {
 			case 'p', 'P':
 				select {
-				case c.ch <- CommandProgress:
+				case c.ch <- CommandPauseToggle:
 				default:
 				}
 			case 's', 'S':

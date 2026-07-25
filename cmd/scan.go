@@ -591,6 +591,19 @@ var scanCmd = &cobra.Command{
 								case progCmdChan <- cmd:
 								default:
 								}
+							case console.CommandPauseToggle:
+								if stateMgr != nil {
+									if stateMgr.Current() == state.PhaseRunning {
+										stateMgr.Transition(state.PhasePaused)
+									} else if stateMgr.Current() == state.PhasePaused {
+										stateMgr.Transition(state.PhaseRunning)
+									}
+								}
+								// Update the dashboard so Paused state is visible.
+								select {
+								case progCmdChan <- console.CommandProgress:
+								default:
+								}
 							case console.CommandStopTarget:
 								scanCancel()
 							case console.CommandAbortAll:
@@ -642,6 +655,7 @@ var scanCmd = &cobra.Command{
 				manager.SetStats(collector)
 				manager.SetExtensions(cfg.Extensions)
 				manager.SetBaseWordlistSize(totalWords)
+				manager.PauseBlocker = stateMgr.WaitUntilRunning
 				results := manager.Run(scanCtx, seeds, cfg.Threads)
 				for r := range results {
 					if r.Accepted {
@@ -686,6 +700,7 @@ var scanCmd = &cobra.Command{
 						CollapseSlashes: cfg.Paths.CollapseSlashes,
 						Extensions:      cfg.Extensions,
 						Collector:       collector,
+						PauseBlocker:    stateMgr.WaitUntilRunning,
 					}
 					_ = p.Produce(scanCtx, jobs)
 				}()

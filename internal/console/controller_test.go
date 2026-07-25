@@ -19,7 +19,7 @@ func TestController_Keys(t *testing.T) {
 		{
 			name:     "progress command",
 			input:    "p",
-			expected: []console.Command{console.CommandProgress},
+			expected: []console.Command{console.CommandPauseToggle},
 		},
 		{
 			name:     "stats command",
@@ -39,7 +39,7 @@ func TestController_Keys(t *testing.T) {
 		{
 			name:     "unknown keys ignored",
 			input:    "x y z p q a s",
-			expected: []console.Command{console.CommandProgress, console.CommandStopTarget, console.CommandAbortAll, console.CommandStats},
+			expected: []console.Command{console.CommandPauseToggle, console.CommandStopTarget, console.CommandAbortAll, console.CommandStats},
 		},
 	}
 

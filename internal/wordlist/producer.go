@@ -23,6 +23,7 @@ type Producer struct {
 	CollapseSlashes bool
 	Extensions      []string
 	Collector       *stats.Collector
+	PauseBlocker    func(context.Context) error
 }
 
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
@@ -59,6 +60,12 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 			cleaned, ok := CleanWord(word, p.NormalizePaths, p.CollapseSlashes)
 			if !ok {
 				continue
+			}
+
+			if p.PauseBlocker != nil {
+				if err := p.PauseBlocker(ctx); err != nil {
+					return err
+				}
 			}
 
 			variants := extensions.GenerateVariants(cleaned, p.Extensions)

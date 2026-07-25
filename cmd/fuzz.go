@@ -664,6 +664,19 @@ var fuzzCmd = &cobra.Command{
 								case progCmdChan <- c:
 								default:
 								}
+							case console.CommandPauseToggle:
+								if stateMgr != nil {
+									if stateMgr.Current() == state.PhaseRunning {
+										stateMgr.Transition(state.PhasePaused)
+									} else if stateMgr.Current() == state.PhasePaused {
+										stateMgr.Transition(state.PhaseRunning)
+									}
+								}
+								// Update the dashboard so Paused state is visible.
+								select {
+								case progCmdChan <- console.CommandProgress:
+								default:
+								}
 							case console.CommandStopTarget, console.CommandAbortAll:
 								if stateMgr != nil && stateMgr.Current() < state.PhaseStopping {
 									stateMgr.Transition(state.PhaseStopping)
@@ -749,6 +762,7 @@ var fuzzCmd = &cobra.Command{
 				ShowTitle:       cfg.ShowTitle,
 				Adaptive:        cfg.Adaptive,
 				Cache:           appState.FingerprintCache,
+				PauseBlocker:    stateMgr.WaitUntilRunning,
 			}
 
 			collector.SetQueuedJobs(int64(totalCandidates))
