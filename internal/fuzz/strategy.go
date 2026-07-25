@@ -309,9 +309,15 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 					defer wg.Done()
 					job, err := r.buildJob(r.TargetURL, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
 					if err != nil {
+						if r.Collector != nil {
+							r.Collector.DecrementQueuedJobs()
+						}
 						return
 					}
 					res, err := e.Execute(job)
+					if r.Collector != nil {
+						r.Collector.DecrementQueuedJobs()
+					}
 					if err == nil {
 						batchResults[localIdx] = res
 					}
@@ -359,9 +365,15 @@ func (r *Runner) executeEagerBatch(e *Executor, fuzzVals, fooList, barList, buzz
 			defer wg.Done()
 			job, err := r.buildJobWithFuzz(r.TargetURL, jobInfo.fuzz, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
 			if err != nil {
+				if r.Collector != nil {
+					r.Collector.DecrementQueuedJobs()
+				}
 				return
 			}
 			res, err := e.Execute(job)
+			if r.Collector != nil {
+				r.Collector.DecrementQueuedJobs()
+			}
 			if err == nil {
 				batchResults[localIdx] = res
 			}
@@ -399,9 +411,15 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			defer wg.Done()
 			job, err := r.buildJob(tmpl1, w, "", "")
 			if err != nil {
+				if r.Collector != nil {
+					r.Collector.DecrementQueuedJobs()
+				}
 				return
 			}
 			res, err := e.Execute(job)
+			if r.Collector != nil {
+				r.Collector.DecrementQueuedJobs()
+			}
 			if err == nil {
 				results1[idx] = jobResult{word: w, res: res}
 			}
@@ -449,9 +467,15 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			defer wg.Done()
 			job, err := r.buildJob(tmpl2, info.foo, info.bar, "")
 			if err != nil {
+				if r.Collector != nil {
+					r.Collector.DecrementQueuedJobs()
+				}
 				return
 			}
 			res, err := e.Execute(job)
+			if r.Collector != nil {
+				r.Collector.DecrementQueuedJobs()
+			}
 			if err == nil {
 				results2[info.idx] = jobResult{word: info.foo + "/" + info.bar, res: res}
 			}
@@ -495,9 +519,15 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			defer wg.Done()
 			job, err := r.buildJob(r.TargetURL, info.foo, info.bar, info.buzz)
 			if err != nil {
+				if r.Collector != nil {
+					r.Collector.DecrementQueuedJobs()
+				}
 				return
 			}
 			res, err := e.Execute(job)
+			if r.Collector != nil {
+				r.Collector.DecrementQueuedJobs()
+			}
 			if err == nil {
 				results3[info.idx] = jobResult{word: info.foo + "/" + info.bar + "/" + info.buzz, res: res}
 			}
@@ -540,9 +570,15 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					defer wg.Done()
 					job, err := r.buildJob(tmpl, w, "", "")
 					if err != nil {
+						if r.Collector != nil {
+							r.Collector.DecrementQueuedJobs()
+						}
 						return
 					}
 					res, err := e.Execute(job)
+					if r.Collector != nil {
+						r.Collector.DecrementQueuedJobs()
+					}
 					if err == nil {
 						results[idx] = res
 					}
@@ -568,9 +604,15 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					defer wg.Done()
 					job, err := r.buildJob(tmpl, parentFoo, w, "")
 					if err != nil {
+						if r.Collector != nil {
+							r.Collector.DecrementQueuedJobs()
+						}
 						return
 					}
 					res, err := e.Execute(job)
+					if r.Collector != nil {
+						r.Collector.DecrementQueuedJobs()
+					}
 					if err == nil {
 						results[idx] = res
 					}
@@ -595,9 +637,15 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					defer wg.Done()
 					job, err := r.buildJob(r.TargetURL, parentFoo, parentBar, w)
 					if err != nil {
+						if r.Collector != nil {
+							r.Collector.DecrementQueuedJobs()
+						}
 						return
 					}
 					res, err := e.Execute(job)
+					if r.Collector != nil {
+						r.Collector.DecrementQueuedJobs()
+					}
 					if err == nil {
 						results[idx] = res
 					}
@@ -665,9 +713,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			defer wg.Done()
 			job, err := r.buildJob(tmpl1, w, "", "")
 			if err != nil {
+				if r.Collector != nil {
+					r.Collector.DecrementQueuedJobs()
+				}
 				return
 			}
 			res, err := e.Execute(job)
+			if r.Collector != nil {
+				r.Collector.DecrementQueuedJobs()
+			}
 			if err == nil {
 				results1[sortedIndices[w]] = res
 			}
@@ -780,9 +834,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							defer eagerWg.Done()
 							job, err := r.buildJob(tmpl2, d.foo, bVal, "")
 							if err != nil {
+								if r.Collector != nil {
+									r.Collector.DecrementQueuedJobs()
+								}
 								return
 							}
 							res, err := e.Execute(job)
+							if r.Collector != nil {
+								r.Collector.DecrementQueuedJobs()
+							}
 							if err == nil {
 								results[i] = res
 							}
@@ -830,9 +890,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							defer eagerWg.Done()
 							job, err := r.buildJob(r.TargetURL, d.foo, info.bar, info.buzz)
 							if err != nil {
+								if r.Collector != nil {
+									r.Collector.DecrementQueuedJobs()
+								}
 								return
 							}
 							res, err := e.Execute(job)
+							if r.Collector != nil {
+								r.Collector.DecrementQueuedJobs()
+							}
 							if err == nil {
 								results[i] = res
 							}
@@ -878,9 +944,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 					defer innerWg.Done()
 					job, err := r.buildJob(tmpl2, d.foo, bVal, "")
 					if err != nil {
+						if r.Collector != nil {
+							r.Collector.DecrementQueuedJobs()
+						}
 						return
 					}
 					res, err := e.Execute(job)
+					if r.Collector != nil {
+						r.Collector.DecrementQueuedJobs()
+					}
 					if err == nil {
 						barResults[sortedBarIndices[bVal]] = res
 					}
@@ -930,9 +1002,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 								defer leafWg.Done()
 								job, err := r.buildJob(r.TargetURL, d.foo, barVal, bzVal)
 								if err != nil {
+									if r.Collector != nil {
+										r.Collector.DecrementQueuedJobs()
+									}
 									return
 								}
 								r3, err := e.Execute(job)
+								if r.Collector != nil {
+									r.Collector.DecrementQueuedJobs()
+								}
 								if err == nil {
 									buzzResults[sortedBuzzIndices[bzVal]] = r3
 								}
@@ -1017,9 +1095,15 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							defer leafWg.Done()
 							job, err := r.buildJob(r.TargetURL, fooVal, barVal, bzVal)
 							if err != nil {
+								if r.Collector != nil {
+									r.Collector.DecrementQueuedJobs()
+								}
 								return
 							}
 							r3, err := e.Execute(job)
+							if r.Collector != nil {
+								r.Collector.DecrementQueuedJobs()
+							}
 							if err == nil {
 								buzzResults[sortedBuzzIndices[bzVal]] = r3
 							}

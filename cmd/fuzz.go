@@ -754,7 +754,6 @@ var fuzzCmd = &cobra.Command{
 			collector.SetQueuedJobs(int64(totalCandidates))
 
 			runErr := runner.Run(fuzzCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
-				collector.DecrementQueuedJobs()
 				if r.Accepted {
 					engRes := engine.Result{
 						URL:        r.URL,
