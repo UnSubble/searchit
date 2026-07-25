@@ -13,10 +13,10 @@ const (
 	DefaultPadWidth = 28
 
 	// TwoColLeftKeyWidth is the fixed width of the left key column in a two-column row.
-	TwoColLeftKeyWidth = 12
+	TwoColLeftKeyWidth = 14
 
 	// TwoColLeftValWidth is the fixed width of the left value column in a two-column row.
-	TwoColLeftValWidth = 14
+	TwoColLeftValWidth = 12
 
 	// TwoColRightKeyWidth is the fixed width of the right key column in a two-column row.
 	TwoColRightKeyWidth = 12

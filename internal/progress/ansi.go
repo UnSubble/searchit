@@ -177,7 +177,7 @@ func (tr *ANSIRenderer) renderHeader(profilesStr string, contentWidth int) []str
 
 func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
 	elapsedStr := terminal.FormatElapsed(time.Since(snap.StartTime))
-	etaStr := terminal.FormatETA(snap.QueuedJobs, snap.RequestsPerSecond)
+	etaStr := terminal.FormatETA(snap.QueuedJobs, snap.CurrentRequestsPerSecond)
 
 	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
 		return terminal.FormatTwoColumnRow(leftKey, leftVal, rightKey, rightVal)
@@ -188,7 +188,7 @@ func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
 		"",
 		formatStatsRow("Requests", fmt.Sprintf("%d", snap.RequestsSent), "Responses", fmt.Sprintf("%d", snap.ResponsesReceived)),
 		"",
-		formatStatsRow("Req/s", fmt.Sprintf("%.0f", snap.RequestsPerSecond), "Workers", fmt.Sprintf("%d", snap.ActiveWorkers)),
+		formatStatsRow("Current Req/s", fmt.Sprintf("%.0f", snap.CurrentRequestsPerSecond), "Workers", fmt.Sprintf("%d", snap.ActiveWorkers)),
 		"",
 		formatStatsRow("Queue", fmt.Sprintf("%d", snap.QueuedJobs), "Found", fmt.Sprintf("%d", snap.Discovered)),
 		"",

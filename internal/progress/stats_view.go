@@ -69,12 +69,17 @@ func statsReport(
 	add(formatRow("Redirects", formatNumber(snap.Redirects)))
 	add(formatRow("Retries", formatNumber(snap.Retries)))
 
+	// ── Requests ────────────────────────────────────────────────────────────
+	section("Requests")
+	add(formatRow("Total requests", formatNumber(snap.RequestsSent)))
+	add(formatRow("Current Req/s", fmt.Sprintf("%.0f", snap.CurrentRequestsPerSecond)))
+	add(formatRow("Average Req/s", fmt.Sprintf("%.0f", snap.RequestsPerSecond)))
+	add(formatRow("Peak Req/s", fmt.Sprintf("%.0f", snap.PeakRequestsPerSecond)))
+
 	// ── Performance ─────────────────────────────────────────────────────────
 	section("Performance")
 	add(formatRow("Elapsed", terminal.FormatElapsed(time.Since(snap.StartTime))))
 	add(formatRow("Average latency", terminal.FormatLatency(snap.AverageLatency)))
-	add(formatRow("Requests/sec", fmt.Sprintf("%.0f", snap.RequestsPerSecond)))
-	add(formatRow("Peak requests/sec", fmt.Sprintf("%.0f", snap.PeakRequestsPerSecond)))
 
 	// ── Workers ─────────────────────────────────────────────────────────────
 	section("Workers")

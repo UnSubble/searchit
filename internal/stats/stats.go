@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+// windowSlots is the number of ring-buffer slots used for the sliding-window rate.
+// Each slot spans windowSlotDuration. Total window = windowSlots * windowSlotDuration.
+const (
+	windowSlots        = 5
+	windowSlotDuration = time.Second
+)
+
+// rateSlot is a pair of (nanosecond timestamp, cumulative request count) stored
+// as two separate int64 atomics so each field can be updated independently.
+type rateSlot struct {
+	timestampNano int64
+	requestsSent  int64
+}
+
 // Collector accumulates runtime execution statistics.
 // All operations are concurrency-safe and optimized using atomic operations to minimize overhead.
 type Collector struct {
@@ -30,6 +44,12 @@ type Collector struct {
 	latencyCount           int64
 	peakRequestsPerSecBits uint64
 
+	// Sliding-window ring buffer for Current Req/s tracking.
+	// windowSlots slots, each covering windowSlotDuration. No lock required:
+	// each slot is written by at most one goroutine at a time (slot index
+	// advances monotonically by wall-clock time, not concurrently).
+	window [windowSlots]rateSlot
+
 	// Fixed-size status code array covering status codes 0-999.
 	// This avoids mutex locks and allocations during updates.
 	statusCodes [1000]int64
@@ -37,9 +57,18 @@ type Collector struct {
 
 // NewCollector instantiates a new statistics collector and sets the start time.
 func NewCollector() *Collector {
-	return &Collector{
-		startTime: time.Now().UnixNano(),
+	now := time.Now()
+	nowNano := now.UnixNano()
+	c := &Collector{
+		startTime: nowNano,
 	}
+	// Seed the slot immediately before the current one with the start time
+	// so that the very first Snapshot() can compute a current rate rather
+	// than returning 0 (which would happen if no prior slot existed).
+	seedSlot := int((nowNano/int64(windowSlotDuration) - 1 + windowSlots) % windowSlots)
+	atomic.StoreInt64(&c.window[seedSlot].timestampNano, nowNano-int64(windowSlotDuration))
+	atomic.StoreInt64(&c.window[seedSlot].requestsSent, 0)
+	return c
 }
 
 // RecordRequestSent increments the total requests sent counter.
@@ -155,20 +184,50 @@ func (c *Collector) Snapshot() Snapshot {
 
 	startTime := time.Unix(0, startNano)
 	elapsed := time.Since(startTime)
+	nowNano := time.Now().UnixNano()
 
-	var reqPerSec float64
+	// Lifetime average Req/s.
+	var avgReqPerSec float64
 	if elapsed.Seconds() > 0 {
-		reqPerSec = float64(sent) / elapsed.Seconds()
+		avgReqPerSec = float64(sent) / elapsed.Seconds()
 	}
 
-	// Update and load Peak Requests Per Second atomically
+	// Sliding-window Current Req/s.
+	// Write the current sample into the ring buffer slot for this moment.
+	slotIndex := int((nowNano / int64(windowSlotDuration)) % windowSlots)
+	atomic.StoreInt64(&c.window[slotIndex].timestampNano, nowNano)
+	atomic.StoreInt64(&c.window[slotIndex].requestsSent, sent)
+
+	// Scan older slots to find the oldest reading within the full window duration.
+	windowNano := int64(windowSlots) * int64(windowSlotDuration)
+	oldestNano := nowNano - windowNano
+	var bestOldNano, bestOldSent int64 = nowNano, sent
+	for i := 0; i < windowSlots; i++ {
+		if i == slotIndex {
+			continue
+		}
+		slotNano := atomic.LoadInt64(&c.window[i].timestampNano)
+		if slotNano > oldestNano && slotNano < bestOldNano {
+			bestOldNano = slotNano
+			bestOldSent = atomic.LoadInt64(&c.window[i].requestsSent)
+		}
+	}
+	var currentReqPerSec float64
+	if windowDelta := float64(nowNano-bestOldNano) / float64(time.Second); windowDelta > 0 {
+		currentReqPerSec = float64(sent-bestOldSent) / windowDelta
+		if currentReqPerSec < 0 {
+			currentReqPerSec = 0
+		}
+	}
+
+	// Update Peak using the current (windowed) rate, not the lifetime average.
 	for {
 		currentPeakBits := atomic.LoadUint64(&c.peakRequestsPerSecBits)
 		currentPeak := math.Float64frombits(currentPeakBits)
-		if reqPerSec <= currentPeak {
+		if currentReqPerSec <= currentPeak {
 			break
 		}
-		if atomic.CompareAndSwapUint64(&c.peakRequestsPerSecBits, currentPeakBits, math.Float64bits(reqPerSec)) {
+		if atomic.CompareAndSwapUint64(&c.peakRequestsPerSecBits, currentPeakBits, math.Float64bits(currentReqPerSec)) {
 			break
 		}
 	}
@@ -188,24 +247,25 @@ func (c *Collector) Snapshot() Snapshot {
 	}
 
 	return Snapshot{
-		RequestsSent:          sent,
-		ResponsesReceived:     recv,
-		RequestsFiltered:      filt,
-		RequestsFailed:        fail,
-		RequestsSucceeded:     succ,
-		BytesReceived:         bytes,
-		ActiveWorkers:         workers,
-		QueuedJobs:            queued,
-		Discovered:            disc,
-		InvalidWords:          invalid,
-		JobsProduced:          jobs,
-		StartTime:             startTime,
-		StatusCodes:           statusCopy,
-		Retries:               retries,
-		Redirects:             redirects,
-		BodyInspected:         inspected,
-		AverageLatency:        avgLat,
-		RequestsPerSecond:     reqPerSec,
-		PeakRequestsPerSecond: peakReqPerSec,
+		RequestsSent:             sent,
+		ResponsesReceived:        recv,
+		RequestsFiltered:         filt,
+		RequestsFailed:           fail,
+		RequestsSucceeded:        succ,
+		BytesReceived:            bytes,
+		ActiveWorkers:            workers,
+		QueuedJobs:               queued,
+		Discovered:               disc,
+		InvalidWords:             invalid,
+		JobsProduced:             jobs,
+		StartTime:                startTime,
+		StatusCodes:              statusCopy,
+		Retries:                  retries,
+		Redirects:                redirects,
+		BodyInspected:            inspected,
+		AverageLatency:           avgLat,
+		RequestsPerSecond:        avgReqPerSec,
+		CurrentRequestsPerSecond: currentReqPerSec,
+		PeakRequestsPerSecond:    peakReqPerSec,
 	}
 }

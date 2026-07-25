@@ -181,6 +181,7 @@ func TestANSIRenderer_TerminalAndFrozen(t *testing.T) {
 	snap.ActiveWorkers = 4
 	snap.QueuedJobs = 20
 	snap.RequestsPerSecond = 5.0
+	snap.CurrentRequestsPerSecond = 5.0
 
 	err = r.Render(snap)
 	if err != nil {
@@ -201,7 +202,7 @@ func TestANSIRenderer_FormatLatency_All(t *testing.T) {
 
 	snap.AverageLatency = -5 * time.Second
 	_ = r.Render(snap)
-	if !strings.Contains(buf.String(), "Latency     -") {
+	if !strings.Contains(buf.String(), "Latency       -") {
 		t.Errorf("expected '-' for negative latency, got: %s", buf.String())
 	}
 	buf.Reset()

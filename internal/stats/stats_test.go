@@ -283,3 +283,70 @@ func TestInstrumentation_PrintReconciliation(t *testing.T) {
 	inst.ResultsConsumed = 10
 	inst.PrintReconciliation()
 }
+
+func TestCollector_CurrentReqPerSec_UpdatesContinuously(t *testing.T) {
+	c := stats.NewCollector()
+
+	// With zero requests, current rate should be 0
+	snap1 := c.Snapshot()
+	if snap1.CurrentRequestsPerSecond != 0 {
+		t.Errorf("expected 0 current req/s at start, got %.2f", snap1.CurrentRequestsPerSecond)
+	}
+
+	// Record some requests and wait a short time to ensure the window has data
+	for i := 0; i < 100; i++ {
+		c.RecordRequestSent()
+	}
+	time.Sleep(10 * time.Millisecond)
+	snap2 := c.Snapshot()
+
+	// After sending 100 requests, the current rate should be > 0
+	if snap2.CurrentRequestsPerSecond <= 0 {
+		t.Errorf("expected current req/s > 0 after sending requests, got %.2f", snap2.CurrentRequestsPerSecond)
+	}
+}
+
+func TestCollector_AverageReqPerSec_MathematicallyCorrect(t *testing.T) {
+	c := stats.NewCollector()
+
+	for i := 0; i < 50; i++ {
+		c.RecordRequestSent()
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	snap := c.Snapshot()
+	elapsed := time.Since(snap.StartTime).Seconds()
+	expected := float64(snap.RequestsSent) / elapsed
+
+	// Average Req/s should be approximately sent/elapsed (within a generous 20% tolerance for test timing)
+	if snap.RequestsPerSecond <= 0 {
+		t.Errorf("expected average req/s > 0, got %.2f", snap.RequestsPerSecond)
+	}
+	tolerance := expected * 0.20
+	if snap.RequestsPerSecond < expected-tolerance || snap.RequestsPerSecond > expected+tolerance {
+		t.Errorf("average req/s %.2f outside expected range [%.2f, %.2f]",
+			snap.RequestsPerSecond, expected-tolerance, expected+tolerance)
+	}
+}
+
+func TestCollector_PeakReqPerSec_NeverDecreases(t *testing.T) {
+	c := stats.NewCollector()
+
+	var lastPeak float64
+	for round := 0; round < 5; round++ {
+		// Send a burst of requests
+		for i := 0; i < 20; i++ {
+			c.RecordRequestSent()
+		}
+		snap := c.Snapshot()
+		if snap.PeakRequestsPerSecond < lastPeak {
+			t.Errorf("round %d: peak decreased from %.2f to %.2f", round, lastPeak, snap.PeakRequestsPerSecond)
+		}
+		lastPeak = snap.PeakRequestsPerSecond
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if lastPeak <= 0 {
+		t.Errorf("expected peak req/s > 0 after sending requests, got %.2f", lastPeak)
+	}
+}
