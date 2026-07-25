@@ -1,7 +1,6 @@
 package fuzz
 
 import (
-	"bytes"
 	"context"
 	"html"
 	"io"
@@ -40,7 +39,7 @@ func Worker(
 	fs *filter.FilterSuite,
 	delay time.Duration,
 	limiter *rate.Limiter,
-	jobs <-chan Job,
+	jobs <-chan RequestDTO,
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
@@ -83,7 +82,7 @@ func process(
 	ctx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
-	job Job,
+	job RequestDTO,
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
@@ -93,7 +92,7 @@ func process(
 
 	var bodyReader io.Reader
 	if len(job.Body) > 0 {
-		bodyReader = bytes.NewReader(job.Body)
+		bodyReader = strings.NewReader(job.Body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, job.Method, job.URL, bodyReader)
@@ -121,7 +120,7 @@ func process(
 	}
 
 	for _, c := range job.Cookies {
-		req.AddCookie(c)
+		req.Header.Add("Cookie", c)
 	}
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)

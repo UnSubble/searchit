@@ -56,7 +56,7 @@ func Worker(
 	method string,
 	body []byte,
 	headers http.Header,
-	cookies []*http.Cookie,
+	cookieStr string,
 	jobs <-chan Job,
 	results chan<- Result,
 	collector *stats.Collector,
@@ -81,7 +81,7 @@ func Worker(
 			}
 		}
 
-		process(ctx, client, fs, incHeaders, excHeaders, method, body, headers, cookies, job, results, collector)
+		process(ctx, client, fs, incHeaders, excHeaders, method, body, headers, cookieStr, job, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 		if delay > 0 {
@@ -103,7 +103,7 @@ func process(
 	method string,
 	body []byte,
 	headers http.Header,
-	cookies []*http.Cookie,
+	cookieStr string,
 	job Job,
 	results chan<- Result,
 	collector *stats.Collector,
@@ -144,8 +144,8 @@ func process(
 			req.Header.Add(k, v)
 		}
 	}
-	for _, c := range cookies {
-		req.AddCookie(c)
+	if cookieStr != "" {
+		req.Header.Set("Cookie", cookieStr)
 	}
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)

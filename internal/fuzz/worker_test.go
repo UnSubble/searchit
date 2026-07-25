@@ -63,18 +63,18 @@ func TestWorker_ExecutionAndFiltering(t *testing.T) {
 	incSize, _ := size.Parse("10-50")
 	excSize, _ := size.Parse("100")
 
-	jobs := make(chan fuzz.Job, 2)
+	jobs := make(chan fuzz.RequestDTO, 2)
 	results := make(chan fuzz.Result, 2)
 
 	// Send 1 successful job
-	jobs <- fuzz.Job{
+	jobs <- fuzz.RequestDTO{
 		URL:     "http://target.com/success",
 		Method:  "POST",
-		Body:    []byte("postbody"),
+		Body:    "postbody",
 		Headers: http.Header{"X-Custom": []string{"val123"}},
 	}
 	// Send 1 job that should be filtered out by status
-	jobs <- fuzz.Job{
+	jobs <- fuzz.RequestDTO{
 		URL:    "http://target.com/exclude",
 		Method: "GET",
 	}
@@ -156,11 +156,11 @@ func TestWorker_DelayCancellation(t *testing.T) {
 	}
 	client := &http.Client{Transport: rt}
 
-	jobs := make(chan fuzz.Job, 5)
+	jobs := make(chan fuzz.RequestDTO, 5)
 	results := make(chan fuzz.Result, 5)
 
-	jobs <- fuzz.Job{URL: "http://target.com/1"}
-	jobs <- fuzz.Job{URL: "http://target.com/2"}
+	jobs <- fuzz.RequestDTO{URL: "http://target.com/1"}
+	jobs <- fuzz.RequestDTO{URL: "http://target.com/2"}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -216,13 +216,13 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 	func() {
 		client := &http.Client{}
 		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-		job := fuzz.Job{
+		job := fuzz.RequestDTO{
 			URL:    "http://localhost",
 			Method: "GE T", // Invalid HTTP method
 		}
 
 		// Run fuzz.Start internally by scheduling the job
-		jobs := make(chan fuzz.Job, 1)
+		jobs := make(chan fuzz.RequestDTO, 1)
 		jobs <- job
 		close(jobs)
 
@@ -242,8 +242,8 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		}
 		client := &http.Client{Transport: rt}
 		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-		jobs := make(chan fuzz.Job, 1)
-		jobs <- fuzz.Job{URL: "http://localhost"}
+		jobs := make(chan fuzz.RequestDTO, 1)
+		jobs <- fuzz.RequestDTO{URL: "http://localhost"}
 		close(jobs)
 
 		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
@@ -269,12 +269,12 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		}
 		client := &http.Client{Transport: rt}
 		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-		jobs := make(chan fuzz.Job, 1)
-		jobs <- fuzz.Job{
+		jobs := make(chan fuzz.RequestDTO, 1)
+		jobs <- fuzz.RequestDTO{
 			URL:     "http://localhost/path",
 			Method:  "GET",
-			Headers: http.Header{"Host": []string{"custom-host.com"}},
-			Cookies: []*http.Cookie{{Name: "sess", Value: "val"}},
+			Headers: map[string][]string{"Host": {"custom-host.com"}},
+			Cookies: []string{"sess=val"},
 		}
 		close(jobs)
 
@@ -303,8 +303,8 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		// Require body to trigger body read error by setting MatchRegex
 		fs, _ := filter.NewFilterSuite("", "", "", "", []string{"trigger-requires-body"}, nil, nil, nil)
 
-		jobs := make(chan fuzz.Job, 1)
-		jobs <- fuzz.Job{URL: "http://localhost"}
+		jobs := make(chan fuzz.RequestDTO, 1)
+		jobs <- fuzz.RequestDTO{URL: "http://localhost"}
 		close(jobs)
 
 		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)

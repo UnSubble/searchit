@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -31,7 +30,7 @@ type Executor struct {
 	delay       time.Duration
 	limiter     *rate.Limiter
 	collector   *stats.Collector
-	jobsChan    chan Job
+	jobsChan    chan RequestDTO
 	resultsChan <-chan Result
 
 	mu      sync.Mutex
@@ -49,7 +48,7 @@ func NewExecutor(
 	limiter *rate.Limiter,
 	collector *stats.Collector,
 ) *Executor {
-	jobsChan := make(chan Job, workers*2)
+	jobsChan := make(chan RequestDTO, workers*2)
 	resultsChan := Start(ctx, client, fs, workers, delay, limiter, jobsChan, collector)
 
 	e := &Executor{
@@ -91,7 +90,7 @@ func (e *Executor) routeResults() {
 }
 
 // Execute schedules a job and blocks until its result is received.
-func (e *Executor) Execute(job Job) (Result, error) {
+func (e *Executor) Execute(job RequestDTO) (Result, error) {
 	e.mu.Lock()
 	id := e.nextID
 	e.nextID++
@@ -152,6 +151,35 @@ type Runner struct {
 	Adaptive bool
 	Cache    *fingerprint.Cache
 	Summary  *summary.Summary
+
+	compiledReq *compiledRequest
+}
+
+type compiledRequest struct {
+	targetURL CompiledTemplate
+	body      CompiledTemplate
+	headers   map[*CompiledTemplate][]CompiledTemplate
+	cookie    CompiledTemplate
+}
+
+var fuzzPlaceholders = []string{"FUZZ", "FOO", "BAR", "BUZZ"}
+
+func (r *Runner) compileRequest() *compiledRequest {
+	cr := &compiledRequest{
+		targetURL: CompileTemplate(r.TargetURL, fuzzPlaceholders),
+		body:      CompileTemplate(r.BodyTemplate, fuzzPlaceholders),
+		cookie:    CompileTemplate(r.CookieTemplate, fuzzPlaceholders),
+		headers:   make(map[*CompiledTemplate][]CompiledTemplate),
+	}
+	for k, vals := range r.HeaderTemplates {
+		ck := CompileTemplate(k, fuzzPlaceholders)
+		var cvals []CompiledTemplate
+		for _, v := range vals {
+			cvals = append(cvals, CompileTemplate(v, fuzzPlaceholders))
+		}
+		cr.headers[&ck] = cvals
+	}
+	return cr
 }
 
 // GetTargetDepth checks placeholder levels in target URL template.
@@ -201,6 +229,7 @@ func TruncateTemplate(urlTemplate string, depth int) string {
 
 // Run executes the fuzzer according to selected strategy.
 func (r *Runner) Run(ctx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
+	r.compiledReq = r.compileRequest()
 	e := NewExecutor(ctx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector)
 	defer e.Close()
 
@@ -307,7 +336,8 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 				wg.Add(1)
 				go func(localIdx int, jobInfo eagerJobInfo) {
 					defer wg.Done()
-					job, err := r.buildJob(r.TargetURL, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
+					vars := map[string]string{"FOO": jobInfo.foo, "BAR": jobInfo.bar, "BUZZ": jobInfo.buzz}
+					job, err := r.buildJob(r.compiledReq.targetURL, vars)
 					if err != nil {
 						if r.Collector != nil {
 							r.Collector.DecrementQueuedJobs()
@@ -363,7 +393,8 @@ func (r *Runner) executeEagerBatch(e *Executor, fuzzVals, fooList, barList, buzz
 		wg.Add(1)
 		go func(localIdx int, jobInfo eagerJobInfo) {
 			defer wg.Done()
-			job, err := r.buildJobWithFuzz(r.TargetURL, jobInfo.fuzz, jobInfo.foo, jobInfo.bar, jobInfo.buzz)
+			vars := map[string]string{"FUZZ": jobInfo.fuzz, "FOO": jobInfo.foo, "BAR": jobInfo.bar, "BUZZ": jobInfo.buzz}
+			job, err := r.buildJob(r.compiledReq.targetURL, vars)
 			if err != nil {
 				if r.Collector != nil {
 					r.Collector.DecrementQueuedJobs()
@@ -396,6 +427,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	// Level 1: Fuzz FOO
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
+	cTmpl1 := CompileTemplate(tmpl1, fuzzPlaceholders)
 	var foundFOO []string
 
 	type jobResult struct {
@@ -409,7 +441,8 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		wg.Add(1)
 		go func(idx int, w string) {
 			defer wg.Done()
-			job, err := r.buildJob(tmpl1, w, "", "")
+			vars := map[string]string{"FOO": w}
+			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
 				if r.Collector != nil {
 					r.Collector.DecrementQueuedJobs()
@@ -440,6 +473,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	// Level 2: Fuzz BAR
 	tmpl2 := TruncateTemplate(r.TargetURL, 2)
+	cTmpl2 := CompileTemplate(tmpl2, fuzzPlaceholders)
 	var foundBAR []struct {
 		foo string
 		bar string
@@ -465,7 +499,8 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		wg.Add(1)
 		go func(info barJob) {
 			defer wg.Done()
-			job, err := r.buildJob(tmpl2, info.foo, info.bar, "")
+			vars := map[string]string{"FOO": info.foo, "BAR": info.bar}
+			job, err := r.buildJob(cTmpl2, vars)
 			if err != nil {
 				if r.Collector != nil {
 					r.Collector.DecrementQueuedJobs()
@@ -517,7 +552,8 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		wg.Add(1)
 		go func(info buzzJob) {
 			defer wg.Done()
-			job, err := r.buildJob(r.TargetURL, info.foo, info.bar, info.buzz)
+			vars := map[string]string{"FOO": info.foo, "BAR": info.bar, "BUZZ": info.buzz}
+			job, err := r.buildJob(r.compiledReq.targetURL, vars)
 			if err != nil {
 				if r.Collector != nil {
 					r.Collector.DecrementQueuedJobs()
@@ -562,13 +598,15 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		switch currentDepth {
 		case 1:
 			tmpl := TruncateTemplate(r.TargetURL, 1)
+			cTmpl := CompileTemplate(tmpl, fuzzPlaceholders)
 			results := make([]Result, len(r.FooWords))
 			var wg sync.WaitGroup
 			for i, word := range r.FooWords {
 				wg.Add(1)
 				go func(idx int, w string) {
 					defer wg.Done()
-					job, err := r.buildJob(tmpl, w, "", "")
+					vars := map[string]string{"FOO": w}
+					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
 						if r.Collector != nil {
 							r.Collector.DecrementQueuedJobs()
@@ -596,13 +634,15 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			}
 		case 2:
 			tmpl := TruncateTemplate(r.TargetURL, 2)
+			cTmpl := CompileTemplate(tmpl, fuzzPlaceholders)
 			results := make([]Result, len(r.BarWords))
 			var wg sync.WaitGroup
 			for i, word := range r.BarWords {
 				wg.Add(1)
 				go func(idx int, w string) {
 					defer wg.Done()
-					job, err := r.buildJob(tmpl, parentFoo, w, "")
+					vars := map[string]string{"FOO": parentFoo, "BAR": w}
+					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
 						if r.Collector != nil {
 							r.Collector.DecrementQueuedJobs()
@@ -635,7 +675,8 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				wg.Add(1)
 				go func(idx int, w string) {
 					defer wg.Done()
-					job, err := r.buildJob(r.TargetURL, parentFoo, parentBar, w)
+					vars := map[string]string{"FOO": parentFoo, "BAR": parentBar, "BUZZ": w}
+					job, err := r.buildJob(r.compiledReq.targetURL, vars)
 					if err != nil {
 						if r.Collector != nil {
 							r.Collector.DecrementQueuedJobs()
@@ -693,6 +734,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	}
 
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
+	cTmpl1 := CompileTemplate(tmpl1, fuzzPlaceholders)
 
 	sortedFoo := make([]string, len(r.FooWords))
 	copy(sortedFoo, r.FooWords)
@@ -711,7 +753,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 		wg.Add(1)
 		go func(w string) {
 			defer wg.Done()
-			job, err := r.buildJob(tmpl1, w, "", "")
+			vars := map[string]string{"FOO": w}
+			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
 				if r.Collector != nil {
 					r.Collector.DecrementQueuedJobs()
@@ -816,6 +859,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	}
 
 	tmpl2 := TruncateTemplate(r.TargetURL, 2)
+	cTmpl2 := CompileTemplate(tmpl2, fuzzPlaceholders)
 	var branchWg sync.WaitGroup
 
 	for _, dec := range decisions {
@@ -832,7 +876,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						eagerWg.Add(1)
 						go func(i int, bVal string) {
 							defer eagerWg.Done()
-							job, err := r.buildJob(tmpl2, d.foo, bVal, "")
+							vars := map[string]string{"FOO": d.foo, "BAR": bVal}
+							job, err := r.buildJob(cTmpl2, vars)
 							if err != nil {
 								if r.Collector != nil {
 									r.Collector.DecrementQueuedJobs()
@@ -888,7 +933,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						eagerWg.Add(1)
 						go func(i int, info eagerJob) {
 							defer eagerWg.Done()
-							job, err := r.buildJob(r.TargetURL, d.foo, info.bar, info.buzz)
+							vars := map[string]string{"FOO": d.foo, "BAR": info.bar, "BUZZ": info.buzz}
+							job, err := r.buildJob(r.compiledReq.targetURL, vars)
 							if err != nil {
 								if r.Collector != nil {
 									r.Collector.DecrementQueuedJobs()
@@ -942,7 +988,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 				innerWg.Add(1)
 				go func(bVal string) {
 					defer innerWg.Done()
-					job, err := r.buildJob(tmpl2, d.foo, bVal, "")
+					vars := map[string]string{"FOO": d.foo, "BAR": bVal}
+					job, err := r.buildJob(cTmpl2, vars)
 					if err != nil {
 						if r.Collector != nil {
 							r.Collector.DecrementQueuedJobs()
@@ -1000,7 +1047,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 							leafWg.Add(1)
 							go func(bzVal string) {
 								defer leafWg.Done()
-								job, err := r.buildJob(r.TargetURL, d.foo, barVal, bzVal)
+								vars := map[string]string{"FOO": d.foo, "BAR": barVal, "BUZZ": bzVal}
+								job, err := r.buildJob(r.compiledReq.targetURL, vars)
 								if err != nil {
 									if r.Collector != nil {
 										r.Collector.DecrementQueuedJobs()
@@ -1093,7 +1141,8 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 						leafWg.Add(1)
 						go func(bzVal string) {
 							defer leafWg.Done()
-							job, err := r.buildJob(r.TargetURL, fooVal, barVal, bzVal)
+							vars := map[string]string{"FOO": fooVal, "BAR": barVal, "BUZZ": bzVal}
+							job, err := r.buildJob(r.compiledReq.targetURL, vars)
 							if err != nil {
 								if r.Collector != nil {
 									r.Collector.DecrementQueuedJobs()
@@ -1196,93 +1245,37 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	return nil
 }
 
-func (r *Runner) buildJob(tmpl, fooVal, barVal, buzzVal string) (Job, error) {
-	urlStr := r.replacePlaceholders(tmpl, "", fooVal, barVal, buzzVal)
-	if _, err := url.Parse(urlStr); err != nil {
-		atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
-		if r.Collector != nil {
-			r.Collector.RecordInvalidWord()
-		}
-		return Job{}, err
+func (r *Runner) buildJob(urlTemplate CompiledTemplate, vars map[string]string) (RequestDTO, error) {
+	urlStr := urlTemplate.RenderString(vars)
+
+	var bodyStr string
+	if len(r.compiledReq.body) > 0 {
+		bodyStr = r.compiledReq.body.RenderString(vars)
 	}
 
-	var bodyBytes []byte
-	if r.BodyTemplate != "" {
-		bodyStr := r.replacePlaceholders(r.BodyTemplate, "", fooVal, barVal, buzzVal)
-		bodyBytes = []byte(bodyStr)
-	}
-
-	headers := make(http.Header)
-	for k, values := range r.HeaderTemplates {
-		newK := r.replacePlaceholders(k, "", fooVal, barVal, buzzVal)
+	headers := make(map[string][]string)
+	for k, vals := range r.compiledReq.headers {
+		newK := k.RenderString(vars)
 		var newValues []string
-		for _, val := range values {
-			newValues = append(newValues, r.replacePlaceholders(val, "", fooVal, barVal, buzzVal))
+		for _, val := range vals {
+			newValues = append(newValues, val.RenderString(vars))
 		}
 		headers[newK] = newValues
 	}
 
-	var cookies []*http.Cookie
-	if r.CookieTemplate != "" {
-		cookieStr := r.replacePlaceholders(r.CookieTemplate, "", fooVal, barVal, buzzVal)
-		cookies = parseCookies(cookieStr)
+	var cookies []string
+	if len(r.compiledReq.cookie) > 0 {
+		// Split raw cookie strings into distinct Cookie headers if needed,
+		// but since Cookie header is usually one line or multiple Cookie headers,
+		// we just append the rendered template as a single Cookie string
+		cookies = append(cookies, r.compiledReq.cookie.RenderString(vars))
 	}
 
-	return Job{
+	return RequestDTO{
 		URL:     urlStr,
 		Method:  r.Method,
-		Body:    bodyBytes,
+		Body:    bodyStr,
 		Headers: headers,
 		Cookies: cookies,
 	}, nil
-}
-
-func (r *Runner) buildJobWithFuzz(tmpl, fuzzVal, fooVal, barVal, buzzVal string) (Job, error) {
-	urlStr := r.replacePlaceholders(tmpl, fuzzVal, fooVal, barVal, buzzVal)
-	if _, err := url.Parse(urlStr); err != nil {
-		atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
-		if r.Collector != nil {
-			r.Collector.RecordInvalidWord()
-		}
-		return Job{}, err
-	}
-
-	var bodyBytes []byte
-	if r.BodyTemplate != "" {
-		bodyStr := r.replacePlaceholders(r.BodyTemplate, fuzzVal, fooVal, barVal, buzzVal)
-		bodyBytes = []byte(bodyStr)
-	}
-
-	headers := make(http.Header)
-	for k, values := range r.HeaderTemplates {
-		newK := r.replacePlaceholders(k, fuzzVal, fooVal, barVal, buzzVal)
-		var newValues []string
-		for _, val := range values {
-			newValues = append(newValues, r.replacePlaceholders(val, fuzzVal, fooVal, barVal, buzzVal))
-		}
-		headers[newK] = newValues
-	}
-
-	var cookies []*http.Cookie
-	if r.CookieTemplate != "" {
-		cookieStr := r.replacePlaceholders(r.CookieTemplate, fuzzVal, fooVal, barVal, buzzVal)
-		cookies = parseCookies(cookieStr)
-	}
-
-	return Job{
-		URL:     urlStr,
-		Method:  r.Method,
-		Body:    bodyBytes,
-		Headers: headers,
-		Cookies: cookies,
-	}, nil
-}
-
-func (r *Runner) replacePlaceholders(template, fuzzVal, fooVal, barVal, buzzVal string) string {
-	res := template
-	res = strings.ReplaceAll(res, "FUZZ", fuzzVal)
-	res = strings.ReplaceAll(res, "FOO", fooVal)
-	res = strings.ReplaceAll(res, "BAR", barVal)
-	res = strings.ReplaceAll(res, "BUZZ", buzzVal)
-	return res
 }

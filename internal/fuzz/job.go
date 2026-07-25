@@ -2,13 +2,13 @@ package fuzz
 
 import "net/http"
 
-// Job is the unit of work representing a single fuzzed request parameters configuration.
-type Job struct {
+// RequestDTO is the unit of work representing a fully rendered request configuration.
+type RequestDTO struct {
 	URL      string
 	Method   string
-	Body     []byte
-	Headers  http.Header
-	Cookies  []*http.Cookie
+	Body     string
+	Headers  map[string][]string
+	Cookies  []string
 	UserData any
 }
 

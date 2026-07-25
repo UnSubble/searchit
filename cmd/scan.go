@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -451,7 +450,6 @@ var scanCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		parsedCookies := parseCookies(cfg.Cookies)
 
 		fs, err := filter.NewFilterSuite(
 			cfg.Status.Include.String(),
@@ -639,7 +637,7 @@ var scanCmd = &cobra.Command{
 					limiter,
 					fpCache,
 				)
-				manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, parsedCookies)
+				manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, cfg.Cookies)
 				manager.SetFilterSuite(fs)
 				manager.SetStats(collector)
 				manager.SetExtensions(cfg.Extensions)
@@ -674,7 +672,7 @@ var scanCmd = &cobra.Command{
 					cfg.Method,
 					[]byte(cfg.Data),
 					customHeaders,
-					parsedCookies,
+					cfg.Cookies,
 					jobs,
 					collector,
 				)
@@ -1274,13 +1272,4 @@ func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
 		return false
 	}
 	return true
-}
-
-func parseCookies(cookieStr string) []*http.Cookie {
-	if cookieStr == "" {
-		return nil
-	}
-	header := http.Header{"Cookie": []string{cookieStr}}
-	req := &http.Request{Header: header}
-	return req.Cookies()
 }

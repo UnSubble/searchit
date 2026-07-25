@@ -210,7 +210,7 @@ func TestAbortDuringFuzzing(t *testing.T) {
 	go func() {
 		defer close(done)
 		for i := 0; i < 20; i++ {
-			_, _ = exec.Execute(fuzz.Job{URL: srv.URL})
+			_, _ = exec.Execute(fuzz.RequestDTO{URL: srv.URL})
 		}
 	}()
 

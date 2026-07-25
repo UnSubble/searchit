@@ -45,10 +45,10 @@ type Manager struct {
 	disableWildcard  bool
 
 	// Request manipulation fields
-	method  string
-	body    []byte
-	headers http.Header
-	cookies []*http.Cookie
+	method    string
+	body      []byte
+	headers   http.Header
+	cookieStr string
 
 	// Adaptive summary tracking fields
 	LaravelDetected     bool
@@ -65,11 +65,11 @@ type Manager struct {
 }
 
 // SetRequestManipulation configures custom outbound request templates for scanning.
-func (m *Manager) SetRequestManipulation(method string, body []byte, headers http.Header, cookies []*http.Cookie) {
+func (m *Manager) SetRequestManipulation(method string, body []byte, headers http.Header, cookieStr string) {
 	m.method = method
 	m.body = body
 	m.headers = headers
-	m.cookies = cookies
+	m.cookieStr = cookieStr
 }
 
 // SetFilterSuite configures response filters.
@@ -184,7 +184,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			m.method,
 			m.body,
 			m.headers,
-			m.cookies,
+			m.cookieStr,
 			jobs,
 			m.stats,
 		)

@@ -24,18 +24,18 @@ type Scanner struct {
 	stats      *stats.Collector
 
 	// Request manipulation fields
-	method  string
-	body    []byte
-	headers http.Header
-	cookies []*http.Cookie
+	method    string
+	body      []byte
+	headers   http.Header
+	cookieStr string
 }
 
 // SetRequestManipulation configures outbound fuzzed request templates for scanning.
-func (s *Scanner) SetRequestManipulation(method string, body []byte, headers http.Header, cookies []*http.Cookie) {
+func (s *Scanner) SetRequestManipulation(method string, body []byte, headers http.Header, cookieStr string) {
 	s.method = method
 	s.body = body
 	s.headers = headers
-	s.cookies = cookies
+	s.cookieStr = cookieStr
 }
 
 func NewScanner(
@@ -66,7 +66,7 @@ func (s *Scanner) SetStats(c *stats.Collector) {
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookies, jobs, s.stats)
+	results := Start(ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookieStr, jobs, s.stats)
 	out := make(chan Result, workers)
 
 	go func() {

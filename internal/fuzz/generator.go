@@ -11,7 +11,7 @@ import (
 	"github.com/unsubble/searchit/internal/stats"
 )
 
-// Generator produces Job instances by replacing placeholders in templates.
+// Generator produces RequestDTO instances by replacing placeholders in templates.
 type Generator struct {
 	urlTemplate     string
 	method          string
@@ -50,17 +50,8 @@ func NewGenerator(
 	}
 }
 
-func parseCookies(cookieStr string) []*http.Cookie {
-	if cookieStr == "" {
-		return nil
-	}
-	header := http.Header{"Cookie": []string{cookieStr}}
-	req := &http.Request{Header: header}
-	return req.Cookies()
-}
-
 // Generate streams fuzzed jobs to the jobs channel.
-func (g *Generator) Generate(ctx context.Context, primaryChan <-chan string, jobs chan<- Job) {
+func (g *Generator) Generate(ctx context.Context, primaryChan <-chan string, jobs chan<- RequestDTO) {
 	fooList := g.fooWords
 	if len(fooList) == 0 {
 		fooList = []string{""}
@@ -95,7 +86,7 @@ func (g *Generator) generatePermutations(
 	ctx context.Context,
 	fuzzVal string,
 	fooList, barList, buzzList []string,
-	jobs chan<- Job,
+	jobs chan<- RequestDTO,
 ) {
 	for _, fooVal := range fooList {
 		for _, barVal := range barList {
@@ -115,10 +106,9 @@ func (g *Generator) generatePermutations(
 					continue
 				}
 
-				var bodyBytes []byte
+				var bodyStr string
 				if g.bodyTemplate != "" {
-					bodyStr := g.replacePlaceholders(g.bodyTemplate, fuzzVal, fooVal, barVal, buzzVal)
-					bodyBytes = []byte(bodyStr)
+					bodyStr = g.replacePlaceholders(g.bodyTemplate, fuzzVal, fooVal, barVal, buzzVal)
 				}
 
 				headers := make(http.Header)
@@ -131,21 +121,20 @@ func (g *Generator) generatePermutations(
 					headers[newK] = newValues
 				}
 
-				var cookies []*http.Cookie
+				var cookieStr string
 				if g.cookieTemplate != "" {
-					cookieStr := g.replacePlaceholders(g.cookieTemplate, fuzzVal, fooVal, barVal, buzzVal)
-					cookies = parseCookies(cookieStr)
+					cookieStr = g.replacePlaceholders(g.cookieTemplate, fuzzVal, fooVal, barVal, buzzVal)
 				}
 
 				select {
 				case <-ctx.Done():
 					return
-				case jobs <- Job{
+				case jobs <- RequestDTO{
 					URL:     urlStr,
 					Method:  g.method,
-					Body:    bodyBytes,
+					Body:    bodyStr,
 					Headers: headers,
-					Cookies: cookies,
+					Cookies: []string{cookieStr},
 				}:
 				}
 			}

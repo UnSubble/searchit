@@ -26,11 +26,11 @@ func TestGenerator_SingleFuzz(t *testing.T) {
 	primaryChan <- "c"
 	close(primaryChan)
 
-	jobs := make(chan fuzz.Job, 10)
+	jobs := make(chan fuzz.RequestDTO, 10)
 	g.Generate(context.Background(), primaryChan, jobs)
 	close(jobs)
 
-	var results []fuzz.Job
+	var results []fuzz.RequestDTO
 	for j := range jobs {
 		results = append(results, j)
 	}
@@ -70,11 +70,11 @@ func TestGenerator_CartesianProduct(t *testing.T) {
 	primaryChan <- "fuzz2"
 	close(primaryChan)
 
-	jobs := make(chan fuzz.Job, 20)
+	jobs := make(chan fuzz.RequestDTO, 20)
 	g.Generate(context.Background(), primaryChan, jobs)
 	close(jobs)
 
-	var results []fuzz.Job
+	var results []fuzz.RequestDTO
 	for j := range jobs {
 		results = append(results, j)
 	}
@@ -85,11 +85,11 @@ func TestGenerator_CartesianProduct(t *testing.T) {
 	}
 
 	// Verify the Cartesian ordering (nesting order: fuzz -> foo -> bar -> buzz)
-	expectedFirst := fuzz.Job{
+	expectedFirst := fuzz.RequestDTO{
 		URL:     "http://foo1.test.com/bar1",
 		Method:  "POST",
-		Body:    []byte("data=buzz1"),
-		Headers: http.Header{"X-Header": []string{"fuzz1"}},
+		Body:    "data=buzz1",
+		Headers: map[string][]string{"X-Header": {"fuzz1"}},
 	}
 	first := results[0]
 	if first.URL != expectedFirst.URL {
@@ -98,8 +98,8 @@ func TestGenerator_CartesianProduct(t *testing.T) {
 	if string(first.Body) != string(expectedFirst.Body) {
 		t.Errorf("expected Body %q, got %q", string(expectedFirst.Body), string(first.Body))
 	}
-	if first.Headers.Get("X-Header") != "fuzz1" {
-		t.Errorf("expected Header value fuzz1, got %q", first.Headers.Get("X-Header"))
+	if first.Headers["X-Header"][0] != "fuzz1" {
+		t.Errorf("expected Header value fuzz1, got %q", first.Headers["X-Header"][0])
 	}
 }
 
@@ -115,11 +115,11 @@ func TestGenerator_NoPrimaryWordlist(t *testing.T) {
 		nil,
 	)
 
-	jobs := make(chan fuzz.Job, 10)
+	jobs := make(chan fuzz.RequestDTO, 10)
 	g.Generate(context.Background(), nil, jobs)
 	close(jobs)
 
-	var results []fuzz.Job
+	var results []fuzz.RequestDTO
 	for j := range jobs {
 		results = append(results, j)
 	}
@@ -158,11 +158,11 @@ func TestGenerator_WithCookies(t *testing.T) {
 	primary <- "api"
 	close(primary)
 
-	jobs := make(chan fuzz.Job, 10)
+	jobs := make(chan fuzz.RequestDTO, 10)
 	g.Generate(context.Background(), primary, jobs)
 	close(jobs)
 
-	var results []fuzz.Job
+	var results []fuzz.RequestDTO
 	for j := range jobs {
 		results = append(results, j)
 	}
@@ -174,13 +174,10 @@ func TestGenerator_WithCookies(t *testing.T) {
 
 	// Verify cookies are populated
 	c0 := results[0].Cookies
-	if len(c0) != 2 {
-		t.Fatalf("expected 2 cookies, got %d", len(c0))
+	if len(c0) != 1 {
+		t.Fatalf("expected 1 cookie string, got %d", len(c0))
 	}
-	if c0[0].Name != "sess" || c0[0].Value != "admin" {
-		t.Errorf("unexpected cookie 0: %+v", c0[0])
-	}
-	if c0[1].Name != "user" || c0[1].Value != "john" {
-		t.Errorf("unexpected cookie 1: %+v", c0[1])
+	if c0[0] != "sess=admin; user=john" {
+		t.Errorf("unexpected cookie string: %+v", c0[0])
 	}
 }
