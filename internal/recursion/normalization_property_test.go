@@ -22,7 +22,8 @@ func generateRandomURL(rng *rand.Rand) string {
 
 	var sb strings.Builder
 	if scheme != "" {
-		sb.WriteString(scheme + "://")
+		sb.WriteString(scheme)
+		sb.WriteString("://")
 	}
 	sb.WriteString(host)
 	sb.WriteString(path)
