@@ -55,6 +55,7 @@ func TestWorker_ProgressAccounting_DecrementsQueuedJobs(t *testing.T) {
 		jobs,
 		results,
 		collector,
+		nil,
 	)
 
 	// Send jobs

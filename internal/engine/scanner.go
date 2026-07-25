@@ -64,9 +64,9 @@ func (s *Scanner) SetStats(c *stats.Collector) {
 // Scan starts the producer and a worker pool, returning a results channel that
 // is closed when the scan completes.
 // Cancelling ctx stops job emission and aborts in-flight requests.
-func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int) <-chan Result {
+func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int, pauseBlocker func(context.Context) error) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookieStr, jobs, s.stats)
+	results := Start(ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookieStr, jobs, s.stats, pauseBlocker)
 	out := make(chan Result, workers)
 
 	go func() {

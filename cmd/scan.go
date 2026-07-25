@@ -690,6 +690,7 @@ var scanCmd = &cobra.Command{
 					cfg.Cookies,
 					jobs,
 					collector,
+					stateMgr.WaitUntilRunning,
 				)
 
 				go func() {

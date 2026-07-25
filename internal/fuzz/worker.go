@@ -52,6 +52,7 @@ func Worker(
 	jobs <-chan WorkItem,
 	results chan<- Result,
 	collector *stats.Collector,
+	pauseBlocker func(context.Context) error,
 ) {
 	atomic.AddInt64(&stats.GlobalInstrumentation.WorkersStarted, 1)
 	defer func() {
@@ -65,6 +66,12 @@ func Worker(
 	}
 
 	for item := range jobs {
+		if pauseBlocker != nil {
+			if err := pauseBlocker(ctx); err != nil {
+				return
+			}
+		}
+
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
 		if limiter != nil {
 			err := limiter.Wait(ctx)

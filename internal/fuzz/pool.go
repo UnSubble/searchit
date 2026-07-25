@@ -23,6 +23,7 @@ func Start(
 	limiter *rate.Limiter,
 	jobs <-chan WorkItem,
 	collector *stats.Collector,
+	pauseBlocker func(context.Context) error,
 ) <-chan Result {
 	results := make(chan Result, workers)
 
@@ -32,7 +33,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, fs, delay, limiter, jobs, results, collector)
+			Worker(ctx, client, fs, delay, limiter, jobs, results, collector, pauseBlocker)
 		}()
 	}
 

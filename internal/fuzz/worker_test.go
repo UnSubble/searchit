@@ -90,6 +90,7 @@ func TestWorker_ExecutionAndFiltering(t *testing.T) {
 		jobs,
 		results,
 		nil,
+		nil,
 	)
 	close(results)
 
@@ -176,6 +177,7 @@ func TestWorker_DelayCancellation(t *testing.T) {
 			jobs,
 			results,
 			nil,
+			nil,
 		)
 		close(results)
 	}()
@@ -226,7 +228,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		jobs <- fuzz.WorkItem{Req: job}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		res := <-resChan
 		if res.Err == nil {
 			t.Error("expected NewRequestWithContext error, got nil")
@@ -246,7 +248,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: "http://localhost"}}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		res := <-resChan
 		if res.Err == nil || !strings.Contains(res.Err.Error(), io.ErrUnexpectedEOF.Error()) {
 			t.Errorf("expected error containing unexpected EOF, got: %v", res.Err)
@@ -278,7 +280,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		}}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		<-resChan
 
 		if hostOverride != "custom-host.com" {
@@ -307,7 +309,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: "http://localhost"}}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil)
+		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		res := <-resChan
 		if res.Err == nil {
 			t.Error("expected body read error, got nil")

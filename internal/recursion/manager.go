@@ -198,6 +198,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 			m.cookieStr,
 			jobs,
 			m.stats,
+			m.PauseBlocker,
 		)
 
 		// pending counts jobs dispatched to workers but not yet returned.

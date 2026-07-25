@@ -40,7 +40,7 @@ func runBench(b *testing.B, workers int) {
 
 	b.ResetTimer()
 
-	for range s.Scan(context.Background(), engine.SliceProducer{URLs: urls}, workers) {
+	for range s.Scan(context.Background(), engine.SliceProducer{URLs: urls}, workers, nil) {
 	}
 }
 
@@ -63,7 +63,7 @@ func BenchmarkWorker_RateLimitZeroOverhead(b *testing.B) {
 
 	b.ResetTimer()
 
-	for range s.Scan(context.Background(), engine.SliceProducer{URLs: urls}, 32) {
+	for range s.Scan(context.Background(), engine.SliceProducer{URLs: urls}, 32, nil) {
 	}
 }
 

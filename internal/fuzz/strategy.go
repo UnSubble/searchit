@@ -44,20 +44,22 @@ func NewExecutor(
 	delay time.Duration,
 	limiter *rate.Limiter,
 	collector *stats.Collector,
+	pauseBlocker func(context.Context) error,
 ) *Executor {
 	jobsChan := make(chan WorkItem, workers*2)
-	resultsChan := Start(ctx, client, fs, workers, delay, limiter, jobsChan, collector)
+	resultsChan := Start(ctx, client, fs, workers, delay, limiter, jobsChan, collector, pauseBlocker)
 
 	e := &Executor{
-		ctx:         ctx,
-		client:      client,
-		fs:          fs,
-		workers:     workers,
-		delay:       delay,
-		limiter:     limiter,
-		collector:   collector,
-		jobsChan:    jobsChan,
-		resultsChan: resultsChan,
+		ctx:          ctx,
+		client:       client,
+		fs:           fs,
+		workers:      workers,
+		delay:        delay,
+		limiter:      limiter,
+		collector:    collector,
+		jobsChan:     jobsChan,
+		resultsChan:  resultsChan,
+		PauseBlocker: pauseBlocker,
 	}
 
 	return e
@@ -209,8 +211,7 @@ func TruncateTemplate(urlTemplate string, depth int) string {
 // Run executes the fuzzer according to selected strategy.
 func (r *Runner) Run(ctx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
 	r.compiledReq = r.compileRequest()
-	e := NewExecutor(ctx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector)
-	e.PauseBlocker = r.PauseBlocker
+	e := NewExecutor(ctx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector, r.PauseBlocker)
 	defer e.Close()
 
 	maxDepth := GetTargetDepth(r.TargetURL)

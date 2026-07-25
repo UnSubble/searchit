@@ -235,6 +235,7 @@ func TestMonkey_RandomScans(t *testing.T) {
 					nil,
 					jobs,
 					collector,
+					nil,
 				)
 				for range results {
 				}

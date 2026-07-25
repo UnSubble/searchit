@@ -28,6 +28,7 @@ func Start(
 	cookieStr string,
 	jobs <-chan Job,
 	collector *stats.Collector,
+	pauseBlocker func(context.Context) error,
 ) <-chan Result {
 	results := make(chan Result, workers)
 
@@ -37,7 +38,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, fs, incHeaders, excHeaders, delay, limiter, method, body, headers, cookieStr, jobs, results, collector)
+			Worker(ctx, client, fs, incHeaders, excHeaders, delay, limiter, method, body, headers, cookieStr, jobs, results, collector, pauseBlocker)
 		}()
 	}
 

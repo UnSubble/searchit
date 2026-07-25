@@ -202,7 +202,7 @@ func TestAbortDuringFuzzing(t *testing.T) {
 	defer cancel()
 
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	exec := fuzz.NewExecutor(ctx, http.DefaultClient, fs, 4, 0, nil, nil)
+	exec := fuzz.NewExecutor(ctx, http.DefaultClient, fs, 4, 0, nil, nil, nil)
 	defer exec.Close()
 
 	// Launch async job executions
@@ -245,7 +245,7 @@ func TestAbortDuringAdaptiveScanning(t *testing.T) {
 	scanner := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil)
 
 	p := engine.SliceProducer{URLs: []string{srv.URL, srv.URL + "/2"}}
-	resChan := scanner.Scan(ctx, p, 2)
+	resChan := scanner.Scan(ctx, p, 2, nil)
 
 	for range resChan {
 	}
@@ -291,7 +291,7 @@ func TestAbortAllRaceSafety(t *testing.T) {
 		scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
 
 		urls := []string{srv.URL, srv.URL, srv.URL, srv.URL}
-		resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, 8)
+		resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, 8, nil)
 
 		go func() {
 			time.Sleep(2 * time.Millisecond)
@@ -320,7 +320,7 @@ func TestAbortWorkerScaling(t *testing.T) {
 				urls = append(urls, srv.URL)
 			}
 
-			resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, wCount)
+			resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, wCount, nil)
 
 			go func() {
 				time.Sleep(1 * time.Millisecond)
@@ -344,7 +344,7 @@ func TestAbortAllNoGoroutineLeak(t *testing.T) {
 	scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
 
 	urls := []string{srv.URL, srv.URL, srv.URL}
-	resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, 4)
+	resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, 4, nil)
 
 	cancel()
 	for range resChan {
@@ -388,7 +388,7 @@ func TestAbortAfterCompletion(t *testing.T) {
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
 	scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
 
-	resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: []string{srv.URL}}, 1)
+	resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: []string{srv.URL}}, 1, nil)
 	for range resChan {
 	}
 
