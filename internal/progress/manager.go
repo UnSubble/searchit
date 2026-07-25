@@ -84,6 +84,7 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 			case console.CommandStats:
 				m.isStatsActive = true
 				// Switch owner to Statistics and render the full-screen report.
+				_ = m.Renderer.Clear()
 				_ = m.TM.SwitchOwner(terminal.OwnerProgress, terminal.OwnerStatistics)
 				m.renderStatsReport()
 				m.awaitStatsExit(ctx, ticker, &cmdChan)

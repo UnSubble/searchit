@@ -531,11 +531,7 @@ var scanCmd = &cobra.Command{
 					IsFuzz:          false,
 					Extensions:      cfg.Extensions,
 				}
-				if flagDebug {
-					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
-				} else {
-					telemetry.PrintNormalConfiguration(tm, terminal.OwnerConfiguration, info)
-				}
+				telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 			}
 
 			// Transition out of Starting, into Running, and hand over to Progress.
