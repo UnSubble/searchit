@@ -145,6 +145,11 @@ func (c *Collector) DecrementQueuedJobs() {
 	atomic.AddInt64(&c.queuedJobs, -1)
 }
 
+// RemoveQueuedJobs decrements the number of queued jobs by n.
+func (c *Collector) RemoveQueuedJobs(n int64) {
+	atomic.AddInt64(&c.queuedJobs, -n)
+}
+
 // RecordRetry increments the retries counter.
 func (c *Collector) RecordRetry() {
 	atomic.AddInt64(&c.retries, 1)

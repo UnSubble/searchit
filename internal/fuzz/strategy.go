@@ -734,7 +734,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			yield(or.res)
 		}
 		if !r.Quiet {
-			engine.Summary.RecordFindings(len(orderedRes1))
+
 		}
 		return nil
 	}
@@ -1097,7 +1097,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	}
 
 	if !r.Quiet {
-		engine.Summary.RecordFindings(len(allResults))
+
 	}
 
 	return nil

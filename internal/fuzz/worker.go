@@ -234,6 +234,7 @@ func process(
 			if collector != nil {
 				collector.RecordResponseReceived(resp.StatusCode, length)
 				collector.RecordRequestSucceeded()
+				collector.RecordDiscovered()
 			}
 			sendResult(results, item, Result{
 				URL:        item.Req.URL,
@@ -295,6 +296,7 @@ func process(
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, length)
 		collector.RecordRequestSucceeded()
+		collector.RecordDiscovered()
 	}
 
 	sendResult(results, item, Result{
