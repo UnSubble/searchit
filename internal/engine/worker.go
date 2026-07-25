@@ -20,7 +20,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const bodyReadLimit = 4096
 const bodyRegexLimit = 1024 * 1024
 
 // HeaderFilter specifies an exact match rule on a case-insensitive header name.
@@ -218,47 +217,50 @@ func process(
 	isHTML := strings.Contains(strings.ToLower(contentType), "text/html")
 	// Always read body of responses passing header validation to extract links and compute hash
 	bodyBytes, readErr = io.ReadAll(io.LimitReader(resp.Body, bodyRegexLimit))
+	var extra int64
+	if readErr == nil && len(bodyBytes) == int(bodyRegexLimit) {
+		extra, _ = io.Copy(io.Discard, resp.Body)
+	}
 	bodyRead = true
 	resp.Body.Close()
 
-	if bodyRead {
-		if readErr != nil || !fs.MatchBody(bodyBytes) {
-			if collector != nil {
-				collector.RecordResponseReceived(resp.StatusCode, length)
-				collector.RecordRequestFiltered()
-			}
-			sendResult(results, Result{
-				URL:        job.URL,
-				StatusCode: resp.StatusCode,
-				Length:     length,
-				Depth:      job.Depth,
-				Accepted:   false,
-				Origin:     job.Origin,
-				Err:        readErr,
-			})
-			return
+	if length == -1 && readErr == nil {
+		length = int64(len(bodyBytes)) + extra
+	}
+
+	// Late Size Filter Evaluation
+	if length != -1 && ((len(fs.MatchSize) > 0 && !fs.MatchSize.Match(length)) || (len(fs.FilterSize) > 0 && fs.FilterSize.Match(length))) {
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordRequestFiltered()
 		}
-	} else {
-		// Fast path drainage
-		if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
-			resp.Body.Close()
-			if collector != nil {
-				collector.RecordResponseReceived(resp.StatusCode, length)
-				collector.RecordRequestSucceeded()
-				collector.RecordDiscovered()
-			}
-			sendResult(results, Result{
-				URL:        job.URL,
-				StatusCode: resp.StatusCode,
-				Length:     length,
-				Depth:      job.Depth,
-				Accepted:   true,
-				Origin:     job.Origin,
-				Err:        err,
-			})
-			return
+		sendResult(results, Result{
+			URL:        job.URL,
+			StatusCode: resp.StatusCode,
+			Length:     length,
+			Depth:      job.Depth,
+			Accepted:   false,
+			Origin:     job.Origin,
+			Err:        readErr,
+		})
+		return
+	}
+
+	if readErr != nil || !fs.MatchBody(bodyBytes) {
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordRequestFiltered()
 		}
-		resp.Body.Close()
+		sendResult(results, Result{
+			URL:        job.URL,
+			StatusCode: resp.StatusCode,
+			Length:     length,
+			Depth:      job.Depth,
+			Accepted:   false,
+			Origin:     job.Origin,
+			Err:        readErr,
+		})
+		return
 	}
 
 	var resHeaders http.Header

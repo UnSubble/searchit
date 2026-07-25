@@ -206,8 +206,59 @@ func process(
 	var readErr error
 	if fs.RequiresBody() {
 		bodyBytes, readErr = io.ReadAll(io.LimitReader(resp.Body, bodyRegexLimit))
+		var extra int64
+		if readErr == nil && len(bodyBytes) == int(bodyRegexLimit) {
+			extra, _ = io.Copy(io.Discard, resp.Body)
+		}
 		bodyRead = true
 		resp.Body.Close()
+
+		if length == -1 && readErr == nil {
+			length = int64(len(bodyBytes)) + extra
+		}
+	} else {
+		// Fast path drainage to keep connection alive
+		extra, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit))
+		if err == nil && extra == bodyReadLimit {
+			more, _ := io.Copy(io.Discard, resp.Body)
+			extra += more
+		}
+		resp.Body.Close()
+		if length == -1 && err == nil {
+			length = extra
+		}
+		if err != nil {
+			if collector != nil {
+				collector.RecordResponseReceived(resp.StatusCode, length)
+				collector.RecordRequestSucceeded()
+			}
+			sendResult(results, item, Result{
+				URL:        item.Req.URL,
+				StatusCode: resp.StatusCode,
+				Length:     length,
+				Accepted:   true,
+				Err:        err,
+				UserData:   item.Req.UserData,
+			})
+			return
+		}
+	}
+
+	// Late Size Filter Evaluation
+	if length != -1 && ((len(fs.MatchSize) > 0 && !fs.MatchSize.Match(length)) || (len(fs.FilterSize) > 0 && fs.FilterSize.Match(length))) {
+		if collector != nil {
+			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordRequestFiltered()
+		}
+		sendResult(results, item, Result{
+			URL:        item.Req.URL,
+			StatusCode: resp.StatusCode,
+			Length:     length,
+			Accepted:   false,
+			Err:        readErr,
+			UserData:   item.Req.UserData,
+		})
+		return
 	}
 
 	if bodyRead {
@@ -226,25 +277,6 @@ func process(
 			})
 			return
 		}
-	} else {
-		// Fast path drainage to keep connection alive
-		if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, bodyReadLimit)); err != nil {
-			resp.Body.Close()
-			if collector != nil {
-				collector.RecordResponseReceived(resp.StatusCode, length)
-				collector.RecordRequestSucceeded()
-			}
-			sendResult(results, item, Result{
-				URL:        item.Req.URL,
-				StatusCode: resp.StatusCode,
-				Length:     length,
-				Accepted:   true,
-				Err:        err,
-				UserData:   item.Req.UserData,
-			})
-			return
-		}
-		resp.Body.Close()
 	}
 
 	var resHeaders http.Header

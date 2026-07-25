@@ -1005,3 +1005,90 @@ func TestWorker_RequestTemplate(t *testing.T) {
 		t.Errorf("expected result accepted, got error: %v", r.Err)
 	}
 }
+
+func TestWorker_SizeCorrectness_Regression(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/cl0" {
+			w.Header().Set("Content-Length", "0")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.URL.Path == "/chunked0" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newApp(t, "404")
+
+	tests := []struct {
+		name         string
+		url          string
+		filterSize   string // --fs
+		wantAccepted bool
+		wantLength   int64
+	}{
+		{
+			name:         "CL0 without filter",
+			url:          "/cl0",
+			filterSize:   "",
+			wantAccepted: true,
+			wantLength:   0,
+		},
+		{
+			name:         "CL0 with filter 0",
+			url:          "/cl0",
+			filterSize:   "0",
+			wantAccepted: false,
+		},
+		{
+			name:         "Chunked0 without filter",
+			url:          "/chunked0",
+			filterSize:   "",
+			wantAccepted: true,
+			wantLength:   0,
+		},
+		{
+			name:         "Chunked0 with filter 0",
+			url:          "/chunked0",
+			filterSize:   "0",
+			wantAccepted: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fs, _ := filter.NewFilterSuite("200", "", "", tc.filterSize, nil, nil, nil, nil)
+			jobs := make(chan engine.Job, 1)
+			results := make(chan engine.Result, 1)
+
+			jobs <- engine.Job{URL: srv.URL + tc.url}
+			close(jobs)
+
+			engine.Worker(context.Background(), a.HTTPClient, fs, nil, nil, 0, nil, "GET", nil, nil, "", jobs, results, nil)
+			close(results)
+
+			var res []engine.Result
+			for r := range results {
+				if r.Accepted {
+					res = append(res, r)
+				}
+			}
+
+			if tc.wantAccepted {
+				if len(res) != 1 {
+					t.Fatalf("Expected 1 accepted result, got %d", len(res))
+				}
+				if res[0].Length != tc.wantLength {
+					t.Errorf("Expected Length %d, got %d", tc.wantLength, res[0].Length)
+				}
+			} else {
+				if len(res) > 0 {
+					t.Errorf("Expected 0 accepted results, got %d", len(res))
+				}
+			}
+		})
+	}
+}

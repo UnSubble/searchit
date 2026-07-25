@@ -498,7 +498,7 @@ func TestFormatters_ShowPresentation(t *testing.T) {
 		}
 
 		got := buf.String()
-		want := "200     512B\n\nhttp://example.com/admin\n" +
+		want := "200     512 B\n\nhttp://example.com/admin\n" +
 			"\nTITLE:\n------\nAdmin Dashboard\n------\n" +
 			"\nHEADERS:\n--------\nContent-Type: text/html\nServer: nginx\n--------\n"
 		if got != want {

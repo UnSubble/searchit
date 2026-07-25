@@ -79,11 +79,11 @@ func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle
 	if showHeaders || showTitle {
 		var sb strings.Builder
 
-		sizeStr := "0B"
+		sizeStr := "0 B"
 		if r.Length >= 0 {
-			sizeStr = fmt.Sprintf("%dB", r.Length)
+			sizeStr = fmt.Sprintf("%d B", r.Length)
 		} else {
-			sizeStr = "-1B"
+			sizeStr = "-1 B"
 		}
 
 		sb.WriteString(fmt.Sprintf("%d     %s\n\n%s\n", r.StatusCode, sizeStr, r.URL))
@@ -118,13 +118,13 @@ func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle
 	if r.Length >= 0 {
 		var s string
 		if r.Length < 1024 {
-			s = fmt.Sprintf("%dB", r.Length)
+			s = fmt.Sprintf("%d B", r.Length)
 		} else if r.Length < 1024*1024 {
-			s = fmt.Sprintf("%.1fKB", float64(r.Length)/1024.0)
+			s = fmt.Sprintf("%.1f KB", float64(r.Length)/1024.0)
 		} else if r.Length < 1024*1024*1024 {
-			s = fmt.Sprintf("%.1fMB", float64(r.Length)/(1024.0*1024.0))
+			s = fmt.Sprintf("%.1f MB", float64(r.Length)/(1024.0*1024.0))
 		} else {
-			s = fmt.Sprintf("%.1fGB", float64(r.Length)/(1024.0*1024.0*1024.0))
+			s = fmt.Sprintf("%.1f GB", float64(r.Length)/(1024.0*1024.0*1024.0))
 		}
 		_, err := fmt.Fprintf(w, "[+] %d - %s - %s\n", r.StatusCode, s, r.URL)
 		return err
