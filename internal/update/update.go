@@ -41,8 +41,7 @@ type CheckResult struct {
 func (m *Manager) Check(experimental bool, targetVersionStr string, isRollback bool) (CheckResult, error) {
 	current, err := semver.Parse(version.Version)
 	if err != nil {
-		// Fallback for dev builds
-		current = semver.Version{Original: "dev", Major: 0, Minor: 0, Patch: 0}
+		return CheckResult{}, fmt.Errorf("invalid current version: %v", err)
 	}
 
 	stable, err := m.Client.GetLatestStable()
