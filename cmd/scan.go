@@ -666,8 +666,7 @@ var scanCmd = &cobra.Command{
 				manager.SetExtensions(cfg.Extensions)
 				manager.SetBaseWordlistSize(totalWords)
 				manager.PauseBlocker = stateMgr.WaitUntilRunning
-				results := manager.Run(scanCtx, seeds, cfg.Threads)
-				for r := range results {
+				manager.Run(scanCtx, seeds, cfg.Threads, func(r engine.Result) {
 					if r.Accepted {
 						if progMgr != nil {
 							progMgr.HandleResult(r)
@@ -682,7 +681,7 @@ var scanCmd = &cobra.Command{
 							fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
 						}
 					}
-				}
+				})
 			} else {
 				jobs := make(chan engine.Job, cfg.Threads)
 				results := engine.Start(

@@ -45,11 +45,11 @@ func (r staticReader) Read(ctx context.Context, out chan<- string) error {
 	return nil
 }
 
-func collectResults(ch <-chan engine.Result) []engine.Result {
+func collectResults(m *recursion.Manager, ctx context.Context, seeds []string, workers int) []engine.Result {
 	var out []engine.Result
-	for r := range ch {
+	m.Run(ctx, seeds, workers, func(r engine.Result) {
 		out = append(out, r)
-	}
+	})
 	return out
 }
 
@@ -222,7 +222,7 @@ func TestManager_VisitedURLsNotRevisited(t *testing.T) {
 	reader := staticReader{words: []string{"x"}}
 
 	m := newManager(t, reader, recursion.BFS, 0)
-	results := collectResults(m.Run(context.Background(), seeds, 4))
+	results := collectResults(m, context.Background(), seeds, 4)
 
 	// maxDepth=0 means no recursion; we only expect the seeds themselves.
 	// /admin and /admin/ are the same canonical URL, so only one should be fetched.
@@ -242,7 +242,7 @@ func TestManager_MaxDepthEnforced(t *testing.T) {
 
 	// maxDepth=1: seed (depth 0) recurses, but children (depth 1) do not.
 	m := newManager(t, reader, recursion.BFS, 1)
-	results := collectResults(m.Run(context.Background(), seeds, 4))
+	results := collectResults(m, context.Background(), seeds, 4)
 
 	for _, r := range results {
 		if r.Depth > 1 {
@@ -264,7 +264,7 @@ func TestManager_NonRecursingStatusSkipped(t *testing.T) {
 	reader := staticReader{words: []string{"child", "grandchild"}}
 
 	m := newManager(t, reader, recursion.BFS, 3)
-	results := collectResults(m.Run(context.Background(), seeds, 4))
+	results := collectResults(m, context.Background(), seeds, 4)
 
 	// Default config excludes 404; only /start (200) should appear.
 	for _, r := range results {
@@ -291,7 +291,7 @@ func TestManager_NoDuplicateJobsScheduled(t *testing.T) {
 	reader := staticReader{words: []string{"dup", "dup", "dup"}}
 
 	m := newManager(t, reader, recursion.BFS, 1)
-	collectResults(m.Run(context.Background(), seeds, 4))
+	collectResults(m, context.Background(), seeds, 4)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -318,7 +318,7 @@ func TestManager_BFS_TraversalOrder(t *testing.T) {
 	reader := staticReader{words: []string{"leaf"}}
 
 	m := newManager(t, reader, recursion.BFS, 1)
-	results := collectResults(m.Run(context.Background(), seeds, 1))
+	results := collectResults(m, context.Background(), seeds, 1)
 
 	depth0, depth1 := 0, 0
 	for _, r := range results {
@@ -347,7 +347,7 @@ func TestManager_DFS_TraversalOrder(t *testing.T) {
 	reader := staticReader{words: []string{"child"}}
 
 	m := newManager(t, reader, recursion.DFS, 2)
-	results := collectResults(m.Run(context.Background(), seeds, 1))
+	results := collectResults(m, context.Background(), seeds, 1)
 
 	// With DFS and a single worker, /root/child must be visited before any
 	// sibling of /root because DFS inserts to the front.
@@ -384,20 +384,17 @@ func TestManager_CleanShutdown_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := newManager(t, reader, recursion.BFS, 3)
-	ch := m.Run(ctx, seeds, 8)
-
-	// Cancel after seeing the first result; the channel must still close cleanly.
-	<-ch
-	cancel()
-
-	// Drain; must not deadlock.
-	for range ch {
-	}
+	var once sync.Once
+	m.Run(ctx, seeds, 8, func(r engine.Result) {
+		once.Do(func() {
+			cancel()
+		})
+	})
 }
 
 func TestManager_EmptySeeds(t *testing.T) {
 	m := newManager(t, staticReader{}, recursion.BFS, 1)
-	results := collectResults(m.Run(context.Background(), nil, 4))
+	results := collectResults(m, context.Background(), nil, 4)
 	if len(results) != 0 {
 		t.Errorf("got %d results for empty seed list, want 0", len(results))
 	}
@@ -413,7 +410,7 @@ func TestManager_ResultsContainAllDepths(t *testing.T) {
 	reader := staticReader{words: []string{"a"}}
 
 	m := newManager(t, reader, recursion.BFS, 2)
-	results := collectResults(m.Run(context.Background(), seeds, 2))
+	results := collectResults(m, context.Background(), seeds, 2)
 
 	seen := map[uint16]bool{}
 	for _, r := range results {
@@ -453,7 +450,7 @@ func TestManager_CustomRecursionPolicy(t *testing.T) {
 	recurseOn := status.MustParse("201")
 	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil)
 
-	results := collectResults(m.Run(context.Background(), seeds, 2))
+	results := collectResults(m, context.Background(), seeds, 2)
 
 	for _, r := range results {
 		if r.Depth > 0 {
@@ -476,7 +473,7 @@ func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
 	recurseOn := status.MustParse("201")
 	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil)
 
-	results := collectResults(m.Run(context.Background(), seeds, 2))
+	results := collectResults(m, context.Background(), seeds, 2)
 
 	foundChild := false
 	for _, r := range results {
@@ -528,7 +525,7 @@ func TestManager_RecursionDepthBoundaries(t *testing.T) {
 			nil,
 		)
 
-		results := collectResults(m.Run(context.Background(), seeds, 2))
+		results := collectResults(m, context.Background(), seeds, 2)
 
 		var maxDepthReached uint16
 		for _, r := range results {
@@ -660,7 +657,7 @@ func TestManager_ReaderErrorHandling(t *testing.T) {
 		nil,
 	)
 
-	results := collectResults(m.Run(context.Background(), seeds, 2))
+	results := collectResults(m, context.Background(), seeds, 2)
 	// We only expect the seed (depth 0) to be returned since reader fails during handleResult.
 	if len(results) != 1 {
 		t.Errorf("expected 1 result, got %d: %v", len(results), results)
@@ -678,7 +675,7 @@ func TestManager_Run_ImmediateCancel(t *testing.T) {
 	cancel() // cancel immediately
 
 	m := newManager(t, staticReader{words: []string{"a"}}, recursion.BFS, 2)
-	results := collectResults(m.Run(ctx, seeds, 2))
+	results := collectResults(m, ctx, seeds, 2)
 
 	// Should drain and return immediately without running
 	if len(results) > 0 {
@@ -728,7 +725,7 @@ func TestManager_RobotsDiscoveryAndFrontierSeeding(t *testing.T) {
 		cache,
 	)
 
-	results := collectResults(m.Run(context.Background(), seeds, 1))
+	results := collectResults(m, context.Background(), seeds, 1)
 
 	// Verify that robots.txt was fetched and processed
 	foundRobots := false
@@ -957,7 +954,7 @@ func TestManager_RobotsSitemapSSRFPrevention(t *testing.T) {
 		nil,
 	)
 
-	_ = collectResults(m.Run(context.Background(), seeds, 1))
+	_ = collectResults(m, context.Background(), seeds, 1)
 
 	// Verify requested URLs.
 	// We expect /robots.txt and /local-sitemap.xml to be fetched, but NOT any external sitemap.

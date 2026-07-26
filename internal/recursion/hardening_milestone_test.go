@@ -227,11 +227,10 @@ func runDeterminismTest(
 	m1.SetDisableWildcard(true)
 
 	ctx := context.Background()
-	ch1 := m1.Run(ctx, seeds, 1)
 	var w1Results []engine.Result
-	for r := range ch1 {
+	m1.Run(ctx, seeds, 1, func(r engine.Result) {
 		w1Results = append(w1Results, r)
-	}
+	})
 	sortResults(w1Results)
 
 	// Run with configured workers matrix
@@ -253,11 +252,10 @@ func runDeterminismTest(
 			)
 			mN.SetDisableWildcard(true)
 
-			chN := mN.Run(ctx, seeds, wN)
 			var wNResults []engine.Result
-			for r := range chN {
+			mN.Run(ctx, seeds, wN, func(r engine.Result) {
 				wNResults = append(wNResults, r)
-			}
+			})
 			sortResults(wNResults)
 
 			// Compare result counts
@@ -550,11 +548,9 @@ func TestHardening_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resultsChan := m.Run(ctx, []string{srv.URL}, 4)
-
-	for range resultsChan {
+	m.Run(ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		cancel()
-	}
+	})
 }
 
 func TestHardening_Timeouts(t *testing.T) {
@@ -589,9 +585,7 @@ func TestHardening_Timeouts(t *testing.T) {
 		nil, nil, nil, nil, 0, nil, nil,
 	)
 
-	ch := m.Run(context.Background(), []string{srv.URL}, 4)
-	for range ch {
-	}
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 }
 
 func TestHardening_Adaptive(t *testing.T) {
@@ -685,11 +679,10 @@ func TestHardening_Profiles(t *testing.T) {
 				maxWorkers = lcfg.workerCounts[len(lcfg.workerCounts)-1]
 			}
 
-			ch := m.Run(context.Background(), []string{srv.URL}, maxWorkers)
 			var results []engine.Result
-			for r := range ch {
+			m.Run(context.Background(), []string{srv.URL}, maxWorkers, func(r engine.Result) {
 				results = append(results, r)
-			}
+			})
 
 			if len(results) != 3 {
 				t.Errorf("Expected 3 results, got %d", len(results))

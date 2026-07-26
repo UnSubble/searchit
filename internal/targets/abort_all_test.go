@@ -181,17 +181,14 @@ func TestAbortDuringRecursion(t *testing.T) {
 	)
 	recMgr.SetFilterSuite(fs)
 
-	out := recMgr.Run(ctx, []string{srv.URL}, 4)
-
 	// Cancel context after short delay
-	time.Sleep(15 * time.Millisecond)
-	cancel()
+	time.AfterFunc(15*time.Millisecond, cancel)
 
 	// Drain output channel — must close cleanly without deadlock
 	count := 0
-	for range out {
+	recMgr.Run(ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		count++
-	}
+	})
 }
 
 func TestAbortDuringFuzzing(t *testing.T) {

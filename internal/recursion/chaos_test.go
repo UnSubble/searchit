@@ -98,11 +98,10 @@ func TestChaos_WorkerEdgeCases(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 
-			resChan := m.Run(ctx, []string{"http://chaos.com"}, 4)
 			var results []engine.Result
-			for r := range resChan {
+			m.Run(ctx, []string{"http://chaos.com"}, 4, func(r engine.Result) {
 				results = append(results, r)
-			}
+			})
 
 			// Verify that regardless of broken responses/timeouts/huge body, the scheduler exits cleanly without lockups
 			if mode == "broken" || mode == "timeout" {
@@ -160,11 +159,10 @@ func TestChaos_HighScaleStarvationAndGrowth(t *testing.T) {
 	m.SetDisableWildcard(true)
 
 	// Stress-test with 128 workers
-	resChan := m.Run(context.Background(), targets, 128)
 	count := 0
-	for range resChan {
+	m.Run(context.Background(), targets, 128, func(r engine.Result) {
 		count++
-	}
+	})
 
 	// 100 targets + (100 targets * 1000 words) = 100,100 total jobs scanned
 	expected := 100100
@@ -220,11 +218,10 @@ func TestChaos_DeterministicWorkerMatrix(t *testing.T) {
 			)
 			m.SetDisableWildcard(true)
 
-			resChan := m.Run(context.Background(), []string{"http://determinism.com"}, w)
 			var results []engine.Result
-			for r := range resChan {
+			m.Run(context.Background(), []string{"http://determinism.com"}, w, func(r engine.Result) {
 				results = append(results, r)
-			}
+			})
 
 			// Root (1) + wordlist path (1) + 5 injected paths = 7 results
 			if len(results) != 7 {

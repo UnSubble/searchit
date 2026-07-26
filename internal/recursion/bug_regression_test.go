@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/status"
 )
@@ -45,9 +46,7 @@ func TestRegression_RedirectRecursionBug(t *testing.T) {
 		nil, nil, nil, nil, 0, nil, nil,
 	)
 
-	resultsChan := manager.Run(context.Background(), []string{srv.URL + "/admin"}, 4)
-	for range resultsChan {
-	}
+	manager.Run(context.Background(), []string{srv.URL + "/admin"}, 4, func(r engine.Result) {})
 
 	// Verify that the child request was `/admin/login`, not `/adminlogin`
 	foundCorrectChild := false
@@ -92,9 +91,7 @@ func TestRegression_DuplicateSuppression(t *testing.T) {
 
 	// Run with duplicate seed URLs as well
 	seeds := []string{srv.URL, srv.URL}
-	resultsChan := manager.Run(context.Background(), seeds, 8)
-	for range resultsChan {
-	}
+	manager.Run(context.Background(), seeds, 8, func(r engine.Result) {})
 
 	// Total expected unique requests:
 	// - Root URL (1 unique request)

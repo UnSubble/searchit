@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
@@ -155,17 +156,15 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 			)
 
 			ctx := context.Background()
-			resultsChan := manager.Run(ctx, []string{srv.URL}, wc)
-
 			var actual []normalizedResult
-			for r := range resultsChan {
+			manager.Run(ctx, []string{srv.URL}, wc, func(r engine.Result) {
 				actual = append(actual, normalizedResult{
 					URL:        r.URL,
 					StatusCode: r.StatusCode,
 					Depth:      r.Depth,
 					Accepted:   r.Accepted,
 				})
-			}
+			})
 			sortNormalizedResults(actual)
 
 			// Assert that actual discoveries match expected discoveries exactly.
@@ -227,17 +226,15 @@ func TestConcurrencyCorrectness_StressTest(t *testing.T) {
 		)
 
 		ctx := context.Background()
-		resultsChan := manager.Run(ctx, []string{srv.URL}, workers)
-
 		var actual []normalizedResult
-		for r := range resultsChan {
+		manager.Run(ctx, []string{srv.URL}, workers, func(r engine.Result) {
 			actual = append(actual, normalizedResult{
 				URL:        r.URL,
 				StatusCode: r.StatusCode,
 				Depth:      r.Depth,
 				Accepted:   r.Accepted,
 			})
-		}
+		})
 		sortNormalizedResults(actual)
 
 		compareResultSets(t, expectedResults, actual)

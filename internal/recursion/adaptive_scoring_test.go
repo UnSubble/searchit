@@ -46,11 +46,10 @@ func TestAdaptive_WordPressDetectionAndPathInjection(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	expectedPaths := []string{"wp-admin", "wp-content", "wp-includes", "wp-login.php", "xmlrpc.php"}
 	injectedCount := 0
@@ -105,11 +104,10 @@ func TestAdaptive_ExpressDetectionAndPathInjection(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	expectedPaths := []string{"api", "uploads", "assets", "static"}
 	injectedCount := 0
@@ -167,11 +165,10 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 			a.FingerprintCache,
 		)
 
-		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 		var results []engine.Result
-		for r := range resChan {
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		}
+		})
 
 		// Ensure "hello", "wp-admin" (WordPress), and "artisan", "horizon" (Laravel) are all scanned.
 		var foundHello, foundWPAdmin, foundArtisan, foundHorizon bool
@@ -230,11 +227,10 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 			a.FingerprintCache,
 		)
 
-		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 		var results []engine.Result
-		for r := range resChan {
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		}
+		})
 
 		// Ensure "hello", "artisan" (Laravel), and "wp-admin", "wp-content" (WordPress) are all scanned.
 		var foundHello, foundArtisan, foundWPAdmin, foundWPContent bool

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/config"
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/fuzz"
@@ -116,10 +117,7 @@ func TestChaos_Scans(t *testing.T) {
 				nil,
 			)
 
-			results := manager.Run(runCtx, cfg.URLs, cfg.Threads)
-			for range results {
-				// Consume results to prevent blocking
-			}
+			manager.Run(runCtx, cfg.URLs, cfg.Threads, func(r engine.Result) {})
 			wg.Wait()
 		}
 	})
@@ -206,9 +204,7 @@ func TestMonkey_RandomScans(t *testing.T) {
 					nil,
 					fingerprint.NewCache(),
 				)
-				results := manager.Run(ctx, []string{srv.URL}, workers)
-				for range results {
-				}
+				manager.Run(ctx, []string{srv.URL}, workers, func(r engine.Result) {})
 			} else {
 				// Fuzzing loop
 				jobs := make(chan fuzz.WorkItem, workers)

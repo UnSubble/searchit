@@ -142,14 +142,11 @@ func (m *Manager) SetDisableWildcard(disable bool) {
 //
 // The returned channel is closed when all traversal is complete.
 // Cancelling ctx stops the scan at the next scheduling boundary.
-func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan engine.Result {
-	out := make(chan engine.Result, workers)
-
-	go func() {
+func (m *Manager) Run(ctx context.Context, seeds []string, workers int, onResult func(engine.Result)) {
+	func() {
 		defer func() {
 			atomic.AddInt64(&stats.GlobalInstrumentation.SchedulerExit, 1)
 			stats.GlobalInstrumentation.LogEvent("manager exit")
-			close(out)
 		}()
 
 		frontier := NewFrontier(m.strategy)
@@ -259,7 +256,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
+					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 				}
 			} else {
 				// Frontier empty but workers still running; block until a result
@@ -284,7 +281,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
+					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 				}
 			}
 		}
@@ -298,11 +295,9 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int) <-chan e
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, out)
+			m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 		}
 	}()
-
-	return out
 }
 
 // handleResult forwards the result to the output channel and, if the result
@@ -316,7 +311,7 @@ func (m *Manager) handleResult(
 	injectedLaravel map[string]bool,
 	injectedWordPress map[string]bool,
 	injectedExpress map[string]bool,
-	out chan<- engine.Result,
+	onResult func(engine.Result),
 ) {
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
@@ -350,12 +345,11 @@ func (m *Manager) handleResult(
 
 	// If it's a redirect response (3xx), enqueue the destination URL to be scanned and return
 	if result.RedirectURL != "" && result.StatusCode >= 300 && result.StatusCode < 400 {
-		select {
-		case out <- result:
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			stats.GlobalInstrumentation.LogEvent("context cancellation")
 			return
 		}
+		onResult(result)
 
 		if result.Depth >= m.maxDepth {
 			return
@@ -374,12 +368,11 @@ func (m *Manager) handleResult(
 		return
 	}
 
-	select {
-	case out <- result:
-	case <-ctx.Done():
+	if ctx.Err() != nil {
 		stats.GlobalInstrumentation.LogEvent("context cancellation")
 		return
 	}
+	onResult(result)
 
 	if result.Depth >= m.maxDepth {
 		return

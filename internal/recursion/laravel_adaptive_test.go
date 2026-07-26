@@ -64,11 +64,10 @@ func TestAdaptive_DisabledByDefault(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	// Verify no Laravel paths were injected
 	expectedPaths := []string{".env", "artisan", "storage", "bootstrap", "vendor"}
@@ -114,11 +113,10 @@ func TestAdaptive_EnabledExplicitly(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	expectedPaths := []string{".env", "artisan", "storage", "bootstrap", "vendor"}
 	injectedCount := 0
@@ -170,11 +168,10 @@ func TestAdaptive_LaravelNotDetected(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	expectedPaths := []string{".env", "artisan", "storage", "bootstrap", "vendor"}
 	for _, p := range expectedPaths {
@@ -220,11 +217,10 @@ func TestAdaptive_DeduplicationAndDuplicateDiscoveries(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	counts := make(map[string]int)
 	for _, r := range results {
@@ -276,17 +272,15 @@ func TestAdaptive_MultiTargetIsolation(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan1 := m.Run(context.Background(), []string{srvLaravel.URL}, 4)
 	var results1 []engine.Result
-	for r := range resChan1 {
+	m.Run(context.Background(), []string{srvLaravel.URL}, 4, func(r engine.Result) {
 		results1 = append(results1, r)
-	}
+	})
 
-	resChan2 := m.Run(context.Background(), []string{srvPlain.URL}, 4)
 	var results2 []engine.Result
-	for r := range resChan2 {
+	m.Run(context.Background(), []string{srvPlain.URL}, 4, func(r engine.Result) {
 		results2 = append(results2, r)
-	}
+	})
 
 	foundLaravelT1 := false
 	for _, r := range results1 {
@@ -350,11 +344,10 @@ func TestAdaptive_WorkerCountsDeterminism(t *testing.T) {
 				a.FingerprintCache,
 			)
 
-			resChan := m.Run(context.Background(), []string{srv.URL}, w)
 			var results []engine.Result
-			for r := range resChan {
+			m.Run(context.Background(), []string{srv.URL}, w, func(r engine.Result) {
 				results = append(results, r)
-			}
+			})
 
 			if len(results) != 7 {
 				t.Errorf("Determinism failure: expected 7 scanned results under %d workers, got %d. Results: %+v", w, len(results), results)
@@ -401,11 +394,10 @@ func TestAdaptive_Redirects(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL + "/redirect"}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL + "/redirect"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	foundLaravel := false
 	for _, r := range results {
@@ -455,11 +447,10 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 			a.FingerprintCache,
 		)
 
-		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 		var results []engine.Result
-		for r := range resChan {
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		}
+		})
 
 		// With MaxDepth = 0, only the seed URL itself should be scanned.
 		if len(results) != 1 {
@@ -493,11 +484,10 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 			a.FingerprintCache,
 		)
 
-		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 		var results []engine.Result
-		for r := range resChan {
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		}
+		})
 
 		// Root (0) + wordlist (1) + 5 injected paths (1) = 7 results.
 		if len(results) != 7 {
@@ -531,11 +521,10 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 			a.FingerprintCache,
 		)
 
-		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 		var results []engine.Result
-		for r := range resChan {
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		}
+		})
 
 		// Root (1) + depth-1 wordlist/injected (6) + depth-2 recursion (6) = 13 results.
 		if len(results) != 13 {
@@ -579,11 +568,10 @@ func TestAdaptive_BFS_DFS(t *testing.T) {
 			a.FingerprintCache,
 		)
 
-		resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 		var results []engine.Result
-		for r := range resChan {
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		}
+		})
 
 		if len(results) != 7 {
 			t.Errorf("Strategy %s: expected 7 results, got %d", strat.String(), len(results))
@@ -629,14 +617,12 @@ func TestAdaptive_Cancellation(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(ctx, []string{srv.URL}, 4)
-
 	// Trigger cancellation immediately after reading first result
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 		cancel() // Cancel context
-	}
+	})
 
 	// Verify the scan terminated early and didn't hang
 	if len(results) == 13 {
@@ -678,11 +664,10 @@ func TestAdaptive_EmptyWordlist(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	// Should have root (1) + 5 Laravel paths = 6 results (wordlist is empty, so no depth 2 wordlist additions).
 	if len(results) != 6 {
@@ -727,11 +712,10 @@ func TestAdaptive_RobotsSitemapFailures(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	resChan := m.Run(context.Background(), []string{srv.URL}, 4)
 	var results []engine.Result
-	for r := range resChan {
+	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	}
+	})
 
 	// Scan should succeed despite robots/sitemap 500 errors, and still inject Laravel paths (total 7 results).
 	if len(results) != 7 {
@@ -772,9 +756,7 @@ func TestAdaptive_SchedulerStarvation(t *testing.T) {
 	// Run with 128 workers on empty wordlist. Verify it completes instantly and does not hang.
 	done := make(chan struct{})
 	go func() {
-		resChan := m.Run(context.Background(), []string{srv.URL}, 128)
-		for range resChan {
-		}
+		m.Run(context.Background(), []string{srv.URL}, 128, func(r engine.Result) {})
 		close(done)
 	}()
 
@@ -841,9 +823,7 @@ func BenchmarkAdaptive_SchedulerOverhead(b *testing.B) {
 			nil,
 			a.FingerprintCache,
 		)
-		ch := m.Run(context.Background(), []string{srv.URL}, 4)
-		for range ch {
-		}
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 	}
 }
 
@@ -915,8 +895,6 @@ func runStrategyBenchmark(b *testing.B, strategy recursion.Strategy, adaptive bo
 			nil,
 			a.FingerprintCache,
 		)
-		ch := m.Run(context.Background(), []string{srv.URL}, 4)
-		for range ch {
-		}
+		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 	}
 }

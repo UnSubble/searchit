@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
@@ -110,16 +111,14 @@ func TestGoldenCorrectnessAndWorkerConsistency(t *testing.T) {
 			)
 
 			ctx := context.Background()
-			resultsChan := manager.Run(ctx, []string{srv.URL}, wc)
-
 			// Collect actual discoveries
 			actualDiscoveries := make(map[string]int)
 			var mu sync.Mutex
-			for r := range resultsChan {
+			manager.Run(ctx, []string{srv.URL}, wc, func(r engine.Result) {
 				mu.Lock()
 				actualDiscoveries[r.URL]++
 				mu.Unlock()
-			}
+			})
 
 			// Perform Golden Comparison
 			missingCount := 0

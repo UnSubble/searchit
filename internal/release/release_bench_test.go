@@ -1,8 +1,9 @@
 package release
 
 import (
-	"github.com/unsubble/searchit/internal/semver"
 	"testing"
+
+	"github.com/unsubble/searchit/internal/semver"
 )
 
 func BenchmarkValidateBump(b *testing.B) {
