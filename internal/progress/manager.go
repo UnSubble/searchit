@@ -183,19 +183,16 @@ func (m *Manager) HandleResult(r engine.Result) {
 		return
 	}
 
-	path := presentation.RelativeURL(m.Renderer.Target, r.URL)
+	path := r.URL
 
 	sizeStr := "     -"
 	if r.Length >= 0 {
 		sizeStr = fmt.Sprintf("%8s", presentation.Size(r.Length))
 	}
 
-	loc := ""
-	if r.Headers != nil {
+	loc := r.RedirectURL
+	if loc == "" && r.Headers != nil {
 		loc = r.Headers.Get("Location")
-	}
-	if loc == "" {
-		loc = r.RedirectURL
 	}
 
 	var formatted string

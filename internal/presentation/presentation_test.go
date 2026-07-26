@@ -111,8 +111,8 @@ func TestRedirect(t *testing.T) {
 		dest   string
 		want   string
 	}{
-		{"internal to internal", "http://example.com/login", "http://example.com/auth", "/login \u2192 /auth"},
-		{"internal to external", "http://example.com/sso", "https://okta.com/auth", "/sso \u2192 https://okta.com/auth"},
+		{"internal to internal", "http://example.com/login", "http://example.com/auth", "http://example.com/login \u2192 http://example.com/auth"},
+		{"internal to external", "http://example.com/sso", "https://okta.com/auth", "http://example.com/sso \u2192 https://okta.com/auth"},
 	}
 
 	for _, tt := range tests {

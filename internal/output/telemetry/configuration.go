@@ -49,7 +49,7 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 	}
 	items = append(items,
 		terminal.Item{Key: "Adaptive", Value: adaptiveStr},
-		terminal.Item{Key: "Wordlist", Value: presentation.Path(wl, 35)},
+		terminal.Item{Key: "Wordlist", Value: presentation.Path(wl, 60)},
 	)
 
 	if len(info.Extensions) > 0 {
@@ -74,7 +74,7 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 	if wl == "" {
 		wl = "embedded"
 	} else {
-		wl = presentation.Path(wl, 35)
+		wl = presentation.Path(wl, 60)
 	}
 
 	items := []terminal.Item{
