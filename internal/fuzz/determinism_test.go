@@ -102,7 +102,7 @@ func TestStrategies_Determinism(t *testing.T) {
 				}
 
 				var results []string
-				err := runner.Run(context.Background(), sc.strategy, nil, func(res fuzz.Result) {
+				err := runner.Run(context.Background(), context.Background(), sc.strategy, nil, func(res fuzz.Result) {
 					results = append(results, strings.TrimPrefix(res.URL, srv.URL))
 				})
 				if err != nil {
@@ -146,7 +146,7 @@ func TestStrategies_Determinism(t *testing.T) {
 				}
 
 				var results []string
-				err := runner.Run(context.Background(), sc.strategy, nil, func(res fuzz.Result) {
+				err := runner.Run(context.Background(), context.Background(), sc.strategy, nil, func(res fuzz.Result) {
 					results = append(results, strings.TrimPrefix(res.URL, srv.URL))
 				})
 				if err != nil {

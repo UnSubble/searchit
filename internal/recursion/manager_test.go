@@ -47,7 +47,7 @@ func (r staticReader) Read(ctx context.Context, out chan<- string) error {
 
 func collectResults(m *recursion.Manager, ctx context.Context, seeds []string, workers int) []engine.Result {
 	var out []engine.Result
-	m.Run(ctx, seeds, workers, func(r engine.Result) {
+	m.Run(ctx, ctx, seeds, workers, func(r engine.Result) {
 		out = append(out, r)
 	})
 	return out
@@ -385,7 +385,7 @@ func TestManager_CleanShutdown_Cancellation(t *testing.T) {
 
 	m := newManager(t, reader, recursion.BFS, 3)
 	var once sync.Once
-	m.Run(ctx, seeds, 8, func(r engine.Result) {
+	m.Run(ctx, ctx, seeds, 8, func(r engine.Result) {
 		once.Do(func() {
 			cancel()
 		})

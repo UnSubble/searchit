@@ -65,7 +65,7 @@ func TestAdaptive_DisabledByDefault(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -114,7 +114,7 @@ func TestAdaptive_EnabledExplicitly(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -169,7 +169,7 @@ func TestAdaptive_LaravelNotDetected(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -218,7 +218,7 @@ func TestAdaptive_DeduplicationAndDuplicateDiscoveries(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -273,12 +273,12 @@ func TestAdaptive_MultiTargetIsolation(t *testing.T) {
 	)
 
 	var results1 []engine.Result
-	m.Run(context.Background(), []string{srvLaravel.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srvLaravel.URL}, 4, func(r engine.Result) {
 		results1 = append(results1, r)
 	})
 
 	var results2 []engine.Result
-	m.Run(context.Background(), []string{srvPlain.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srvPlain.URL}, 4, func(r engine.Result) {
 		results2 = append(results2, r)
 	})
 
@@ -345,7 +345,7 @@ func TestAdaptive_WorkerCountsDeterminism(t *testing.T) {
 			)
 
 			var results []engine.Result
-			m.Run(context.Background(), []string{srv.URL}, w, func(r engine.Result) {
+			m.Run(context.Background(), context.Background(), []string{srv.URL}, w, func(r engine.Result) {
 				results = append(results, r)
 			})
 
@@ -395,7 +395,7 @@ func TestAdaptive_Redirects(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL + "/redirect"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL + "/redirect"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -448,7 +448,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
 		})
 
@@ -485,7 +485,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
 		})
 
@@ -522,7 +522,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
 		})
 
@@ -569,7 +569,7 @@ func TestAdaptive_BFS_DFS(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
 		})
 
@@ -619,7 +619,7 @@ func TestAdaptive_Cancellation(t *testing.T) {
 
 	// Trigger cancellation immediately after reading first result
 	var results []engine.Result
-	m.Run(ctx, []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(ctx, ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 		cancel() // Cancel context
 	})
@@ -665,7 +665,7 @@ func TestAdaptive_EmptyWordlist(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -713,7 +713,7 @@ func TestAdaptive_RobotsSitemapFailures(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -756,7 +756,7 @@ func TestAdaptive_SchedulerStarvation(t *testing.T) {
 	// Run with 128 workers on empty wordlist. Verify it completes instantly and does not hang.
 	done := make(chan struct{})
 	go func() {
-		m.Run(context.Background(), []string{srv.URL}, 128, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 128, func(r engine.Result) {})
 		close(done)
 	}()
 
@@ -823,7 +823,7 @@ func BenchmarkAdaptive_SchedulerOverhead(b *testing.B) {
 			nil,
 			a.FingerprintCache,
 		)
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 	}
 }
 
@@ -895,6 +895,6 @@ func runStrategyBenchmark(b *testing.B, strategy recursion.Strategy, adaptive bo
 			nil,
 			a.FingerprintCache,
 		)
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 	}
 }

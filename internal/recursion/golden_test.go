@@ -114,7 +114,7 @@ func TestGoldenCorrectnessAndWorkerConsistency(t *testing.T) {
 			// Collect actual discoveries
 			actualDiscoveries := make(map[string]int)
 			var mu sync.Mutex
-			manager.Run(ctx, []string{srv.URL}, wc, func(r engine.Result) {
+			manager.Run(ctx, ctx, []string{srv.URL}, wc, func(r engine.Result) {
 				mu.Lock()
 				actualDiscoveries[r.URL]++
 				mu.Unlock()

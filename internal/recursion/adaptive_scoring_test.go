@@ -47,7 +47,7 @@ func TestAdaptive_WordPressDetectionAndPathInjection(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -105,7 +105,7 @@ func TestAdaptive_ExpressDetectionAndPathInjection(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -166,7 +166,7 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
 		})
 
@@ -228,7 +228,7 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
 		})
 

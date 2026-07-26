@@ -28,7 +28,7 @@ func BenchmarkExecute(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	e := NewExecutor(ctx, client, fs, 50, 0, nil, collector, nil)
+	e := NewExecutor(ctx, ctx, client, fs, 50, 0, nil, collector, nil)
 	defer e.Close()
 
 	b.ResetTimer()

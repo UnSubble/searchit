@@ -99,7 +99,7 @@ func TestChaos_WorkerEdgeCases(t *testing.T) {
 			defer cancel()
 
 			var results []engine.Result
-			m.Run(ctx, []string{"http://chaos.com"}, 4, func(r engine.Result) {
+			m.Run(ctx, ctx, []string{"http://chaos.com"}, 4, func(r engine.Result) {
 				results = append(results, r)
 			})
 
@@ -160,7 +160,7 @@ func TestChaos_HighScaleStarvationAndGrowth(t *testing.T) {
 
 	// Stress-test with 128 workers
 	count := 0
-	m.Run(context.Background(), targets, 128, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), targets, 128, func(r engine.Result) {
 		count++
 	})
 
@@ -219,7 +219,7 @@ func TestChaos_DeterministicWorkerMatrix(t *testing.T) {
 			m.SetDisableWildcard(true)
 
 			var results []engine.Result
-			m.Run(context.Background(), []string{"http://determinism.com"}, w, func(r engine.Result) {
+			m.Run(context.Background(), context.Background(), []string{"http://determinism.com"}, w, func(r engine.Result) {
 				results = append(results, r)
 			})
 

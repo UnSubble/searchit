@@ -38,6 +38,7 @@ type Executor struct {
 // NewExecutor initializes and starts the worker pool.
 func NewExecutor(
 	ctx context.Context,
+	drainCtx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
 	workers int,
@@ -47,7 +48,7 @@ func NewExecutor(
 	pauseBlocker func(context.Context) error,
 ) *Executor {
 	jobsChan := make(chan WorkItem, workers*2)
-	resultsChan := Start(ctx, client, fs, workers, delay, limiter, jobsChan, collector, pauseBlocker)
+	resultsChan := Start(drainCtx, client, fs, workers, delay, limiter, jobsChan, collector, pauseBlocker)
 
 	e := &Executor{
 		ctx:          ctx,
@@ -209,9 +210,9 @@ func TruncateTemplate(urlTemplate string, depth int) string {
 }
 
 // Run executes the fuzzer according to selected strategy.
-func (r *Runner) Run(ctx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
+func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
 	r.compiledReq = r.compileRequest()
-	e := NewExecutor(ctx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector, r.PauseBlocker)
+	e := NewExecutor(ctx, drainCtx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector, r.PauseBlocker)
 	defer e.Close()
 
 	maxDepth := GetTargetDepth(r.TargetURL)

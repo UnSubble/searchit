@@ -58,7 +58,7 @@ func TestAdaptive_DuplicatePayloads_Property(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err := r.Run(ctx, "adaptive", nil, func(res fuzz.Result) {
+	err := r.Run(ctx, ctx, "adaptive", nil, func(res fuzz.Result) {
 		mu.Lock()
 		results = append(results, res)
 		mu.Unlock()
@@ -120,7 +120,7 @@ func TestAdaptive_Stress_Concurrency(t *testing.T) {
 	var mu sync.Mutex
 	var results []fuzz.Result
 
-	err := r.Run(context.Background(), "adaptive", nil, func(res fuzz.Result) {
+	err := r.Run(context.Background(), context.Background(), "adaptive", nil, func(res fuzz.Result) {
 		mu.Lock()
 		results = append(results, res)
 		mu.Unlock()
@@ -155,7 +155,7 @@ func TestAdaptive_EmptyPayloads(t *testing.T) {
 	}
 
 	var results []fuzz.Result
-	err := r.Run(context.Background(), "adaptive", nil, func(res fuzz.Result) {
+	err := r.Run(context.Background(), context.Background(), "adaptive", nil, func(res fuzz.Result) {
 		results = append(results, res)
 	})
 
@@ -194,7 +194,7 @@ func TestAdaptive_ReverseSortedAndPreservation(t *testing.T) {
 
 	var mu sync.Mutex
 	var results []fuzz.Result
-	err := r.Run(context.Background(), "adaptive", nil, func(res fuzz.Result) {
+	err := r.Run(context.Background(), context.Background(), "adaptive", nil, func(res fuzz.Result) {
 		mu.Lock()
 		results = append(results, res)
 		mu.Unlock()
@@ -260,7 +260,7 @@ func FuzzAdaptive_Payloads(f *testing.F) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		err := r.Run(ctx, "adaptive", nil, func(res fuzz.Result) {
+		err := r.Run(ctx, ctx, "adaptive", nil, func(res fuzz.Result) {
 			mu.Lock()
 			results = append(results, res)
 			mu.Unlock()

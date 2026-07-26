@@ -157,7 +157,7 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 
 			ctx := context.Background()
 			var actual []normalizedResult
-			manager.Run(ctx, []string{srv.URL}, wc, func(r engine.Result) {
+			manager.Run(ctx, ctx, []string{srv.URL}, wc, func(r engine.Result) {
 				actual = append(actual, normalizedResult{
 					URL:        r.URL,
 					StatusCode: r.StatusCode,
@@ -227,7 +227,7 @@ func TestConcurrencyCorrectness_StressTest(t *testing.T) {
 
 		ctx := context.Background()
 		var actual []normalizedResult
-		manager.Run(ctx, []string{srv.URL}, workers, func(r engine.Result) {
+		manager.Run(ctx, ctx, []string{srv.URL}, workers, func(r engine.Result) {
 			actual = append(actual, normalizedResult{
 				URL:        r.URL,
 				StatusCode: r.StatusCode,

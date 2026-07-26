@@ -72,7 +72,7 @@ func TestHarden_ZeroTargets(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.Run(context.Background(), []string{}, 4, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{}, 4, func(r engine.Result) {})
 		close(done)
 	}()
 
@@ -118,7 +118,7 @@ func TestHarden_OneTarget(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://target1.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://target1.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -167,7 +167,7 @@ func TestHarden_OneHundredTargets(t *testing.T) {
 	}
 
 	var results []engine.Result
-	m.Run(context.Background(), targets, 16, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), targets, 16, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -211,7 +211,7 @@ func TestHarden_EmptyWordlists(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://emptywordlist.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://emptywordlist.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -255,7 +255,7 @@ func TestHarden_DuplicatedWordlists(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://duplicatedwordlist.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://duplicatedwordlist.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -303,7 +303,7 @@ func TestHarden_MaxDepthBoundary(t *testing.T) {
 			)
 
 			var results []engine.Result
-			m.Run(context.Background(), []string{"http://depthtarget.com"}, 4, func(r engine.Result) {
+			m.Run(context.Background(), context.Background(), []string{"http://depthtarget.com"}, 4, func(r engine.Result) {
 				results = append(results, r)
 			})
 
@@ -359,7 +359,7 @@ func TestHarden_WorkerCounts(t *testing.T) {
 			)
 
 			var results []engine.Result
-			m.Run(context.Background(), []string{"http://workertarget.com"}, w, func(r engine.Result) {
+			m.Run(context.Background(), context.Background(), []string{"http://workertarget.com"}, w, func(r engine.Result) {
 				results = append(results, r)
 			})
 
@@ -411,7 +411,7 @@ func TestHarden_AdaptiveToggle(t *testing.T) {
 	)
 
 	var results1 []engine.Result
-	mEnabled.Run(context.Background(), []string{"http://adaptivetoggle.com"}, 4, func(r engine.Result) {
+	mEnabled.Run(context.Background(), context.Background(), []string{"http://adaptivetoggle.com"}, 4, func(r engine.Result) {
 		results1 = append(results1, r)
 	})
 
@@ -443,7 +443,7 @@ func TestHarden_AdaptiveToggle(t *testing.T) {
 	)
 
 	var results2 []engine.Result
-	mDisabled.Run(context.Background(), []string{"http://adaptivetoggle.com"}, 4, func(r engine.Result) {
+	mDisabled.Run(context.Background(), context.Background(), []string{"http://adaptivetoggle.com"}, 4, func(r engine.Result) {
 		results2 = append(results2, r)
 	})
 
@@ -511,7 +511,7 @@ func TestHarden_Redirects(t *testing.T) {
 
 	// Inject custom roundtripper directly inside manager client
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://redirecttarget.com/redirect"}, 1, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://redirecttarget.com/redirect"}, 1, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -566,7 +566,7 @@ func TestHarden_Cancellation(t *testing.T) {
 	defer cancel()
 
 	var results []engine.Result
-	m.Run(ctx, []string{"http://cancel.com"}, 4, func(r engine.Result) {
+	m.Run(ctx, ctx, []string{"http://cancel.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 		cancel() // Cancel scan immediately
 	})
@@ -616,7 +616,7 @@ func TestHarden_RobotsSitemapFailures(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://failures.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://failures.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -663,7 +663,7 @@ func TestHarden_RecursionFailures(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://recfailures.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://recfailures.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -708,7 +708,7 @@ func TestHarden_MalformedURLs(t *testing.T) {
 
 	// Scan with a malformed URL alongside normal URL
 	var results []string
-	m.Run(context.Background(), []string{"http://normal.com", "::malformed::"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://normal.com", "::malformed::"}, 4, func(r engine.Result) {
 		results = append(results, r.URL)
 	})
 
@@ -753,7 +753,7 @@ func TestHarden_DuplicateDiscoveries(t *testing.T) {
 
 	// Double seed url list. Verify deduplication.
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://dups.com", "http://dups.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://dups.com", "http://dups.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -812,7 +812,7 @@ func TestHarden_RecursivePathInjections(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{"http://injectedrecurse.com"}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{"http://injectedrecurse.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -875,7 +875,7 @@ func TestHarden_SchedulerStarvation(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.Run(context.Background(), []string{"http://starvation.com"}, 128, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{"http://starvation.com"}, 128, func(r engine.Result) {})
 		close(done)
 	}()
 

@@ -142,7 +142,13 @@ func (m *Manager) SetDisableWildcard(disable bool) {
 //
 // The returned channel is closed when all traversal is complete.
 // Cancelling ctx stops the scan at the next scheduling boundary.
-func (m *Manager) Run(ctx context.Context, seeds []string, workers int, onResult func(engine.Result)) {
+func (m *Manager) Run(
+	ctx context.Context,
+	drainCtx context.Context,
+	seeds []string,
+	workers int,
+	onResult func(r engine.Result),
+) {
 	func() {
 		defer func() {
 			atomic.AddInt64(&stats.GlobalInstrumentation.SchedulerExit, 1)
@@ -181,7 +187,7 @@ func (m *Manager) Run(ctx context.Context, seeds []string, workers int, onResult
 
 		jobs := make(chan engine.Job, workers)
 		results := engine.Start(
-			ctx,
+			drainCtx,
 			m.client,
 			m.fs,
 			m.includeHeaders,

@@ -228,7 +228,7 @@ func runDeterminismTest(
 
 	ctx := context.Background()
 	var w1Results []engine.Result
-	m1.Run(ctx, seeds, 1, func(r engine.Result) {
+	m1.Run(ctx, ctx, seeds, 1, func(r engine.Result) {
 		w1Results = append(w1Results, r)
 	})
 	sortResults(w1Results)
@@ -253,7 +253,7 @@ func runDeterminismTest(
 			mN.SetDisableWildcard(true)
 
 			var wNResults []engine.Result
-			mN.Run(ctx, seeds, wN, func(r engine.Result) {
+			mN.Run(ctx, ctx, seeds, wN, func(r engine.Result) {
 				wNResults = append(wNResults, r)
 			})
 			sortResults(wNResults)
@@ -548,7 +548,7 @@ func TestHardening_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m.Run(ctx, []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(ctx, ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		cancel()
 	})
 }
@@ -585,7 +585,7 @@ func TestHardening_Timeouts(t *testing.T) {
 		nil, nil, nil, nil, 0, nil, nil,
 	)
 
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 }
 
 func TestHardening_Adaptive(t *testing.T) {
@@ -680,7 +680,7 @@ func TestHardening_Profiles(t *testing.T) {
 			}
 
 			var results []engine.Result
-			m.Run(context.Background(), []string{srv.URL}, maxWorkers, func(r engine.Result) {
+			m.Run(context.Background(), context.Background(), []string{srv.URL}, maxWorkers, func(r engine.Result) {
 				results = append(results, r)
 			})
 

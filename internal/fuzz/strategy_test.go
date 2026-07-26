@@ -74,7 +74,7 @@ func TestStrategies(t *testing.T) {
 		}
 
 		var results []fuzz.Result
-		err := r.Run(context.Background(), "bfs", nil, func(res fuzz.Result) {
+		err := r.Run(context.Background(), context.Background(), "bfs", nil, func(res fuzz.Result) {
 			results = append(results, res)
 		})
 		if err != nil {
@@ -133,7 +133,7 @@ func TestStrategies(t *testing.T) {
 		}
 
 		var results []fuzz.Result
-		err := r.Run(context.Background(), "dfs", nil, func(res fuzz.Result) {
+		err := r.Run(context.Background(), context.Background(), "dfs", nil, func(res fuzz.Result) {
 			results = append(results, res)
 		})
 		if err != nil {
@@ -180,7 +180,7 @@ func TestStrategies(t *testing.T) {
 		}
 
 		var results []fuzz.Result
-		err := r.Run(context.Background(), "eager", nil, func(res fuzz.Result) {
+		err := r.Run(context.Background(), context.Background(), "eager", nil, func(res fuzz.Result) {
 			results = append(results, res)
 		})
 		if err != nil {
@@ -217,7 +217,7 @@ func TestStrategies(t *testing.T) {
 		}
 
 		var results []fuzz.Result
-		err := r.Run(context.Background(), "eager", nil, func(res fuzz.Result) {
+		err := r.Run(context.Background(), context.Background(), "eager", nil, func(res fuzz.Result) {
 			results = append(results, res)
 		})
 		if err != nil {
@@ -247,7 +247,7 @@ func TestStrategies(t *testing.T) {
 		}
 
 		var results []fuzz.Result
-		err := r.Run(context.Background(), "eager", primary, func(res fuzz.Result) {
+		err := r.Run(context.Background(), context.Background(), "eager", primary, func(res fuzz.Result) {
 			results = append(results, res)
 		})
 		if err != nil {

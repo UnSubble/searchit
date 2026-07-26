@@ -69,7 +69,7 @@ func TestScientific_HTMLStarvation(t *testing.T) {
 			defer cancel()
 
 			var results []engine.Result
-			m.Run(ctx, []string{srv.URL}, 8, func(r engine.Result) {
+			m.Run(ctx, ctx, []string{srv.URL}, 8, func(r engine.Result) {
 				results = append(results, r)
 			})
 
@@ -124,7 +124,7 @@ func TestScientific_WildcardBoundary(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			t.Logf("DEBUG 19: URL=%s Accepted=%v StatusCode=%d Length=%d Err=%v", r.URL, r.Accepted, r.StatusCode, r.Length, r.Err)
 			results = append(results, r)
 		})
@@ -186,7 +186,7 @@ func TestScientific_WildcardBoundary(t *testing.T) {
 		)
 
 		var results []engine.Result
-		m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			t.Logf("DEBUG AFTER: URL=%s Accepted=%v StatusCode=%d Length=%d Err=%v", r.URL, r.Accepted, r.StatusCode, r.Length, r.Err)
 			results = append(results, r)
 		})
@@ -256,7 +256,7 @@ func TestScientific_SuppressionMixed(t *testing.T) {
 	)
 
 	var results []engine.Result
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 	})
 
@@ -324,7 +324,7 @@ func TestScientific_PrioritizationRatio(t *testing.T) {
 		a.FingerprintCache,
 	)
 
-	m.Run(context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 
 	_, _, _, _, _, high, _, low := m.GetAdaptiveMetrics()
 	t.Logf("High priority count: %d, Low priority count: %d", high, low)
@@ -373,7 +373,7 @@ func TestScientific_Metrics(t *testing.T) {
 	)
 
 	var count int
-	m.Run(context.Background(), []string{srv.URL}, 8, func(r engine.Result) {
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 8, func(r engine.Result) {
 		count++
 	})
 
