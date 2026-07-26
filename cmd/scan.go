@@ -57,6 +57,7 @@ var (
 	flagOutput string
 	// flagFormat is the explicit output format name.
 	flagFormat          string
+	flagLogCount        int
 	flagQuiet           bool
 	flagIncludeSize     string
 	flagExcludeSize     string
@@ -516,22 +517,25 @@ var scanCmd = &cobra.Command{
 				if excludeStatusStr == "" {
 					excludeStatusStr = "none"
 				}
-				info := telemetry.ConfigInfo{
-					Target:          targetURL,
-					Method:          cfg.Method,
-					Workers:         cfg.Threads,
-					Strategy:        strategyStr,
-					AdaptiveEnabled: cfg.Adaptive,
-					WordlistsCount:  1,
-					PrimaryWordlist: primaryWl,
-					HTTPVersion:     "auto",
-					FollowRedirects: cfg.FollowRedirects,
-					FilterStatus:    excludeStatusStr,
-					TotalCandidates: totalWords,
-					IsFuzz:          false,
-					Extensions:      cfg.Extensions,
+
+				if flagLogCount > 0 {
+					info := telemetry.ConfigInfo{
+						Target:          targetURL,
+						Method:          cfg.Method,
+						Workers:         cfg.Threads,
+						Strategy:        strategyStr,
+						AdaptiveEnabled: cfg.Adaptive,
+						WordlistsCount:  1,
+						PrimaryWordlist: primaryWl,
+						HTTPVersion:     "auto",
+						FollowRedirects: cfg.FollowRedirects,
+						FilterStatus:    excludeStatusStr,
+						TotalCandidates: totalWords,
+						IsFuzz:          false,
+						Extensions:      cfg.Extensions,
+					}
+					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				}
-				telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 			}
 
 			// Transition out of Starting, into Running, and hand over to Progress.
@@ -553,7 +557,7 @@ var scanCmd = &cobra.Command{
 			var termCtx context.Context
 			var cancelTerm context.CancelFunc
 
-			enableProgress := shouldEnableProgress(cfg, flagNoProgress)
+			enableProgress := shouldEnableProgress(cfg, flagNoProgress || flagLogCount == 0)
 			// Interactive keyboard controls require stdin to also be a terminal.
 			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
@@ -569,10 +573,12 @@ var scanCmd = &cobra.Command{
 					modeStr = fmt.Sprintf("Recursive (%s)", strings.ToUpper(cfg.Strategy.String()))
 				}
 
-				renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr)
+				renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr, flagLogCount)
 				progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 				progMgr.ConfiguredThreads = cfg.Threads
-				progMgr.Formatter = fmttr
+				if outWriter != os.Stdout {
+					progMgr.Formatter = fmttr
+				}
 
 				if interactive {
 					consoleCtrl = console.NewController(os.Stdin)
@@ -1141,6 +1147,13 @@ func init() {
 		"q",
 		false,
 		"print only discovered URLs in text mode",
+	)
+
+	scanCmd.Flags().IntVar(
+		&flagLogCount,
+		"log-count",
+		10,
+		"number of discovery lines visible in the interactive discovery region",
 	)
 
 	scanCmd.Flags().StringVar(

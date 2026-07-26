@@ -33,9 +33,24 @@ func width(w io.Writer) int {
 	return defaultWidth
 }
 
+// Height calculates the current terminal row count for the given writer.
+func height(w io.Writer) int {
+	if f, ok := w.(*os.File); ok && console.IsTerminal(f.Fd()) {
+		if _, rows, err := term.GetSize(int(f.Fd())); err == nil && rows > 0 {
+			return rows
+		}
+	}
+	return 24 // default reasonable height
+}
+
 // contentWidth computes: clamp(width(w) - contentMargin, contentMinWidth, contentMaxWidth).
 func contentWidth(w io.Writer) int {
 	return clamp(width(w)-contentMargin, contentMinWidth, contentMaxWidth)
+}
+
+// contentHeight returns the terminal height.
+func contentHeight(w io.Writer) int {
+	return height(w)
 }
 
 // clamp constrains v to [lo, hi].

@@ -191,6 +191,11 @@ func (m *Manager) ContentWidth() int {
 	return contentWidth(m.out)
 }
 
+// ContentHeight returns the terminal height.
+func (m *Manager) ContentHeight() int {
+	return contentHeight(m.out)
+}
+
 // Phase returns the current lifecycle phase. Safe to call from any goroutine.
 func (m *Manager) CurrentPhase() Phase {
 	m.mu.Lock()

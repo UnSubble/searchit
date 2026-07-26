@@ -110,7 +110,7 @@ func statsReport(
 		add("  No discoveries yet.")
 	} else {
 		for _, entry := range recent {
-			add(fmt.Sprintf("  %d  %s", entry.statusCode, entry.path))
+			add(fmt.Sprintf("  %d  %s", entry.StatusCode, entry.Path))
 		}
 	}
 

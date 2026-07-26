@@ -12,9 +12,14 @@ import (
 )
 
 type discoveryEntry struct {
-	statusCode int
-	path       string
+	StatusCode int
+	Path       string
+	Formatted  string
 }
+
+const (
+	ProgressPanelHeight = 5
+)
 
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
 //
@@ -28,6 +33,7 @@ type ANSIRenderer struct {
 	Mode     string
 	limit    int
 	frozen   bool // true if the underlying writer is a real TTY
+	logCount int
 
 	mu            sync.Mutex // protects recent + lastLineCount only
 	recent        []discoveryEntry
@@ -36,7 +42,7 @@ type ANSIRenderer struct {
 
 // NewANSIRenderer creates a new ANSIRenderer.
 // The cursor-hide escape is emitted via TM.Emit so it goes through the global lock.
-func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mode string) *ANSIRenderer {
+func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mode string, logCount int) *ANSIRenderer {
 	tr := &ANSIRenderer{
 		TM:       tm,
 		Target:   target,
@@ -44,6 +50,7 @@ func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mod
 		Mode:     mode,
 		limit:    5,
 		frozen:   true, // assume TTY; non-TTY writes are harmless
+		logCount: logCount,
 	}
 	// Hide cursor — goes through global lock.
 	_ = tm.Emit(terminal.OwnerProgress, func(w io.Writer) {
@@ -53,13 +60,16 @@ func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mod
 }
 
 // AddResult records a successful discovery (called from worker goroutines).
-func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string) {
+func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string, formatted string) {
 	path := extractPath(tr.Target, urlStr)
-	entry := discoveryEntry{statusCode: statusCode, path: path}
+	entry := discoveryEntry{StatusCode: statusCode, Path: path, Formatted: formatted}
 
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	if len(tr.recent) >= tr.limit {
+	if tr.logCount <= 0 {
+		return
+	}
+	if len(tr.recent) >= tr.logCount {
 		tr.recent = append(tr.recent[1:], entry)
 	} else {
 		tr.recent = append(tr.recent, entry)
@@ -88,12 +98,21 @@ func (tr *ANSIRenderer) ResetLineCount() {
 // Must be called while the caller holds OwnerProgress on TM.
 func (tr *ANSIRenderer) Close(owner terminal.Owner) error {
 	return tr.TM.Emit(owner, func(w io.Writer) {
-		tr.clearInto(w)
-		// Emitting \n ensures the cursor is firmly at column 0 for subsequent blocks.
-		fmt.Fprint(w, "\033[?25h\n")
 		tr.mu.Lock()
+		lastLines := tr.lastLineCount
 		tr.lastLineCount = 0
 		tr.mu.Unlock()
+
+		if lastLines > 0 && tr.frozen {
+			fmt.Fprintf(w, "\r\033[%dA", lastLines)
+			for i := 0; i < lastLines; i++ {
+				fmt.Fprintf(w, "\r\033[K\n")
+			}
+			fmt.Fprintf(w, "\r\033[%dA", lastLines)
+		}
+
+		// Emitting \n ensures the cursor is firmly at column 0 for subsequent blocks.
+		fmt.Fprint(w, "\033[?25h\n")
 	})
 }
 
@@ -108,29 +127,30 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 // Clear erases the current progress block via TM.Emit.
 func (tr *ANSIRenderer) Clear() error {
 	return tr.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-		tr.clearInto(w)
+		tr.mu.Lock()
+		lastLines := tr.lastLineCount
+		tr.lastLineCount = 0
+		tr.mu.Unlock()
+
+		if lastLines > 0 && tr.frozen {
+			fmt.Fprintf(w, "\r\033[%dA", lastLines)
+			for i := 0; i < lastLines; i++ {
+				fmt.Fprintf(w, "\r\033[K\n")
+			}
+			fmt.Fprintf(w, "\r\033[%dA", lastLines)
+		}
 	})
 }
 
 // ─── Internal write helpers (called inside TM.Emit — TM lock already held) ───
 
-// clearInto erases the rendered progress block. Called INSIDE an Emit closure.
-func (tr *ANSIRenderer) clearInto(w io.Writer) {
-	tr.mu.Lock()
-	lc := tr.lastLineCount
-	tr.mu.Unlock()
+// clearInto is removed. The block renderer handles its own clears via \033[K.
 
-	if tr.frozen && lc > 0 {
-		fmt.Fprintf(w, "\033[%dA", lc)
-		for i := 0; i < lc; i++ {
-			fmt.Fprint(w, "\r\033[K\n")
-		}
-		fmt.Fprintf(w, "\033[%dA", lc)
-		tr.mu.Lock()
-		tr.lastLineCount = 0
-		tr.mu.Unlock()
-	}
-}
+// SetupRegions is removed.
+func (tr *ANSIRenderer) SetupRegions(w io.Writer) {}
+
+// TeardownRegions is removed.
+func (tr *ANSIRenderer) TeardownRegions(w io.Writer) {}
 
 // Reset clears the renderer's state so it doesn't attempt to erase previous output.
 func (tr *ANSIRenderer) Reset() {
@@ -139,130 +159,111 @@ func (tr *ANSIRenderer) Reset() {
 	tr.lastLineCount = 0
 }
 
-// renderInto draws the full progress block. Called INSIDE an Emit closure.
+// renderInto draws the full block (discoveries + progress panel). Called INSIDE an Emit closure.
 func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
-	contentWidth := tr.TM.ContentWidth()
-
-	profilesStr := "none"
-	if len(tr.Profiles) > 0 {
-		profilesStr = strings.Join(tr.Profiles, " -> ")
-	}
-
-	divider := terminal.Separator(contentWidth, terminal.ThinSeparatorChar)
-
 	tr.mu.Lock()
 	recentCopy := make([]discoveryEntry, len(tr.recent))
 	copy(recentCopy, tr.recent)
+	lastLines := tr.lastLineCount
 	tr.mu.Unlock()
 
 	var lines []string
-	lines = append(lines, tr.renderHeader(profilesStr, contentWidth)...)
-	lines = append(lines, "")
-	lines = append(lines, "Progress")
-	lines = append(lines, divider)
-	lines = append(lines, tr.renderStats(snap)...)
-	lines = append(lines, "")
-	lines = append(lines, "Recent discoveries")
-	lines = append(lines, divider)
-	lines = append(lines, tr.renderDiscoveries(recentCopy, contentWidth)...)
-	lines = append(lines, "")
-	lines = append(lines, tr.renderControls())
 
-	tr.drawInto(w, lines, "  ")
-}
-
-func (tr *ANSIRenderer) renderHeader(profilesStr string, contentWidth int) []string {
-	formatHeaderLine := func(label, value string) string {
-		return terminal.FormatDotRow(label, value, 12, contentWidth)
-	}
-	return []string{
-		formatHeaderLine("Target", tr.Target),
-		formatHeaderLine("Profiles", profilesStr),
-		formatHeaderLine("Mode", tr.Mode),
-	}
-}
-
-func (tr *ANSIRenderer) renderStats(snap stats.Snapshot) []string {
-	elapsedStr := terminal.FormatElapsed(time.Since(snap.StartTime))
-	etaStr := terminal.FormatETA(snap.QueuedJobs, snap.CurrentRequestsPerSecond)
-
-	formatStatsRow := func(leftKey, leftVal, rightKey, rightVal string) string {
-		return terminal.FormatTwoColumnRow(leftKey, leftVal, rightKey, rightVal)
-	}
-
-	return []string{
-		formatStatsRow("Elapsed", elapsedStr, "ETA", etaStr),
-		"",
-		formatStatsRow("Requests", fmt.Sprintf("%d", snap.RequestsSent), "Responses", fmt.Sprintf("%d", snap.ResponsesReceived)),
-		"",
-		formatStatsRow("Current Req/s", fmt.Sprintf("%.0f", snap.CurrentRequestsPerSecond), "Workers", fmt.Sprintf("%d", snap.ActiveWorkers)),
-		"",
-		formatStatsRow("Queue", fmt.Sprintf("%d", snap.QueuedJobs), "Found", fmt.Sprintf("%d", snap.Discovered)),
-		"",
-		formatStatsRow("Filtered", fmt.Sprintf("%d", snap.RequestsFiltered), "Failed", fmt.Sprintf("%d", snap.RequestsFailed)),
-		"",
-		formatStatsRow("Latency", terminal.FormatLatency(snap.AverageLatency), "Retries", fmt.Sprintf("%d / %d", snap.Retries, snap.Redirects)),
-	}
-}
-
-func (tr *ANSIRenderer) renderDiscoveries(recent []discoveryEntry, contentWidth int) []string {
-	if len(recent) == 0 {
-		return []string{"No discoveries yet."}
-	}
-	var lines []string
-	for _, entry := range recent {
-		statusPrefix := fmt.Sprintf("%d ", entry.statusCode)
-		maxPathLen := contentWidth - len(statusPrefix)
-		p := entry.path
-		if len(p) > maxPathLen && maxPathLen > 3 {
-			p = p[:maxPathLen-3] + "..."
+	if tr.logCount > 0 {
+		for _, d := range recentCopy {
+			lines = append(lines, d.Formatted)
 		}
-		lines = append(lines, statusPrefix+p)
 	}
-	return lines
-}
 
-func (tr *ANSIRenderer) renderControls() string {
-	return "Controls: p Pause/Resume · s Statistics · q Stop target · a Abort all"
-}
+	lines = append(lines, tr.renderCompactProgress(snap)...)
 
-// drawInto writes the progress block to w. Called INSIDE an Emit closure.
-func (tr *ANSIRenderer) drawInto(w io.Writer, lines []string, marginStr string) {
-	tr.mu.Lock()
-	lc := tr.lastLineCount
-	tr.mu.Unlock()
+	// Print lines
+	if !tr.frozen {
+		// Non-TTY just prints discoveries
+		for _, d := range recentCopy {
+			fmt.Fprintln(w, d.Formatted)
+		}
+		return
+	}
 
-	if tr.frozen && lc > 0 {
-		fmt.Fprintf(w, "\033[%dA", lc)
+	// Disable line wrap to guarantee 1 logical line == 1 physical line
+	fmt.Fprint(w, "\033[?7l")
+
+	// Move cursor UP by lastLines to rewrite the block
+	if lastLines > 0 {
+		fmt.Fprintf(w, "\r\033[%dA", lastLines)
 	}
 
 	for _, line := range lines {
-		fmt.Fprintf(w, "\r\033[K%s%s\n", marginStr, line)
+		// \r ensures column 0, \033[K erases line, print line, and newline
+		fmt.Fprintf(w, "\r\033[K%s\n", line)
 	}
 
-	if tr.frozen && lc > len(lines) {
-		diff := lc - len(lines)
-		for i := 0; i < diff; i++ {
-			fmt.Fprint(w, "\r\033[K\n")
+	// If the new frame is shorter than the previous, erase the leftover lines
+	if lastLines > len(lines) {
+		for i := len(lines); i < lastLines; i++ {
+			fmt.Fprintf(w, "\r\033[K\n")
 		}
-		fmt.Fprintf(w, "\033[%dA", diff)
+		// Move cursor back up to exactly the bottom of the new frame
+		fmt.Fprintf(w, "\r\033[%dA", lastLines-len(lines))
 	}
 
-	if tr.frozen {
-		tr.mu.Lock()
-		tr.lastLineCount = len(lines)
-		tr.mu.Unlock()
+	// Re-enable line wrap
+	fmt.Fprint(w, "\033[?7h")
+
+	tr.mu.Lock()
+	tr.lastLineCount = len(lines)
+	tr.mu.Unlock()
+}
+
+func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
+	// 5-line compact progress
+	// Line 1: Target: <url>
+	// Line 2: Progress: [██████████░░░░░░░░░░] 50.0%
+	// Line 3: Jobs: X Queued / Y Candidates (Z Workers)
+	// Line 4: Metrics: X Req/s • Y Elapsed • Z ETA
+	// Line 5: Results: X Findings • Y Errors • Z Retries
+
+	var p float64
+	totalJobs := snap.RequestsSent + snap.QueuedJobs
+	if totalJobs > 0 {
+		p = float64(snap.RequestsSent) / float64(totalJobs) * 100.0
+	}
+	if p < 0.0 {
+		p = 0.0
+	}
+	if p > 100.0 {
+		p = 100.0
+	}
+	bar := progressBar(p, 20)
+	elapsed := terminal.FormatElapsed(time.Since(snap.StartTime))
+	eta := terminal.FormatETA(snap.QueuedJobs, snap.CurrentRequestsPerSecond)
+
+	return []string{
+		fmt.Sprintf("Target: %s", tr.Target),
+		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
+		fmt.Sprintf("Jobs: %d Queued / %d Candidates (%d Workers)", snap.QueuedJobs, totalJobs, snap.ActiveWorkers),
+		fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta),
+		fmt.Sprintf("Results: %d Findings • %d Errors • %d Retries", snap.Discovered, snap.RequestsFailed, snap.Retries),
 	}
 }
 
 func extractPath(target, urlStr string) string {
-	t := strings.TrimRight(target, "/")
-	if strings.HasPrefix(urlStr, t) {
-		p := urlStr[len(t):]
-		if !strings.HasPrefix(p, "/") {
-			p = "/" + p
-		}
-		return p
+	idx := strings.Index(urlStr, target)
+	if idx != -1 {
+		return urlStr[idx+len(target):]
 	}
 	return urlStr
+}
+
+func progressBar(p float64, width int) string {
+	filled := int((p / 100.0) * float64(width))
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > width {
+		filled = width
+	}
+	empty := width - filled
+	return "[" + strings.Repeat("█", filled) + strings.Repeat("░", empty) + "]"
 }

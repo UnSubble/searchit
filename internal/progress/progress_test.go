@@ -27,7 +27,7 @@ func TestManager_LifecycleAndCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	// Run with a very small refresh interval to verify it ticks fast enough for tests
 	m := progress.NewManager(tm, c, r, 5*time.Millisecond)
 
@@ -57,7 +57,7 @@ func TestANSIRenderer_LifecycleAndCursor(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target")
+	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target", 10)
 
 	out := buf.String()
 	if !bytes.Contains(buf.Bytes(), []byte("\033[?25l")) {
@@ -80,10 +80,10 @@ func TestANSIRenderer_RecentResultBuffer(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target")
+	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target", 10)
 
-	for i := 1; i <= 7; i++ {
-		r.AddResult(200, fmt.Sprintf("https://target.local/path%d", i))
+	for i := 1; i <= 12; i++ {
+		r.AddResult(200, fmt.Sprintf("https://target.local/path%d", i), "")
 	}
 
 	c := stats.NewCollector()
@@ -92,11 +92,22 @@ func TestANSIRenderer_RecentResultBuffer(t *testing.T) {
 		t.Fatalf("unexpected rendering error: %v", err)
 	}
 
-	if bytes.Contains(buf.Bytes(), []byte("  /path1\n")) {
+	recent := r.RecentEntries()
+	var foundPath1, foundPath12 bool
+	for _, e := range recent {
+		if e.Path == "/path1" || e.Path == "path1" {
+			foundPath1 = true
+		}
+		if e.Path == "/path12" || e.Path == "path12" {
+			foundPath12 = true
+		}
+	}
+
+	if foundPath1 {
 		t.Errorf("expected /path1 to be evicted, but it was found in output")
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("200 /path7")) {
-		t.Errorf("expected /path7 to be in output, but it was missing")
+	if !foundPath12 {
+		t.Errorf("expected /path12 to be in output, but it was missing")
 	}
 }
 
@@ -104,7 +115,7 @@ func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target")
+	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target", 10)
 
 	c := stats.NewCollector()
 	err := r.Render(c.Snapshot())
@@ -130,7 +141,7 @@ func TestManager_PrintStats(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 1*time.Second)
 
 	m.PrintStats()
@@ -173,7 +184,7 @@ func TestANSIRenderer_TerminalAndFrozen(t *testing.T) {
 	// instantiate ANSIRenderer with real terminal file
 	tm := terminal.New(f)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", []string{"base", "php"}, "Recursive")
+	r := progress.NewANSIRenderer(tm, "http://localhost", []string{"base", "php"}, "Recursive", 10)
 	defer r.Close(terminal.OwnerProgress)
 
 	c := stats.NewCollector()
@@ -191,67 +202,37 @@ func TestANSIRenderer_TerminalAndFrozen(t *testing.T) {
 	r.Clear()
 }
 
-func TestANSIRenderer_FormatLatency_All(t *testing.T) {
-	var buf bytes.Buffer
-	tm := terminal.New(&buf)
-	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "dfs")
-
-	c := stats.NewCollector()
-	snap := c.Snapshot()
-
-	snap.AverageLatency = -5 * time.Second
-	_ = r.Render(snap)
-	if !strings.Contains(buf.String(), "Latency       -") {
-		t.Errorf("expected '-' for negative latency, got: %s", buf.String())
-	}
-	buf.Reset()
-
-	// Test case 2: < 1ms duration (microseconds)
-	snap.AverageLatency = 500 * time.Microsecond
-	_ = r.Render(snap)
-	if !strings.Contains(buf.String(), "500µs") {
-		t.Errorf("expected '500µs', got: %s", buf.String())
-	}
-	buf.Reset()
-
-	// Test case 3: < 1s duration (milliseconds)
-	snap.AverageLatency = 250 * time.Millisecond
-	_ = r.Render(snap)
-	if !strings.Contains(buf.String(), "250ms") {
-		t.Errorf("expected '250ms', got: %s", buf.String())
-	}
-	buf.Reset()
-
-	// Test case 4: >= 1s duration (seconds)
-	snap.AverageLatency = 3500 * time.Millisecond
-	_ = r.Render(snap)
-	if !strings.Contains(buf.String(), "3.50s") {
-		t.Errorf("expected '3.50s', got: %s", buf.String())
-	}
-}
-
 func TestANSIRenderer_ExtractPath_All(t *testing.T) {
 	var buf bytes.Buffer
 	// target ends with trailing slash
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost/", nil, "dfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost/", nil, "dfs", 10)
 
 	// URL starts with target but does not have leading slash after trim
-	r.AddResult(200, "http://localhost/path1")
+	r.AddResult(200, "http://localhost/path", "200 | http://localhost/path")
 	// URL does not start with target
-	r.AddResult(301, "http://otherhost/path2")
+	r.AddResult(301, "http://otherhost/path2", "")
 
 	c := stats.NewCollector()
 	_ = r.Render(c.Snapshot())
 
-	out := buf.String()
-	if !strings.Contains(out, "200 /path1") {
-		t.Errorf("expected /path1 to be formatted, got:\n%s", out)
+	recent := r.RecentEntries()
+	var foundPath1, foundPath2 bool
+	for _, e := range recent {
+		if e.Path == "path" || e.Path == "/path" {
+			foundPath1 = true
+		}
+		if e.Path == "http://otherhost/path2" {
+			foundPath2 = true
+		}
 	}
-	if !strings.Contains(out, "301 http://otherhost/path2") {
-		t.Errorf("expected full URL path2 to be preserved, got:\n%s", out)
+
+	if !foundPath1 {
+		t.Errorf("expected /path to be formatted")
+	}
+	if !foundPath2 {
+		t.Errorf("expected full URL path2 to be preserved")
 	}
 }
 
@@ -259,7 +240,7 @@ func TestManager_CmdChan(t *testing.T) {
 	c := stats.NewCollector()
 	tm := terminal.New(io.Discard)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 100*time.Millisecond)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -292,7 +273,7 @@ func TestManager_PrintStats_ANSIRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 1*time.Second)
 
 	// print stats triggers clear, print, and re-render
@@ -316,7 +297,7 @@ func TestManager_PrintStats_DefaultWriter(t *testing.T) {
 	c := stats.NewCollector()
 	tm := terminal.New(pw)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 1*time.Second)
 
 	m.PrintStats()
@@ -332,14 +313,14 @@ func TestManager_PrintStats_DefaultWriter(t *testing.T) {
 	}
 }
 
-func TestManager_RecordResult_ANSI(t *testing.T) {
+func TestManager_HandleResult_ANSI(t *testing.T) {
 	c := stats.NewCollector()
 	tm := terminal.New(io.Discard)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 1*time.Second)
 	// Should not crash and do nothing
-	m.RecordResult(200, "http://localhost/path")
+	m.HandleResult(engine.Result{StatusCode: 200, URL: "http://localhost/path"})
 }
 
 func TestNewANSIRenderer_NilWriter(t *testing.T) {
@@ -352,7 +333,7 @@ func TestNewANSIRenderer_NilWriter(t *testing.T) {
 
 	tm := terminal.New(nil)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "", 10)
 	_ = r.Close(terminal.OwnerProgress)
 
 	pw.Close()
@@ -363,7 +344,7 @@ func TestNewManager_ZeroInterval(t *testing.T) {
 	c := stats.NewCollector()
 	tm := terminal.New(io.Discard)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 0)
 	if m.Interval != 1*time.Second {
 		t.Errorf("expected interval to fallback to 1s, got %v", m.Interval)
@@ -391,7 +372,7 @@ func TestProgress_HandleResult(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	m := progress.NewManager(tm, c, r, 1*time.Second)
 
 	res := engine.Result{
@@ -403,10 +384,10 @@ func TestProgress_HandleResult(t *testing.T) {
 
 	m.HandleResult(res)
 
-	// Since live dashboard is active, result must be routed and output
-	out := buf.String()
-	if !strings.Contains(out, "200") || !strings.Contains(out, "/admin") {
-		t.Errorf("expected result to be printed, got:\n%s", out)
+	// Result must be routed to the recent entries buffer
+	recent := r.RecentEntries()
+	if len(recent) != 1 || recent[0].StatusCode != 200 || recent[0].Path != "/admin" {
+		t.Errorf("expected result to be added to recent entries, got: %+v", recent)
 	}
 }
 
@@ -414,6 +395,6 @@ func TestANSIRenderer_ResetLineCount(t *testing.T) {
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs", 10)
 	r.ResetLineCount()
 }

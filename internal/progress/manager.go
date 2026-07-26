@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/unsubble/searchit/internal/console"
@@ -50,6 +51,12 @@ func NewManager(tm *terminal.Manager, collector *stats.Collector, renderer *ANSI
 func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 	ticker := time.NewTicker(m.Interval)
 	defer ticker.Stop()
+
+	// Initialize the terminal regions at startup.
+	// SetupRegions is no longer needed.
+	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		m.Renderer.renderInto(w, m.Collector.Snapshot())
+	})
 
 	for {
 		select {
@@ -145,7 +152,6 @@ func (m *Manager) restoreDashboard() {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Resuming scan...")
 		fmt.Fprintln(w)
-		// Reset the renderer state so it doesn't try to clear the statistics block
 		m.Renderer.Reset()
 
 		// Flush any results that were discovered while the stats view was blocking terminal output.
@@ -167,42 +173,36 @@ func (m *Manager) restoreDashboard() {
 	})
 }
 
-// RecordResult feeds a discovered URL into the renderer's recent list.
-// Safe to call from any goroutine (ANSIRenderer.AddResult is protected by its own mu).
-func (m *Manager) RecordResult(statusCode int, urlStr string) {
-	m.Renderer.AddResult(statusCode, urlStr)
-}
-
 // HandleResult routes a discovered result through the terminal manager.
 // If the statistics view is active, the result is buffered.
 // Otherwise: clear the dashboard, print the result, re-render the dashboard.
 // All of this happens atomically under the TM global lock.
 func (m *Manager) HandleResult(r engine.Result) {
-	// Record in the renderer's recent list (protected by its own mu).
-	m.Renderer.AddResult(r.StatusCode, r.URL)
-
 	if m.isStatsActive {
-		// When stats is active, the terminal is owned by OwnerStatistics.
-		// Any attempt to Emit(OwnerProgress) will fail and drop the output.
-		// We queue the result here to ensure discoveries are never lost from
-		// synchronous output sinks (like JSON/TXT files) that rely on the Formatter.
 		m.deferredOutput = append(m.deferredOutput, r)
 		return
 	}
 
-	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-		m.Renderer.clearInto(w)
-		if m.Formatter != nil {
-			if pt, ok := m.Formatter.(interface {
-				PrintTo(io.Writer, engine.Result) error
-			}); ok {
-				_ = pt.PrintTo(w, r)
-			} else {
-				_ = m.Formatter.Print(r)
-			}
+	var formatted string
+	if m.Formatter != nil {
+		if pt, ok := m.Formatter.(interface {
+			PrintTo(io.Writer, engine.Result) error
+		}); ok {
+			var sb strings.Builder
+			_ = pt.PrintTo(&sb, r)
+			formatted = strings.TrimSuffix(sb.String(), "\n")
 		}
-		m.Renderer.renderInto(w, m.Collector.Snapshot())
-	})
+	}
+	if formatted == "" {
+		formatted = fmt.Sprintf("%d | %s", r.StatusCode, r.URL)
+	}
+
+	m.Renderer.AddResult(r.StatusCode, r.URL, formatted)
+
+	// Emit non-terminal formatter outputs (e.g. MultiFormatter to file)
+	if m.Formatter != nil {
+		_ = m.Formatter.Print(r)
+	}
 }
 
 // PrintStats renders the full-screen statistics report.

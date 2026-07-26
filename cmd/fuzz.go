@@ -59,6 +59,7 @@ var (
 	flagFuzzExcSize     string
 	flagFuzzOutput      string
 	flagFuzzFormat      string
+	flagFuzzLogCount    int
 	flagFuzzQuiet       bool
 	flagFuzzDelay       string
 	flagFuzzRate        float64
@@ -593,23 +594,25 @@ var fuzzCmd = &cobra.Command{
 					excludeStatusStr = "none"
 				}
 
-				info := telemetry.ConfigInfo{
-					Target:          flagFuzzURL,
-					Method:          cfg.Method,
-					Workers:         cfg.Threads,
-					Strategy:        cfg.FuzzStrategy,
-					AdaptiveEnabled: cfg.Adaptive,
-					WordlistsCount:  wordlistsCount,
-					PrimaryWordlist: flagFuzzWordlist,
-					Placeholders:    placeholdersStr,
-					HTTPVersion:     "auto",
-					FollowRedirects: cfg.FollowRedirects,
-					FilterStatus:    excludeStatusStr,
-					TotalCandidates: totalCandidates,
-					IsFuzz:          true,
-					Extensions:      cfg.Extensions,
+				if flagFuzzLogCount > 0 {
+					info := telemetry.ConfigInfo{
+						Target:          flagFuzzURL,
+						Method:          cfg.Method,
+						Workers:         cfg.Threads,
+						Strategy:        cfg.FuzzStrategy,
+						AdaptiveEnabled: cfg.Adaptive,
+						WordlistsCount:  wordlistsCount,
+						PrimaryWordlist: flagFuzzWordlist,
+						Placeholders:    placeholdersStr,
+						HTTPVersion:     "auto",
+						FollowRedirects: cfg.FollowRedirects,
+						FilterStatus:    excludeStatusStr,
+						TotalCandidates: totalCandidates,
+						IsFuzz:          true,
+						Extensions:      cfg.Extensions,
+					}
+					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				}
-				telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 			}
 
 			// Transition out of Starting, into Running, and hand over to Progress.
@@ -630,7 +633,7 @@ var fuzzCmd = &cobra.Command{
 			var progCmdChan chan console.Command
 			var consoleCtrl *console.Controller
 
-			enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress)
+			enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress || flagFuzzLogCount == 0)
 			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
 			var progDone chan struct{}
@@ -642,10 +645,12 @@ var fuzzCmd = &cobra.Command{
 
 			if enableProgress {
 				modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
-				renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr)
+				renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr, flagFuzzLogCount)
 				progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 				progMgr.ConfiguredThreads = cfg.Threads
-				progMgr.Formatter = fmttr
+				if outWriter != os.Stdout {
+					progMgr.Formatter = fmttr
+				}
 
 				if interactive {
 					consoleCtrl = console.NewController(os.Stdin)
@@ -1047,6 +1052,7 @@ func init() {
 	fuzzCmd.Flags().StringVarP(&flagFuzzOutput, "output", "o", "", "write results to this file (default: stdout)")
 	fuzzCmd.Flags().StringVar(&flagFuzzFormat, "format", "text", "explicit output format (text, json, ndjson, csv, markdown)")
 	fuzzCmd.Flags().BoolVarP(&flagFuzzQuiet, "quiet", "q", false, "disable status prefix printing in stdout")
+	fuzzCmd.Flags().IntVar(&flagFuzzLogCount, "log-count", 10, "number of discovery lines visible in the interactive discovery region")
 	fuzzCmd.Flags().StringVar(&flagFuzzDelay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	fuzzCmd.Flags().Float64Var(&flagFuzzRate, "rate", 0, "maximum requests per second rate limit")
 	fuzzCmd.Flags().BoolVar(&flagFuzzNoProgress, "no-progress", false, "disable progress output")
