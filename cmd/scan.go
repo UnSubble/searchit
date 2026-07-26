@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -397,8 +398,39 @@ var scanCmd = &cobra.Command{
 		stateMgr.Transition(state.PhaseStarting)
 
 		ctx := cmd.Context()
-		ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
-		defer cancelSig()
+		ctx, cancelGraceful := context.WithCancel(ctx)
+		defer cancelGraceful()
+
+		var activeTargetCtx context.Context
+		var activeTargetMu sync.Mutex
+
+		drainCtx, cancelDrain := context.WithCancel(context.Background())
+		defer cancelDrain()
+
+		signals.SetupGlobal(drainCtx, func() {
+			if ctx.Err() != nil {
+				// Already gracefully shutting down. This SIGINT is a force abort.
+				cancelDrain()
+				return
+			}
+			activeTargetMu.Lock()
+			tgtCtx := activeTargetCtx
+			activeTargetMu.Unlock()
+			if tgtCtx != nil && tgtCtx.Err() != nil {
+				// The target is already draining (e.g. from 'q'). Force abort.
+				cancelDrain()
+				return
+			}
+			if stateMgr != nil && stateMgr.Current() < state.PhaseShutdownRequested {
+				stateMgr.Transition(state.PhaseShutdownRequested)
+			}
+			cancelGraceful()
+		}, func() {
+			if stateMgr != nil && stateMgr.Current() < state.PhaseFinalizing {
+				stateMgr.Transition(state.PhaseFinalizing)
+			}
+			cancelDrain()
+		})
 
 		appState := app.New(ctx, cfg)
 
@@ -480,6 +512,10 @@ var scanCmd = &cobra.Command{
 		globalSummary := targets.NewGlobalSummary(len(resolvedTargets))
 
 		err = targetManager.Execute(ctx, func(tCtx targets.TargetContext) error {
+			activeTargetMu.Lock()
+			activeTargetCtx = tCtx.Ctx
+			activeTargetMu.Unlock()
+
 			targetURL := tCtx.Target.URL
 			scanCtx := tCtx.Ctx
 			scanCancel := tCtx.Cancel
@@ -609,7 +645,6 @@ var scanCmd = &cobra.Command{
 										stateMgr.Transition(state.PhaseRunning)
 									}
 								}
-								// Update the dashboard so Paused state is visible.
 								select {
 								case progCmdChan <- console.CommandProgress:
 								default:
@@ -617,10 +652,14 @@ var scanCmd = &cobra.Command{
 							case console.CommandStopTarget:
 								scanCancel()
 							case console.CommandAbortAll:
-								if stateMgr != nil && stateMgr.Current() < state.PhaseStopping {
-									stateMgr.Transition(state.PhaseStopping)
+								if scanCtx.Err() != nil {
+									cancelDrain()
+								} else {
+									if stateMgr != nil && stateMgr.Current() < state.PhaseShutdownRequested {
+										stateMgr.Transition(state.PhaseShutdownRequested)
+									}
+									cancelGraceful()
 								}
-								cancelSig()
 							}
 						}
 						close(progCmdChan)
@@ -633,6 +672,40 @@ var scanCmd = &cobra.Command{
 					progMgr.Start(progCtx, progCmdChan)
 				}()
 			}
+
+			// Dedicated shutdown coordinator for terminal and renderer
+			shutdownDone := make(chan struct{})
+			go func() {
+				defer close(shutdownDone)
+				<-scanCtx.Done()
+
+				if stateMgr != nil && stateMgr.Current() < state.PhaseShutdownRequested {
+					stateMgr.Transition(state.PhaseShutdownRequested)
+				}
+
+				if cancelTerm != nil {
+					cancelTerm()
+					if consoleCtrl != nil {
+						<-consoleCtrl.Done()
+					}
+				}
+				if cancelProg != nil {
+					cancelProg()
+				}
+				if progDone != nil {
+					<-progDone
+				}
+
+				if enableProgress && renderer != nil {
+					_ = renderer.Close(terminal.OwnerProgress)
+					if stateMgr.Current() < state.PhaseFinalizing {
+						_ = tm.Emit(terminal.OwnerProgress, func(w io.Writer) {
+							fmt.Fprintln(w, "\r\n[*] Draining in-flight requests...")
+						})
+					}
+				}
+			}()
+
 			stateMgr.Transition(state.PhaseRunning)
 			var manager *recursion.Manager
 			if cfg.Recursive {
@@ -666,7 +739,7 @@ var scanCmd = &cobra.Command{
 				manager.SetExtensions(cfg.Extensions)
 				manager.SetBaseWordlistSize(totalWords)
 				manager.PauseBlocker = stateMgr.WaitUntilRunning
-				manager.Run(scanCtx, seeds, cfg.Threads, func(r engine.Result) {
+				manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 					if r.Accepted {
 						if progMgr != nil {
 							progMgr.HandleResult(r)
@@ -685,7 +758,7 @@ var scanCmd = &cobra.Command{
 			} else {
 				jobs := make(chan engine.Job, cfg.Threads)
 				results := engine.Start(
-					scanCtx,
+					drainCtx,
 					appState.HTTPClient,
 					fs,
 					mapHeaders(cfg.IncludeHeaders),
@@ -742,28 +815,21 @@ var scanCmd = &cobra.Command{
 				_ = fmttr.Close()
 			}
 
+			// In case the target naturally completed, trigger shutdown done.
+			scanCancel()
+			<-shutdownDone
+
 			stateMgr.Transition(state.PhaseWaitingWorkers)
 			_ = tm.TransitionTo(terminal.PhaseWaitingWorkers)
 
 			stateMgr.Transition(state.PhaseFinalizing)
 			_ = tm.TransitionTo(terminal.PhaseFinalizing)
 
-			if enableProgress && renderer != nil {
-				cancelProg()
-				if progDone != nil {
-					<-progDone
-				}
-			}
-
 			stateMgr.Transition(state.PhaseTerminalShutdown)
 			_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
 
 			if enableProgress && renderer != nil {
-				if interactive && consoleCtrl != nil {
-					cancelTerm()
-					<-consoleCtrl.Done()
-				}
-				_ = renderer.Close(terminal.OwnerProgress)
+				_ = renderer.Close(terminal.OwnerProgress) // ensure it's closed in case shutdown coordinator didn't
 			}
 			_ = tm.ReleaseOwner(terminal.OwnerProgress)
 

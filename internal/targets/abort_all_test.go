@@ -32,10 +32,11 @@ func TestAbortAllSingleTarget(t *testing.T) {
 	defer srv.Close()
 
 	stateMgr := state.NewManager()
-	globalCtx, cancelRaw := signals.SetupContext(context.Background(), stateMgr)
+	globalCtx, cancelRaw := context.WithCancel(context.Background())
+	signals.SetupGlobal(globalCtx, cancelRaw, cancelRaw)
 	cancelGlobal := func() {
-		if stateMgr.Current() < state.PhaseStopping {
-			stateMgr.Transition(state.PhaseStopping)
+		if stateMgr.Current() < state.PhaseShutdownRequested {
+			stateMgr.Transition(state.PhaseShutdownRequested)
 		}
 		cancelRaw()
 	}
@@ -69,15 +70,15 @@ func TestAbortAllSingleTarget(t *testing.T) {
 	if !targetExecuted {
 		t.Fatal("expected target to start execution before abort")
 	}
-	if stateMgr.Current() < state.PhaseStopping {
-		t.Fatalf("expected state manager to transition to PhaseStopping, got %v", stateMgr.Current())
+	if stateMgr.Current() < state.PhaseShutdownRequested {
+		t.Fatalf("expected state manager to transition to PhaseShutdownRequested, got %v", stateMgr.Current())
 	}
 }
 
 func TestAbortAllMultiTarget(t *testing.T) {
 	t.Run("Key 'q' semantics: skip current target only", func(t *testing.T) {
-		stateMgr := state.NewManager()
-		globalCtx, cancelGlobal := signals.SetupContext(context.Background(), stateMgr)
+		globalCtx, cancelGlobal := context.WithCancel(context.Background())
+		signals.SetupGlobal(globalCtx, cancelGlobal, cancelGlobal)
 		defer cancelGlobal()
 
 		tList := []targets.Target{
@@ -106,8 +107,8 @@ func TestAbortAllMultiTarget(t *testing.T) {
 	})
 
 	t.Run("Key 'a' semantics: abort entire run", func(t *testing.T) {
-		stateMgr := state.NewManager()
-		globalCtx, cancelGlobal := signals.SetupContext(context.Background(), stateMgr)
+		globalCtx, cancelGlobal := context.WithCancel(context.Background())
+		signals.SetupGlobal(globalCtx, cancelGlobal, cancelGlobal)
 
 		tList := []targets.Target{
 			{URL: "http://target1"},
@@ -186,7 +187,7 @@ func TestAbortDuringRecursion(t *testing.T) {
 
 	// Drain output channel — must close cleanly without deadlock
 	count := 0
-	recMgr.Run(ctx, []string{srv.URL}, 4, func(r engine.Result) {
+	recMgr.Run(ctx, ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		count++
 	})
 }
@@ -199,7 +200,7 @@ func TestAbortDuringFuzzing(t *testing.T) {
 	defer cancel()
 
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	exec := fuzz.NewExecutor(ctx, http.DefaultClient, fs, 4, 0, nil, nil, nil)
+	exec := fuzz.NewExecutor(ctx, ctx, http.DefaultClient, fs, 4, 0, nil, nil, nil)
 	defer exec.Close()
 
 	// Launch async job executions
@@ -251,10 +252,11 @@ func TestAbortDuringAdaptiveScanning(t *testing.T) {
 func TestAbortAllDeterminism(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		stateMgr := state.NewManager()
-		ctx, cancelRaw := signals.SetupContext(context.Background(), stateMgr)
+		ctx, cancelRaw := context.WithCancel(context.Background())
+		signals.SetupGlobal(ctx, cancelRaw, cancelRaw)
 		cancel := func() {
-			if stateMgr.Current() < state.PhaseStopping {
-				stateMgr.Transition(state.PhaseStopping)
+			if stateMgr.Current() < state.PhaseShutdownRequested {
+				stateMgr.Transition(state.PhaseShutdownRequested)
 			}
 			cancelRaw()
 		}
@@ -272,8 +274,8 @@ func TestAbortAllDeterminism(t *testing.T) {
 		if atomic.LoadInt32(&executed) != 1 {
 			t.Fatalf("run %d: expected exactly 1 target executed, got %d", i, executed)
 		}
-		if stateMgr.Current() < state.PhaseStopping {
-			t.Fatalf("run %d: state manager did not reach PhaseStopping", i)
+		if stateMgr.Current() < state.PhaseShutdownRequested {
+			t.Fatalf("run %d: state manager did not reach PhaseShutdownRequested, got %v", i, stateMgr.Current())
 		}
 	}
 }

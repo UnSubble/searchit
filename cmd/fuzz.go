@@ -11,6 +11,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -338,9 +339,34 @@ var fuzzCmd = &cobra.Command{
 		atomic.StoreInt32(&stats.GlobalInstrumentation.Enabled, 1)
 
 		ctx := cmd.Context()
-		if ctx == nil {
-			ctx = context.Background()
-		}
+		ctx, cancelGraceful := context.WithCancel(ctx)
+		defer cancelGraceful()
+
+		var activeTargetCtx context.Context
+		var activeTargetMu sync.Mutex
+
+		drainCtx, cancelDrain := context.WithCancel(context.Background())
+		defer cancelDrain()
+
+		signals.SetupGlobal(drainCtx, func() {
+			if ctx.Err() != nil {
+				cancelDrain()
+				return
+			}
+			activeTargetMu.Lock()
+			tgtCtx := activeTargetCtx
+			activeTargetMu.Unlock()
+			if tgtCtx != nil && tgtCtx.Err() != nil {
+				// The target is already draining. Force abort.
+				cancelDrain()
+				return
+			}
+			// graceful
+			cancelGraceful()
+		}, func() {
+			// force abort
+			cancelDrain()
+		})
 
 		// Initialize default config and HTTP client options
 		cfg := config.Default()
@@ -542,11 +568,14 @@ var fuzzCmd = &cobra.Command{
 		if flagFuzzBuzz != "" {
 			totalCandidates *= countFileLines(flagFuzzBuzz)
 		}
-
 		targetManager := targets.NewManager(resolvedFuzzTargets)
 		globalSummary := targets.NewGlobalSummary(len(resolvedFuzzTargets))
 
 		errExecute := targetManager.Execute(ctx, func(tCtx targets.TargetContext) error {
+			activeTargetMu.Lock()
+			activeTargetCtx = tCtx.Ctx
+			activeTargetMu.Unlock()
+
 			fuzzCtx := tCtx.Ctx
 			cancelSig := tCtx.Cancel
 			targetURL := tCtx.Target.URL
@@ -624,8 +653,7 @@ var fuzzCmd = &cobra.Command{
 				return err
 			}
 
-			ctx, cancelSig := signals.SetupContext(ctx, stateMgr)
-			defer cancelSig()
+			// Setup Context is handled globally above.
 
 			collector := stats.NewCollector()
 
@@ -677,16 +705,21 @@ var fuzzCmd = &cobra.Command{
 										stateMgr.Transition(state.PhaseRunning)
 									}
 								}
-								// Update the dashboard so Paused state is visible.
 								select {
 								case progCmdChan <- console.CommandProgress:
 								default:
 								}
-							case console.CommandStopTarget, console.CommandAbortAll:
-								if stateMgr != nil && stateMgr.Current() < state.PhaseStopping {
-									stateMgr.Transition(state.PhaseStopping)
-								}
+							case console.CommandStopTarget:
 								cancelSig()
+							case console.CommandAbortAll:
+								if ctx.Err() != nil {
+									cancelDrain()
+								} else {
+									if stateMgr != nil && stateMgr.Current() < state.PhaseShutdownRequested {
+										stateMgr.Transition(state.PhaseShutdownRequested)
+									}
+									cancelGraceful()
+								}
 							}
 						}
 						close(progCmdChan)
@@ -699,6 +732,39 @@ var fuzzCmd = &cobra.Command{
 					progMgr.Start(progCtx, progCmdChan)
 				}()
 			}
+
+			// Dedicated shutdown coordinator for terminal and renderer
+			shutdownDone := make(chan struct{})
+			go func() {
+				defer close(shutdownDone)
+				<-fuzzCtx.Done() // Triggered when target completes or target context is cancelled
+
+				if stateMgr != nil && stateMgr.Current() < state.PhaseShutdownRequested {
+					stateMgr.Transition(state.PhaseShutdownRequested)
+				}
+
+				if cancelTerm != nil {
+					cancelTerm()
+					if consoleCtrl != nil {
+						<-consoleCtrl.Done()
+					}
+				}
+				if cancelProg != nil {
+					cancelProg()
+				}
+				if progDone != nil {
+					<-progDone
+				}
+
+				if enableProgress && renderer != nil {
+					_ = renderer.Close(terminal.OwnerProgress)
+					if stateMgr.Current() < state.PhaseFinalizing {
+						_ = tm.Emit(terminal.OwnerProgress, func(w io.Writer) {
+							fmt.Fprintln(w, "\r\n[*] Draining in-flight requests...")
+						})
+					}
+				}
+			}()
 
 			stateMgr.Transition(state.PhaseRunning)
 
@@ -772,7 +838,7 @@ var fuzzCmd = &cobra.Command{
 
 			collector.SetQueuedJobs(int64(totalCandidates))
 
-			runErr := runner.Run(fuzzCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
+			runErr := runner.Run(fuzzCtx, drainCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
 				if r.Accepted {
 					engRes := engine.Result{
 						URL:        r.URL,
@@ -806,27 +872,20 @@ var fuzzCmd = &cobra.Command{
 				_ = fmttr.Close()
 			}
 
+			// In case the target naturally completed, trigger shutdown done.
+			cancelSig()
+			<-shutdownDone
+
 			stateMgr.Transition(state.PhaseWaitingWorkers)
 			_ = tm.TransitionTo(terminal.PhaseWaitingWorkers)
 
 			stateMgr.Transition(state.PhaseFinalizing)
 			_ = tm.TransitionTo(terminal.PhaseFinalizing)
 
-			if enableProgress && renderer != nil {
-				cancelProg()
-				if progDone != nil {
-					<-progDone
-				}
-			}
-
 			stateMgr.Transition(state.PhaseTerminalShutdown)
 			_ = tm.TransitionTo(terminal.PhaseTerminalShutdown)
 
 			if enableProgress && renderer != nil {
-				if interactive && consoleCtrl != nil {
-					cancelTerm()
-					<-consoleCtrl.Done()
-				}
 				_ = renderer.Close(terminal.OwnerProgress)
 			}
 			_ = tm.ReleaseOwner(terminal.OwnerProgress)
