@@ -35,9 +35,10 @@ type ANSIRenderer struct {
 	frozen   bool // true if the underlying writer is a real TTY
 	logCount int
 
-	mu            sync.Mutex // protects recent + lastLineCount only
+	mu            sync.Mutex // protects recent + lastLineCount + lastProgCount only
 	recent        []discoveryEntry
 	lastLineCount int
+	lastProgCount int
 
 	IsPaused func() bool
 }
@@ -101,16 +102,17 @@ func (tr *ANSIRenderer) ResetLineCount() {
 func (tr *ANSIRenderer) Close(owner terminal.Owner) error {
 	return tr.TM.Emit(owner, func(w io.Writer) {
 		tr.mu.Lock()
-		lastLines := tr.lastLineCount
+		progLines := tr.lastProgCount
 		tr.lastLineCount = 0
+		tr.lastProgCount = 0
 		tr.mu.Unlock()
 
-		if lastLines > 0 && tr.frozen {
-			fmt.Fprintf(w, "\r\033[%dA", lastLines)
-			for i := 0; i < lastLines; i++ {
+		if progLines > 0 && tr.frozen {
+			fmt.Fprintf(w, "\r\033[%dA", progLines)
+			for i := 0; i < progLines; i++ {
 				fmt.Fprintf(w, "\r\033[K\n")
 			}
-			fmt.Fprintf(w, "\r\033[%dA", lastLines)
+			fmt.Fprintf(w, "\r\033[%dA", progLines)
 		}
 
 		// Emitting \n ensures the cursor is firmly at column 0 for subsequent blocks.
@@ -132,6 +134,7 @@ func (tr *ANSIRenderer) Clear() error {
 		tr.mu.Lock()
 		lastLines := tr.lastLineCount
 		tr.lastLineCount = 0
+		tr.lastProgCount = 0
 		tr.mu.Unlock()
 
 		if lastLines > 0 && tr.frozen {
@@ -159,6 +162,7 @@ func (tr *ANSIRenderer) Reset() {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	tr.lastLineCount = 0
+	tr.lastProgCount = 0
 }
 
 // renderInto draws the full block (discoveries + progress panel). Called INSIDE an Emit closure.
@@ -177,7 +181,8 @@ func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 		}
 	}
 
-	lines = append(lines, tr.renderCompactProgress(snap)...)
+	progLines := tr.renderCompactProgress(snap)
+	lines = append(lines, progLines...)
 
 	// Print lines
 	if !tr.frozen {
@@ -215,6 +220,7 @@ func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 
 	tr.mu.Lock()
 	tr.lastLineCount = len(lines)
+	tr.lastProgCount = len(progLines)
 	tr.mu.Unlock()
 }
 
