@@ -1,23 +1,18 @@
+<!--
+TITLE FORMAT: [PREFIX] Imperative action summary
+Prefixes: [ADD], [REFINE], [FIX], [UPDATE], [REMOVE]
+Example: [ADD] Implement HTTP/2 check test
+-->
+
 ## Summary
+<!-- A concise explanation of the motivation or the problem being solved -->
 
-Describe the changes.
 
-## Type of change
+## Changes
+<!-- Past-tense bullet points describing the technical modifications -->
+- 
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Refactoring
-- [ ] Documentation
-- [ ] Tests
-- [ ] CI/CD
 
-## Checklist
-
-- [ ] Tests pass
-- [ ] New tests added if necessary
-- [ ] Documentation updated
-- [ ] No breaking changes introduced
-
-## Additional notes
-
-Anything reviewers should know.
+## Validation
+<!-- Evidence proving the correctness and determinism of the changes (e.g. make test and make chaos passed successfully) -->
+- 
