@@ -23,18 +23,19 @@ type rateSlot struct {
 // Collector accumulates runtime execution statistics.
 // All operations are concurrency-safe and optimized using atomic operations to minimize overhead.
 type Collector struct {
-	requestsSent      int64
-	responsesReceived int64
-	requestsFiltered  int64
-	requestsFailed    int64
-	requestsSucceeded int64
-	bytesReceived     int64
-	activeWorkers     int64
-	totalCandidates   int64
-	discovered        int64
-	invalidWords      int64
-	jobsProduced      int64
-	startTime         int64 // Unix nano timestamp
+	requestsSent        int64
+	responsesReceived   int64
+	requestsFiltered    int64
+	requestsFailed      int64
+	requestsSucceeded   int64
+	bytesReceived       int64
+	activeWorkers       int64
+	totalCandidates     int64
+	discovered          int64
+	invalidWords        int64
+	jobsProduced        int64
+	searchSpaceProgress int64
+	startTime           int64 // Unix nano timestamp
 
 	// Future metrics support
 	retries                int64
@@ -110,9 +111,14 @@ func (c *Collector) RecordInvalidWord() {
 	atomic.AddInt64(&c.invalidWords, 1)
 }
 
-// RecordJobProduced increments the produced jobs counter.
+// RecordJobProduced increments the total generated jobs counter.
 func (c *Collector) RecordJobProduced() {
 	atomic.AddInt64(&c.jobsProduced, 1)
+}
+
+// RecordSearchSpaceProgress increments the number of theoretical candidate combinations processed (executed or pruned).
+func (c *Collector) RecordSearchSpaceProgress(n int64) {
+	atomic.AddInt64(&c.searchSpaceProgress, n)
 }
 
 // IncrementActiveWorkers increments the active worker count by 1.
@@ -174,6 +180,7 @@ func (c *Collector) Snapshot() Snapshot {
 	disc := atomic.LoadInt64(&c.discovered)
 	invalid := atomic.LoadInt64(&c.invalidWords)
 	jobs := atomic.LoadInt64(&c.jobsProduced)
+	progress := atomic.LoadInt64(&c.searchSpaceProgress)
 	startNano := atomic.LoadInt64(&c.startTime)
 
 	retries := atomic.LoadInt64(&c.retries)
@@ -258,6 +265,7 @@ func (c *Collector) Snapshot() Snapshot {
 		Discovered:               disc,
 		InvalidWords:             invalid,
 		JobsProduced:             jobs,
+		SearchSpaceProgress:      progress,
 		StartTime:                startTime,
 		StatusCodes:              statusCopy,
 		Retries:                  retries,

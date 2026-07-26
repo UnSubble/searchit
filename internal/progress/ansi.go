@@ -239,13 +239,17 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	if totalJobs == 0 {
 		totalJobs = snap.RequestsSent // fallback for undefined search space
 	}
-	remainingJobs := totalJobs - snap.JobsProduced
+	remainingJobs := totalJobs - snap.SearchSpaceProgress
 	if remainingJobs < 0 {
 		remainingJobs = 0
 	}
 
 	if totalJobs > 0 {
-		p = float64(snap.JobsProduced) / float64(totalJobs) * 100.0
+		if snap.SearchSpaceProgress >= totalJobs {
+			p = 100.0
+		} else {
+			p = float64(snap.SearchSpaceProgress) / float64(totalJobs) * 100.0
+		}
 	}
 	if p < 0.0 {
 		p = 0.0
@@ -257,8 +261,10 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	elapsed := presentation.Duration(time.Since(snap.StartTime))
 
 	eta := "-"
-	if snap.CurrentRequestsPerSecond > 0 && remainingJobs > 0 {
-		etaSecs := float64(remainingJobs) / snap.CurrentRequestsPerSecond
+	elapsedSec := time.Since(snap.StartTime).Seconds()
+	if elapsedSec > 2.0 && snap.SearchSpaceProgress > 0 && remainingJobs > 0 {
+		candidatesPerSec := float64(snap.SearchSpaceProgress) / elapsedSec
+		etaSecs := float64(remainingJobs) / candidatesPerSec
 		if etaSecs < 1.0 {
 			etaSecs = 1.0
 		}
@@ -286,8 +292,8 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	}
 
 	return []string{
-		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
-		fmt.Sprintf("Jobs: %s Remaining / %s Candidates (%d Workers)", presentation.Number(remainingJobs), presentation.Number(totalJobs), snap.ActiveWorkers),
+		fmt.Sprintf("Progress: [%s] %.1f%% (Search Space)", bar, p),
+		fmt.Sprintf("Jobs: %s Generated (%d Workers)", presentation.Number(snap.JobsProduced), snap.ActiveWorkers),
 		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,

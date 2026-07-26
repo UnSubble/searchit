@@ -65,6 +65,9 @@ func statsReport(
 
 	// ── General ─────────────────────────────────────────────────────────────
 	section("General")
+	add(formatRow("Search Space", presentation.Number(snap.TotalCandidates)))
+	add(formatRow("Generated Jobs", presentation.Number(snap.JobsProduced)))
+	add(formatRow("Findings", presentation.Number(snap.Discovered)))
 	add(formatRow("Requests sent", presentation.Number(snap.RequestsSent)))
 	add(formatRow("Responses received", presentation.Number(snap.ResponsesReceived)))
 	add(formatRow("Successful", presentation.Number(snap.RequestsSucceeded)))
@@ -90,15 +93,6 @@ func statsReport(
 	section("Workers")
 	add(formatRow("Configured", fmt.Sprintf("%d", configuredThreads)))
 	add(formatRow("Active", fmt.Sprintf("%d", snap.ActiveWorkers)))
-	totalJobs := snap.TotalCandidates
-	if totalJobs == 0 {
-		totalJobs = snap.RequestsSent
-	}
-	remaining := totalJobs - snap.JobsProduced
-	if remaining < 0 {
-		remaining = 0
-	}
-	add(formatRow("Remaining Jobs", fmt.Sprintf("%d", remaining)))
 
 	// ── Response Codes ──────────────────────────────────────────────────────
 	section("Response Codes")

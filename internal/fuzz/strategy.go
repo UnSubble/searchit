@@ -82,6 +82,9 @@ func (e *Executor) Execute(job RequestDTO) (Result, error) {
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 	atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+	if e.collector != nil {
+		e.collector.RecordJobProduced()
+	}
 
 	select {
 	case <-e.ctx.Done():
@@ -333,6 +336,9 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 										return
 									}
 									res, err := e.Execute(job)
+									if r.Collector != nil {
+										r.Collector.RecordSearchSpaceProgress(1)
+									}
 									if err != nil {
 										res.Err = err
 									}
@@ -362,6 +368,9 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 								return
 							}
 							res, err := e.Execute(job)
+							if r.Collector != nil {
+								r.Collector.RecordSearchSpaceProgress(1)
+							}
 							if err != nil {
 								res.Err = err
 							}
@@ -428,9 +437,24 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 	for _, jr := range results1 {
 		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
 			yield(jr.res)
-			if jr.res.Accepted {
-				foundFOO = append(foundFOO, jr.word)
+		}
+		if ctx.Err() != nil {
+			continue
+		}
+		if jr.res.Accepted {
+			foundFOO = append(foundFOO, jr.word)
+			if maxDepth == 1 && r.Collector != nil {
+				r.Collector.RecordSearchSpaceProgress(1)
 			}
+		} else if r.Collector != nil {
+			pruned := int64(1)
+			if maxDepth >= 2 {
+				pruned *= int64(len(r.BarWords))
+			}
+			if maxDepth >= 3 {
+				pruned *= int64(len(r.BuzzWords))
+			}
+			r.Collector.RecordSearchSpaceProgress(pruned)
 		}
 	}
 
@@ -485,12 +509,24 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		jr := results2[bj.idx]
 		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
 			yield(jr.res)
-			if jr.res.Accepted {
-				foundBAR = append(foundBAR, struct {
-					foo string
-					bar string
-				}{foo: bj.foo, bar: bj.bar})
+		}
+		if ctx.Err() != nil {
+			continue
+		}
+		if jr.res.Accepted {
+			foundBAR = append(foundBAR, struct {
+				foo string
+				bar string
+			}{foo: bj.foo, bar: bj.bar})
+			if maxDepth == 2 && r.Collector != nil {
+				r.Collector.RecordSearchSpaceProgress(1)
 			}
+		} else if r.Collector != nil {
+			pruned := int64(1)
+			if maxDepth >= 3 {
+				pruned *= int64(len(r.BuzzWords))
+			}
+			r.Collector.RecordSearchSpaceProgress(pruned)
 		}
 	}
 
@@ -540,6 +576,9 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
 			yield(jr.res)
 		}
+		if ctx.Err() == nil && r.Collector != nil {
+			r.Collector.RecordSearchSpaceProgress(1)
+		}
 	}
 
 	return nil
@@ -587,9 +626,25 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			for i, res := range results {
 				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 					yield(res)
-					if res.Accepted && maxDepth >= 2 {
+				}
+				if ctx.Err() != nil {
+					continue
+				}
+				if res.Accepted {
+					if maxDepth >= 2 {
 						dfsVisit(r.FooWords[i], "", 2)
+					} else if r.Collector != nil {
+						r.Collector.RecordSearchSpaceProgress(1)
 					}
+				} else if r.Collector != nil {
+					pruned := int64(1)
+					if maxDepth >= 2 {
+						pruned *= int64(len(r.BarWords))
+					}
+					if maxDepth >= 3 {
+						pruned *= int64(len(r.BuzzWords))
+					}
+					r.Collector.RecordSearchSpaceProgress(pruned)
 				}
 			}
 		case 2:
@@ -619,9 +674,22 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			for i, res := range results {
 				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 					yield(res)
-					if res.Accepted && maxDepth >= 3 {
+				}
+				if ctx.Err() != nil {
+					continue
+				}
+				if res.Accepted {
+					if maxDepth >= 3 {
 						dfsVisit(parentFoo, r.BarWords[i], 3)
+					} else if r.Collector != nil {
+						r.Collector.RecordSearchSpaceProgress(1)
 					}
+				} else if r.Collector != nil {
+					pruned := int64(1)
+					if maxDepth >= 3 {
+						pruned *= int64(len(r.BuzzWords))
+					}
+					r.Collector.RecordSearchSpaceProgress(pruned)
 				}
 			}
 		case 3:
@@ -649,6 +717,9 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			for _, res := range results {
 				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 					yield(res)
+				}
+				if ctx.Err() == nil && r.Collector != nil {
+					r.Collector.RecordSearchSpaceProgress(1)
 				}
 			}
 		}
