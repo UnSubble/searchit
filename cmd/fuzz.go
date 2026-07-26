@@ -646,6 +646,9 @@ var fuzzCmd = &cobra.Command{
 			if enableProgress {
 				modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
 				renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr, flagFuzzLogCount)
+				renderer.IsPaused = func() bool {
+					return stateMgr != nil && stateMgr.Current() == state.PhasePaused
+				}
 				progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 				progMgr.ConfiguredThreads = cfg.Threads
 				if outWriter != os.Stdout {

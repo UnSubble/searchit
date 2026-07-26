@@ -38,6 +38,8 @@ type ANSIRenderer struct {
 	mu            sync.Mutex // protects recent + lastLineCount only
 	recent        []discoveryEntry
 	lastLineCount int
+
+	IsPaused func() bool
 }
 
 // NewANSIRenderer creates a new ANSIRenderer.
@@ -239,12 +241,18 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	elapsed := terminal.FormatElapsed(time.Since(snap.StartTime))
 	eta := terminal.FormatETA(snap.QueuedJobs, snap.CurrentRequestsPerSecond)
 
+	controls := "[p] Pause │ [q] Stop │ [a] Abort │ [s] Stats"
+	if tr.IsPaused != nil && tr.IsPaused() {
+		controls = "[p] Resume │ [q] Stop │ [a] Abort │ [s] Stats"
+	}
+
 	return []string{
 		fmt.Sprintf("Target: %s", tr.Target),
 		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
 		fmt.Sprintf("Jobs: %d Queued / %d Candidates (%d Workers)", snap.QueuedJobs, totalJobs, snap.ActiveWorkers),
 		fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta),
 		fmt.Sprintf("Results: %d Findings • %d Errors • %d Retries", snap.Discovered, snap.RequestsFailed, snap.Retries),
+		controls,
 	}
 }
 

@@ -574,6 +574,9 @@ var scanCmd = &cobra.Command{
 				}
 
 				renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr, flagLogCount)
+				renderer.IsPaused = func() bool {
+					return stateMgr != nil && stateMgr.Current() == state.PhasePaused
+				}
 				progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 				progMgr.ConfiguredThreads = cfg.Threads
 				if outWriter != os.Stdout {
