@@ -257,6 +257,21 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 		eta = presentation.Duration(time.Duration(math.Ceil(etaSecs)) * time.Second)
 	}
 
+	completedRequests := snap.ResponsesReceived + snap.RequestsFailed
+	isWarmingUp := false
+	if snap.ActiveWorkers > 0 || snap.QueuedJobs > 0 {
+		if completedRequests < (snap.ActiveWorkers*3) || completedRequests == 0 {
+			isWarmingUp = true
+		}
+	}
+
+	var metrics string
+	if isWarmingUp {
+		metrics = fmt.Sprintf("Metrics: Warming up... • %s Elapsed", elapsed)
+	} else {
+		metrics = fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta)
+	}
+
 	controls := "[p] Pause │ [q] Stop │ [a] Abort │ [s] Stats"
 	if tr.IsPaused != nil && tr.IsPaused() {
 		controls = "[p] Resume │ [q] Stop │ [a] Abort │ [s] Stats"
@@ -265,7 +280,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	return []string{
 		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
 		fmt.Sprintf("Jobs: %s Queued / %s Candidates (%d Workers)", presentation.Number(snap.QueuedJobs), presentation.Number(totalJobs), snap.ActiveWorkers),
-		fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta),
+		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,
 	}
