@@ -21,7 +21,6 @@ type Result struct {
 	Err        error
 	UserData   any
 
-	// Presentation metadata
 	Title   string
 	Headers http.Header
 }

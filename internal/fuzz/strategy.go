@@ -398,8 +398,10 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			// DO NOT break, we must drain the remaining jobChan to allow background workers to send and finish
 		case res := <-resCh:
 			// Yield results OR errors, preserving determinism for chaotic networks
-			if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
-				yield(res)
+			if ctx.Err() == nil {
+				if res.Accepted || res.Err != nil {
+					yield(res)
+				}
 			}
 		}
 	}
@@ -448,8 +450,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		if p.err != nil {
 			continue
 		}
-		var res Result
-		res = <-p.ch
+		res := <-p.ch
 
 		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 			yield(res)
@@ -527,8 +528,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		if p.err != nil {
 			continue
 		}
-		var res Result
-		res = <-p.ch
+		res := <-p.ch
 
 		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 			yield(res)
@@ -600,8 +600,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		if p.err != nil {
 			continue
 		}
-		var res Result
-		res = <-p.ch
+		res := <-p.ch
 
 		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 			yield(res)
@@ -663,8 +662,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				if p.err != nil {
 					continue
 				}
-				var res Result
-				res = <-p.ch
+				res := <-p.ch
 				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
 					continue
 				}
@@ -729,8 +727,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				if p.err != nil {
 					continue
 				}
-				var res Result
-				res = <-p.ch
+				res := <-p.ch
 				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
 					continue
 				}
@@ -790,8 +787,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				if p.err != nil {
 					continue
 				}
-				var res Result
-				res = <-p.ch
+				res := <-p.ch
 				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
 					continue
 				}

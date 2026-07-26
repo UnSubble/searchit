@@ -115,11 +115,7 @@ func (tr *ANSIRenderer) Close(owner terminal.Owner) error {
 		tr.mu.Unlock()
 
 		if progLines > 0 && tr.frozen {
-			fmt.Fprintf(w, "\r\033[%dA", progLines)
-			for i := 0; i < progLines; i++ {
-				fmt.Fprintf(w, "\r\033[K\n")
-			}
-			fmt.Fprintf(w, "\r\033[%dA", progLines)
+			fmt.Fprintf(w, "\r\033[%dA\033[J", progLines)
 		}
 
 		// Emitting \n ensures the cursor is firmly at column 0 for subsequent blocks.
@@ -152,11 +148,8 @@ func (tr *ANSIRenderer) ClearInto(w io.Writer) {
 	tr.mu.Unlock()
 
 	if lastLines > 0 && tr.frozen {
-		fmt.Fprintf(w, "\r\033[%dA", lastLines)
-		for i := 0; i < lastLines; i++ {
-			fmt.Fprintf(w, "\r\033[K\n")
-		}
-		fmt.Fprintf(w, "\r\033[%dA", lastLines)
+		// Move up lastLines, then erase everything below the cursor to the end of screen.
+		fmt.Fprintf(w, "\r\033[%dA\033[J", lastLines)
 	}
 }
 
@@ -184,31 +177,19 @@ func (tr *ANSIRenderer) Reset() {
 	tr.lastProgCount = 0
 }
 
-// renderInto draws the full block (discoveries + progress panel). Called INSIDE an Emit closure.
+// renderInto draws the progress panel. Called INSIDE an Emit closure.
 func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 	tr.mu.Lock()
-	recentCopy := make([]discoveryEntry, len(tr.recent))
-	copy(recentCopy, tr.recent)
 	lastLines := tr.lastLineCount
 	tr.mu.Unlock()
 
 	var lines []string
-
-	if tr.logCount > 0 {
-		for _, d := range recentCopy {
-			lines = append(lines, d.Formatted)
-		}
-	}
 
 	progLines := tr.renderCompactProgress(snap)
 	lines = append(lines, progLines...)
 
 	// Print lines
 	if !tr.frozen {
-		// Non-TTY just prints discoveries
-		for _, d := range recentCopy {
-			fmt.Fprintln(w, d.Formatted)
-		}
 		return
 	}
 
@@ -227,11 +208,7 @@ func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 
 	// If the new frame is shorter than the previous, erase the leftover lines
 	if lastLines > len(lines) {
-		for i := len(lines); i < lastLines; i++ {
-			fmt.Fprintf(w, "\r\033[K\n")
-		}
-		// Move cursor back up to exactly the bottom of the new frame
-		fmt.Fprintf(w, "\r\033[%dA", lastLines-len(lines))
+		fmt.Fprintf(w, "\033[J")
 	}
 
 	// Re-enable line wrap
