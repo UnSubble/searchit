@@ -14,7 +14,9 @@ const (
 	PhaseStarting Phase = iota
 	PhaseRunning
 	PhasePaused
+	PhaseShutdownRequested
 	PhaseStopping
+	PhaseDraining
 	PhaseWaitingWorkers
 	PhaseFinalizing
 	PhaseTerminalShutdown
@@ -31,8 +33,12 @@ func (p Phase) String() string {
 		return "RUNNING"
 	case PhasePaused:
 		return "PAUSED"
+	case PhaseShutdownRequested:
+		return "SHUTDOWN REQUESTED"
 	case PhaseStopping:
 		return "GRACEFUL STOPPING"
+	case PhaseDraining:
+		return "DRAINING"
 	case PhaseWaitingWorkers:
 		return "WAITING WORKERS"
 	case PhaseFinalizing:
