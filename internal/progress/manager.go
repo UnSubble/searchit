@@ -183,19 +183,8 @@ func (m *Manager) HandleResult(r engine.Result) {
 		return
 	}
 
-	var formatted string
-	if m.Formatter != nil {
-		if pt, ok := m.Formatter.(interface {
-			PrintTo(io.Writer, engine.Result) error
-		}); ok {
-			var sb strings.Builder
-			_ = pt.PrintTo(&sb, r)
-			formatted = strings.TrimSuffix(sb.String(), "\n")
-		}
-	}
-	if formatted == "" {
-		formatted = fmt.Sprintf("%d | %s", r.StatusCode, r.URL)
-	}
+	// Always use the highly optimized Unicode format for the interactive terminal.
+	formatted := formatDiscoveryForRenderer(m.Renderer.Target, r)
 
 	m.Renderer.AddResult(r.StatusCode, r.URL, formatted)
 
@@ -214,4 +203,51 @@ func (m *Manager) PrintStats() {
 		RenderStatsViewFull(w, m.TM.ContentWidth(), snap, m.ConfiguredThreads, recent,
 			m.Renderer.Target, m.Renderer.Profiles, m.Renderer.Mode)
 	})
+}
+
+// formatDiscoveryForRenderer creates a compact, aligned Unicode string for discoveries.
+func formatDiscoveryForRenderer(target string, r engine.Result) string {
+	var path string
+	idx := strings.Index(r.URL, target)
+	if idx != -1 {
+		path = r.URL[idx+len(target):]
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+	} else {
+		path = r.URL
+	}
+
+	sizeStr := "   0 B"
+	if r.Length >= 0 {
+		if r.Length < 1024 {
+			sizeStr = fmt.Sprintf("%d B", r.Length)
+		} else if r.Length < 1024*1024 {
+			sizeStr = strings.TrimSuffix(fmt.Sprintf("%.1f KB", float64(r.Length)/1024.0), ".0 KB")
+			if !strings.HasSuffix(sizeStr, " KB") {
+				sizeStr += " KB"
+			}
+		} else {
+			sizeStr = strings.TrimSuffix(fmt.Sprintf("%.1f MB", float64(r.Length)/(1024.0*1024.0)), ".0 MB")
+			if !strings.HasSuffix(sizeStr, " MB") {
+				sizeStr += " MB"
+			}
+		}
+	} else {
+		sizeStr = "     -"
+	}
+	sizeStr = fmt.Sprintf("%8s", sizeStr)
+
+	loc := ""
+	if r.Headers != nil {
+		loc = r.Headers.Get("Location")
+	}
+	if loc == "" {
+		loc = r.RedirectURL
+	}
+
+	if r.StatusCode >= 300 && r.StatusCode <= 399 && loc != "" {
+		return fmt.Sprintf("%-3d │ %s │ %s → %s", r.StatusCode, sizeStr, path, loc)
+	}
+	return fmt.Sprintf("%-3d │ %s │ %s", r.StatusCode, sizeStr, path)
 }
