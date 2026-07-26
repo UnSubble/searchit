@@ -449,11 +449,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			continue
 		}
 		var res Result
-		select {
-		case <-ctx.Done():
-			continue
-		case res = <-p.ch:
-		}
+		res = <-p.ch
 
 		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 			yield(res)
@@ -532,11 +528,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			continue
 		}
 		var res Result
-		select {
-		case <-ctx.Done():
-			continue
-		case res = <-p.ch:
-		}
+		res = <-p.ch
 
 		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 			yield(res)
@@ -609,11 +601,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			continue
 		}
 		var res Result
-		select {
-		case <-ctx.Done():
-			continue
-		case res = <-p.ch:
-		}
+		res = <-p.ch
 
 		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
 			yield(res)
@@ -676,11 +664,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					continue
 				}
 				var res Result
-				select {
-				case <-ctx.Done():
-					continue
-				case res = <-p.ch:
-				}
+				res = <-p.ch
 				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
 					continue
 				}
@@ -746,11 +730,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					continue
 				}
 				var res Result
-				select {
-				case <-ctx.Done():
-					continue
-				case res = <-p.ch:
-				}
+				res = <-p.ch
 				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
 					continue
 				}
@@ -811,11 +791,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 					continue
 				}
 				var res Result
-				select {
-				case <-ctx.Done():
-					continue
-				case res = <-p.ch:
-				}
+				res = <-p.ch
 				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
 					continue
 				}

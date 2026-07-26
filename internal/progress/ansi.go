@@ -64,8 +64,8 @@ func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mod
 	return tr
 }
 
-// AddResult records a successful discovery (called from worker goroutines).
-func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string, formatted string) {
+// AddResultLocked records a successful discovery without locking (caller must hold TM lock).
+func (tr *ANSIRenderer) AddResultLocked(statusCode int, urlStr string, formatted string) {
 	path := extractPath(tr.Target, urlStr)
 	entry := discoveryEntry{StatusCode: statusCode, Path: path, Formatted: formatted}
 
@@ -79,6 +79,11 @@ func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string, formatted strin
 	} else {
 		tr.recent = append(tr.recent, entry)
 	}
+}
+
+// AddResult records a successful discovery (called from worker goroutines).
+func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string, formatted string) {
+	tr.AddResultLocked(statusCode, urlStr, formatted)
 }
 
 // RecentEntries returns a copy of the recent discoveries.
@@ -133,20 +138,32 @@ func (tr *ANSIRenderer) Render(snap stats.Snapshot) error {
 // Clear erases the current progress block via TM.Emit.
 func (tr *ANSIRenderer) Clear() error {
 	return tr.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-		tr.mu.Lock()
-		lastLines := tr.lastLineCount
-		tr.lastLineCount = 0
-		tr.lastProgCount = 0
-		tr.mu.Unlock()
-
-		if lastLines > 0 && tr.frozen {
-			fmt.Fprintf(w, "\r\033[%dA", lastLines)
-			for i := 0; i < lastLines; i++ {
-				fmt.Fprintf(w, "\r\033[K\n")
-			}
-			fmt.Fprintf(w, "\r\033[%dA", lastLines)
-		}
+		tr.ClearInto(w)
 	})
+}
+
+// ClearInto erases the current progress block.
+// Must be called inside TM.Emit.
+func (tr *ANSIRenderer) ClearInto(w io.Writer) {
+	tr.mu.Lock()
+	lastLines := tr.lastLineCount
+	tr.lastLineCount = 0
+	tr.lastProgCount = 0
+	tr.mu.Unlock()
+
+	if lastLines > 0 && tr.frozen {
+		fmt.Fprintf(w, "\r\033[%dA", lastLines)
+		for i := 0; i < lastLines; i++ {
+			fmt.Fprintf(w, "\r\033[K\n")
+		}
+		fmt.Fprintf(w, "\r\033[%dA", lastLines)
+	}
+}
+
+// RenderInto renders the progress block directly into w.
+// Must be called inside TM.Emit.
+func (tr *ANSIRenderer) RenderInto(w io.Writer, snap stats.Snapshot) {
+	tr.renderInto(w, snap)
 }
 
 // ─── Internal write helpers (called inside TM.Emit — TM lock already held) ───

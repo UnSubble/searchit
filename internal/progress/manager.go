@@ -55,7 +55,7 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 	// Initialize the terminal regions at startup.
 	// SetupRegions is no longer needed.
 	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-		m.Renderer.renderInto(w, m.Collector.Snapshot())
+		m.Renderer.RenderInto(w, m.Collector.Snapshot())
 	})
 
 	for {
@@ -64,14 +64,14 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 			// Final render before the goroutine exits.
 			// The global TM lock ensures this cannot interleave with Close().
 			_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-				m.Renderer.renderInto(w, m.Collector.Snapshot())
+				m.Renderer.RenderInto(w, m.Collector.Snapshot())
 			})
 			return
 
 		case <-ticker.C:
 			if !m.isStatsActive {
 				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-					m.Renderer.renderInto(w, m.Collector.Snapshot())
+					m.Renderer.RenderInto(w, m.Collector.Snapshot())
 				})
 			}
 
@@ -84,7 +84,7 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 			case console.CommandProgress:
 				if !m.isStatsActive {
 					_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-						m.Renderer.renderInto(w, m.Collector.Snapshot())
+						m.Renderer.RenderInto(w, m.Collector.Snapshot())
 					})
 				}
 
@@ -156,6 +156,33 @@ func (m *Manager) restoreDashboard() {
 
 		// Flush any results that were discovered while the stats view was blocking terminal output.
 		for _, r := range m.deferredOutput {
+			var path string
+			if r.StatusCode >= 200 && r.StatusCode <= 299 {
+				path = r.URL
+			} else {
+				path = presentation.RelativeURL(m.Renderer.Target, r.URL)
+			}
+
+			sizeStr := "     -"
+			if r.Length >= 0 {
+				sizeStr = fmt.Sprintf("%8s", presentation.Size(r.Length))
+			}
+
+			loc := r.RedirectURL
+			if loc == "" && r.Headers != nil {
+				loc = r.Headers.Get("Location")
+			}
+
+			var formatted string
+			if r.StatusCode >= 300 && r.StatusCode <= 399 && loc != "" {
+				formatted = fmt.Sprintf("%-3d │ %s │ %s", r.StatusCode, sizeStr, presentation.Redirect(m.Renderer.Target, r.URL, loc))
+			} else {
+				formatted = fmt.Sprintf("%-3d │ %s │ %s", r.StatusCode, sizeStr, path)
+			}
+
+			fmt.Fprintln(w, formatted)
+			m.Renderer.AddResultLocked(r.StatusCode, r.URL, formatted)
+
 			if m.Formatter != nil {
 				if pt, ok := m.Formatter.(interface {
 					PrintTo(io.Writer, engine.Result) error
@@ -169,7 +196,7 @@ func (m *Manager) restoreDashboard() {
 		m.deferredOutput = nil
 
 		// Re-render the fresh dashboard below the flushed results
-		m.Renderer.renderInto(w, m.Collector.Snapshot())
+		m.Renderer.RenderInto(w, m.Collector.Snapshot())
 	})
 }
 
@@ -207,7 +234,20 @@ func (m *Manager) HandleResult(r engine.Result) {
 		formatted = fmt.Sprintf("%-3d │ %s │ %s", r.StatusCode, sizeStr, path)
 	}
 
-	m.Renderer.AddResult(r.StatusCode, r.URL, formatted)
+	// Coordinate permanent terminal output safely under the TM lock
+	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		// 1. Erase current progress block
+		m.Renderer.ClearInto(w)
+
+		// 2. Print finding permanently
+		fmt.Fprintln(w, formatted)
+
+		// 3. Keep a copy in the recent buffer for the full-screen Stats view
+		m.Renderer.AddResultLocked(r.StatusCode, r.URL, formatted)
+
+		// 4. Redraw progress block underneath
+		m.Renderer.RenderInto(w, m.Collector.Snapshot())
+	})
 
 	// Emit non-terminal formatter outputs (e.g. MultiFormatter to file)
 	if m.Formatter != nil {
