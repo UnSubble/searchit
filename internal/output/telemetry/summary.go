@@ -13,7 +13,8 @@ import (
 
 type SummaryInfo struct {
 	IsFuzz          bool
-	Strategy        string
+	Mode            string
+	Traversal       string
 	AdaptiveEnabled bool
 	Findings        int
 	Snapshot        stats.Snapshot
@@ -57,7 +58,12 @@ func PrintSummary(tm *terminal.Manager, owner terminal.Owner, info SummaryInfo, 
 			adaptiveStr = "enabled"
 		}
 		items = append(items,
-			terminal.Item{Key: "Strategy", Value: info.Strategy},
+			terminal.Item{Key: "Mode", Value: info.Mode},
+		)
+		if info.Traversal != "" {
+			items = append(items, terminal.Item{Key: "Traversal", Value: info.Traversal})
+		}
+		items = append(items,
 			terminal.Item{Key: "Adaptive", Value: adaptiveStr},
 			terminal.Item{Key: "Requests Sent", Value: strconv.FormatInt(info.Snapshot.RequestsSent, 10)},
 			terminal.Item{Key: "Requests Completed", Value: strconv.FormatInt(info.Snapshot.ResponsesReceived, 10)},

@@ -12,7 +12,8 @@ type ConfigInfo struct {
 	Target          string
 	Method          string
 	Workers         int
-	Strategy        string
+	Mode            string
+	Traversal       string
 	AdaptiveEnabled bool
 	WordlistsCount  int
 	PrimaryWordlist string
@@ -40,10 +41,15 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 
 	items := []terminal.Item{
 		{Key: "Target", Value: info.Target},
-		{Key: "Strategy", Value: info.Strategy},
-		{Key: "Adaptive", Value: adaptiveStr},
-		{Key: "Wordlist", Value: wl},
+		{Key: "Mode", Value: info.Mode},
 	}
+	if info.Traversal != "" {
+		items = append(items, terminal.Item{Key: "Traversal", Value: info.Traversal})
+	}
+	items = append(items,
+		terminal.Item{Key: "Adaptive", Value: adaptiveStr},
+		terminal.Item{Key: "Wordlist", Value: wl},
+	)
 
 	if len(info.Extensions) > 0 {
 		items = append(items, terminal.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
@@ -87,9 +93,12 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 		{Key: "Target", Value: info.Target},
 		{Key: "Method", Value: info.Method},
 		{Key: "Workers", Value: strconv.Itoa(info.Workers)},
-		{Key: "Strategy", Value: info.Strategy},
-		{Key: "Adaptive", Value: adaptiveStr},
+		{Key: "Mode", Value: info.Mode},
 	}
+	if info.Traversal != "" {
+		items = append(items, terminal.Item{Key: "Traversal", Value: info.Traversal})
+	}
+	items = append(items, terminal.Item{Key: "Adaptive", Value: adaptiveStr})
 
 	if info.IsFuzz {
 		items = append(items,

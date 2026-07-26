@@ -23,7 +23,8 @@ func TestUnifiedDesignLanguageConsistency(t *testing.T) {
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         32,
-		Strategy:        "bfs",
+		Mode:            "Standard",
+		Traversal:       "BFS",
 		AdaptiveEnabled: false,
 		PrimaryWordlist: "words.txt",
 		IsFuzz:          false,
@@ -35,7 +36,8 @@ func TestUnifiedDesignLanguageConsistency(t *testing.T) {
 		Target:          "http://127.0.0.1:8080/FUZZ",
 		Method:          "GET",
 		Workers:         32,
-		Strategy:        "bfs",
+		Mode:            "Standard",
+		Traversal:       "BFS",
 		AdaptiveEnabled: false,
 		PrimaryWordlist: "words.txt",
 		IsFuzz:          true,
@@ -54,7 +56,8 @@ func TestSnapshot_Scan(t *testing.T) {
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         32,
-		Strategy:        "bfs",
+		Mode:            "Standard",
+		Traversal:       "BFS",
 		AdaptiveEnabled: false,
 		PrimaryWordlist: "words.txt",
 		IsFuzz:          false,
@@ -77,7 +80,8 @@ func TestSnapshot_Fuzz(t *testing.T) {
 		Target:          "http://127.0.0.1:8080/api?user=FUZZ",
 		Method:          "POST",
 		Workers:         32,
-		Strategy:        "bfs",
+		Mode:            "Standard",
+		Traversal:       "BFS",
 		AdaptiveEnabled: false,
 		WordlistsCount:  1,
 		PrimaryWordlist: "users.txt",
@@ -102,13 +106,14 @@ func TestSnapshot_Recursive(t *testing.T) {
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         64,
-		Strategy:        "recursive (BFS depth 3)",
+		Mode:            "Recursive",
+		Traversal:       "BFS depth 3",
 		AdaptiveEnabled: false,
 		PrimaryWordlist: "words.txt",
 		IsFuzz:          false,
 	})
 
-	if !strings.Contains(buf.String(), "Strategy .................. recursive (BFS depth 3)") {
+	if !strings.Contains(buf.String(), "Mode ...................... Recursive") {
 		t.Errorf("Recursive snapshot strategy line mismatch:\n%s", buf.String())
 	}
 }
@@ -145,7 +150,8 @@ func TestSnapshot_SmartStrategy(t *testing.T) {
 		Target:          "http://127.0.0.1:8080/FUZZ",
 		Method:          "GET",
 		Workers:         32,
-		Strategy:        "smart",
+		Mode:            "Adaptive",
+		Traversal:       "SMART",
 		AdaptiveEnabled: true,
 		WordlistsCount:  1,
 		PrimaryWordlist: "words.txt",
@@ -153,7 +159,7 @@ func TestSnapshot_SmartStrategy(t *testing.T) {
 		IsFuzz:          true,
 	})
 
-	if !strings.Contains(buf.String(), "Strategy .................. smart") {
+	if !strings.Contains(buf.String(), "Mode ...................... Adaptive") {
 		t.Errorf("Smart strategy snapshot mismatch:\n%s", buf.String())
 	}
 }
@@ -166,13 +172,13 @@ func TestSnapshot_Profiles(t *testing.T) {
 		Target:          "http://127.0.0.1:8080",
 		Method:          "GET",
 		Workers:         32,
-		Strategy:        "scan-extra/laravel (PHP)",
+		Mode:            "scan-extra/laravel (PHP)",
 		AdaptiveEnabled: true,
 		PrimaryWordlist: "embedded",
 		IsFuzz:          false,
 	})
 
-	if !strings.Contains(buf.String(), "Strategy .................. scan-extra/laravel (PHP)") {
+	if !strings.Contains(buf.String(), "Mode ...................... scan-extra/laravel (PHP)") {
 		t.Errorf("Profiles snapshot strategy line mismatch:\n%s", buf.String())
 	}
 }
@@ -185,13 +191,13 @@ func TestSnapshot_RequestTemplates(t *testing.T) {
 		Target:          "http://127.0.0.1:8080/api/v1",
 		Method:          "POST",
 		Workers:         32,
-		Strategy:        "template (request.txt)",
+		Mode:            "template (request.txt)",
 		AdaptiveEnabled: false,
 		PrimaryWordlist: "words.txt",
 		IsFuzz:          true,
 	})
 
-	if !strings.Contains(buf.String(), "Strategy .................. template (request.txt)") {
+	if !strings.Contains(buf.String(), "Mode ...................... template (request.txt)") {
 		t.Errorf("Request templates snapshot strategy line mismatch:\n%s", buf.String())
 	}
 }
@@ -250,7 +256,8 @@ func TestSnapshot_SummaryFormat(t *testing.T) {
 	_ = tm.AcquireOwner(terminal.OwnerSummary)
 	telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 		IsFuzz:          false,
-		Strategy:        "bfs",
+		Mode:            "Standard",
+		Traversal:       "BFS",
 		AdaptiveEnabled: false,
 		Findings:        451,
 		Snapshot: stats.Snapshot{

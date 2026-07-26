@@ -507,12 +507,16 @@ var scanCmd = &cobra.Command{
 				if primaryWl == "" {
 					primaryWl = "embedded"
 				}
-				strategyStr := cfg.Strategy.String()
+				modeStr := "Standard"
 				if cfg.Recursive {
-					strategyStr = fmt.Sprintf("recursive (%s)", strategyStr)
-				} else {
-					strategyStr = "non-recursive"
+					modeStr = "Recursive"
 				}
+
+				traversalStr := ""
+				if cfg.Recursive {
+					traversalStr = strings.ToUpper(cfg.Strategy.String())
+				}
+
 				excludeStatusStr := cfg.Status.Exclude.String()
 				if excludeStatusStr == "" {
 					excludeStatusStr = "none"
@@ -523,7 +527,8 @@ var scanCmd = &cobra.Command{
 						Target:          targetURL,
 						Method:          cfg.Method,
 						Workers:         cfg.Threads,
-						Strategy:        strategyStr,
+						Mode:            modeStr,
+						Traversal:       traversalStr,
 						AdaptiveEnabled: cfg.Adaptive,
 						WordlistsCount:  1,
 						PrimaryWordlist: primaryWl,
@@ -768,16 +773,20 @@ var scanCmd = &cobra.Command{
 
 			if !cfg.Quiet {
 				snap := collector.Snapshot()
-				strategyStr := cfg.Strategy.String()
+				modeStr := "Standard"
 				if cfg.Recursive {
-					strategyStr = fmt.Sprintf("recursive (%s)", strategyStr)
-				} else {
-					strategyStr = "non-recursive"
+					modeStr = "Recursive"
+				}
+
+				traversalStr := ""
+				if cfg.Recursive {
+					traversalStr = strings.ToUpper(cfg.Strategy.String())
 				}
 
 				telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 					IsFuzz:          false,
-					Strategy:        strategyStr,
+					Mode:            modeStr,
+					Traversal:       traversalStr,
 					AdaptiveEnabled: cfg.Adaptive,
 					Findings:        int(snap.Discovered),
 					Snapshot:        snap,

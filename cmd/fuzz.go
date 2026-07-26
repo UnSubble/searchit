@@ -599,7 +599,8 @@ var fuzzCmd = &cobra.Command{
 						Target:          flagFuzzURL,
 						Method:          cfg.Method,
 						Workers:         cfg.Threads,
-						Strategy:        cfg.FuzzStrategy,
+						Mode:            "Fuzz",
+						Traversal:       strings.ToUpper(cfg.FuzzStrategy),
 						AdaptiveEnabled: cfg.Adaptive,
 						WordlistsCount:  wordlistsCount,
 						PrimaryWordlist: flagFuzzWordlist,
@@ -838,7 +839,8 @@ var fuzzCmd = &cobra.Command{
 
 				telemetry.PrintSummary(tm, terminal.OwnerSummary, telemetry.SummaryInfo{
 					IsFuzz:          true,
-					Strategy:        cfg.FuzzStrategy,
+					Mode:            "Fuzz",
+					Traversal:       strings.ToUpper(cfg.FuzzStrategy),
 					AdaptiveEnabled: cfg.Adaptive,
 					Findings:        int(snap.Discovered),
 					Snapshot:        snap,

@@ -376,7 +376,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 			args: []string{"scan", "-u", "http://localhost", "-r"},
 			wantPrints: []string{
 				"Target .................... http://localhost",
-				"Strategy .................. recursive (bfs)",
+				"Mode ...................... Recursive",
 				"Adaptive .................. disabled",
 				"Wordlist .................. embedded",
 				"Workers ................... 32",
@@ -386,11 +386,11 @@ func TestCLI_StartupInformation(t *testing.T) {
 			name: "quiet mode with recurse-on prints startup messages",
 			args: []string{"scan", "-u", "http://localhost", "-r", "--quiet"},
 			omitPrints: []string{
-				"[*] Target ............... http://localhost",
-				"[*] Strategy ............. recursive (bfs)",
-				"[*] Adaptive ............. disabled",
-				"[*] Wordlist ............. embedded",
-				"[*] Workers .............. 32",
+				"Target .................... http://localhost",
+				"Mode ...................... Recursive",
+				"Adaptive .................. disabled",
+				"Wordlist .................. embedded",
+				"Workers ................... 32",
 			},
 		},
 	}
