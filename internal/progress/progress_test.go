@@ -123,8 +123,8 @@ func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
 		t.Fatalf("unexpected rendering error: %v", err)
 	}
 
-	if !strings.Contains(buf.String(), "Target") {
-		t.Errorf("expected output to contain Target header, got %q", buf.String())
+	if !strings.Contains(buf.String(), "Progress") {
+		t.Errorf("expected output to contain Progress header, got %q", buf.String())
 	}
 }
 

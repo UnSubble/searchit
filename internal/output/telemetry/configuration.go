@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -69,43 +70,39 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 // PrintConfiguration prints the full configuration block including HTTP details.
 // All output is routed through tm.Emit(owner, fn).
 func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigInfo) {
-	adaptiveStr := "disabled"
-	if info.AdaptiveEnabled {
-		adaptiveStr = "enabled"
-	}
-
 	wl := info.PrimaryWordlist
 	if wl == "" {
 		wl = "embedded"
-	}
-
-	redirStr := "false"
-	if info.FollowRedirects {
-		redirStr = "true"
-	}
-
-	candStr := "unknown"
-	if info.TotalCandidates >= 0 {
-		candStr = strconv.Itoa(info.TotalCandidates)
+	} else {
+		wl = filepath.Base(wl)
 	}
 
 	items := []terminal.Item{
 		{Key: "Target", Value: info.Target},
-		{Key: "Method", Value: info.Method},
-		{Key: "Workers", Value: strconv.Itoa(info.Workers)},
-		{Key: "Mode", Value: info.Mode},
 	}
+
+	if info.Method != "" {
+		items = append(items, terminal.Item{Key: "Method", Value: info.Method})
+	}
+
+	items = append(items, terminal.Item{Key: "Workers", Value: strconv.Itoa(info.Workers)})
+	items = append(items, terminal.Item{Key: "Mode", Value: info.Mode})
+
 	if info.Traversal != "" {
 		items = append(items, terminal.Item{Key: "Traversal", Value: info.Traversal})
 	}
-	items = append(items, terminal.Item{Key: "Adaptive", Value: adaptiveStr})
+	if info.AdaptiveEnabled {
+		items = append(items, terminal.Item{Key: "Adaptive", Value: "enabled"})
+	}
 
 	if info.IsFuzz {
 		items = append(items,
 			terminal.Item{Key: "Wordlists", Value: strconv.Itoa(info.WordlistsCount)},
 			terminal.Item{Key: "Primary Wordlist", Value: wl},
-			terminal.Item{Key: "Placeholders", Value: info.Placeholders},
 		)
+		if info.Placeholders != "" {
+			items = append(items, terminal.Item{Key: "Placeholders", Value: info.Placeholders})
+		}
 	} else {
 		items = append(items, terminal.Item{Key: "Wordlist", Value: wl})
 	}
@@ -114,17 +111,17 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 		items = append(items, terminal.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
 	}
 
-	httpVer := info.HTTPVersion
-	if httpVer == "" {
-		httpVer = "HTTP/1.1"
+	if info.HTTPVersion != "" && info.HTTPVersion != "HTTP/1.1" {
+		items = append(items, terminal.Item{Key: "HTTP Version", Value: info.HTTPVersion})
 	}
 
-	items = append(items,
-		terminal.Item{Key: "HTTP Version", Value: httpVer},
-		terminal.Item{Key: "Follow Redirects", Value: redirStr},
-		terminal.Item{Key: "Filter Status", Value: info.FilterStatus},
-		terminal.Item{Key: "Total Candidates", Value: candStr},
-	)
+	if info.FollowRedirects {
+		items = append(items, terminal.Item{Key: "Follow Redirects", Value: "true"})
+	}
+
+	if info.FilterStatus != "" {
+		items = append(items, terminal.Item{Key: "Filter Status", Value: info.FilterStatus})
+	}
 
 	title := "SCAN CONFIGURATION"
 	if info.IsFuzz {

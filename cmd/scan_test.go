@@ -377,7 +377,6 @@ func TestCLI_StartupInformation(t *testing.T) {
 			wantPrints: []string{
 				"Target .................... http://localhost",
 				"Mode ...................... Recursive",
-				"Adaptive .................. disabled",
 				"Wordlist .................. embedded",
 				"Workers ................... 32",
 			},
@@ -388,7 +387,6 @@ func TestCLI_StartupInformation(t *testing.T) {
 			omitPrints: []string{
 				"Target .................... http://localhost",
 				"Mode ...................... Recursive",
-				"Adaptive .................. disabled",
 				"Wordlist .................. embedded",
 				"Workers ................... 32",
 			},

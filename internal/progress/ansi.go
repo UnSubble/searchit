@@ -253,7 +253,6 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	}
 
 	return []string{
-		fmt.Sprintf("Target: %s", tr.Target),
 		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
 		fmt.Sprintf("Jobs: %d Queued / %d Candidates (%d Workers)", snap.QueuedJobs, totalJobs, snap.ActiveWorkers),
 		fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta),
