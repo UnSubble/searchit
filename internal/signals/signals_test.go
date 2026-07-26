@@ -12,27 +12,30 @@ import (
 
 func TestSignalSetupContext_NormalCancel(t *testing.T) {
 	sm := state.NewManager()
-	ctx, cancel := signals.SetupContext(context.Background(), sm)
-
+	ctx, cancel := context.WithCancel(context.Background())
+	signals.SetupGlobal(ctx, cancel, cancel)
 	if sm.Current() != state.PhaseStarting {
 		t.Errorf("expected phase STARTING, got %s", sm.Current())
 	}
 
 	cancel()
+	time.Sleep(10 * time.Millisecond) // Give SetupGlobal time to not do anything
 	<-ctx.Done()
 
 	time.Sleep(10 * time.Millisecond)
 
-	// Manual cancel should not set phase to stopping
-	if sm.Current() == state.PhaseStopping {
-		t.Errorf("manual cancel set state to STOPPING unexpectedly")
+	if sm.Current() == state.PhaseShutdownRequested {
+		t.Errorf("manual cancel set state to SHUTDOWN_REQUESTED unexpectedly")
 	}
 }
 
 func TestSignalSetupContext_SignalDelivery(t *testing.T) {
 	sm := state.NewManager()
-	ctx, cancel := signals.SetupContext(context.Background(), sm)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	signals.SetupGlobal(ctx, func() {
+		sm.Transition(state.PhaseShutdownRequested)
+		cancel()
+	}, cancel)
 
 	// Simulate OS interrupt signal delivery to self (cross-platform Linux/macOS/Windows)
 	proc, err := os.FindProcess(os.Getpid())
@@ -51,11 +54,11 @@ func TestSignalSetupContext_SignalDelivery(t *testing.T) {
 
 	// Give signal listener goroutine a moment to transition state
 	deadline := time.Now().Add(1 * time.Second)
-	for sm.Current() != state.PhaseStopping && time.Now().Before(deadline) {
+	for sm.Current() != state.PhaseShutdownRequested && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if sm.Current() != state.PhaseStopping {
-		t.Errorf("expected phase STOPPING after interrupt signal, got %s", sm.Current())
+	if sm.Current() != state.PhaseShutdownRequested {
+		t.Errorf("expected phase SHUTDOWN_REQUESTED after interrupt signal, got %s", sm.Current())
 	}
 }
