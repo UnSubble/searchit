@@ -2,11 +2,11 @@ package telemetry
 
 import (
 	"io"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/unsubble/searchit/internal/output/terminal"
+	"github.com/unsubble/searchit/internal/presentation"
 )
 
 type ConfigInfo struct {
@@ -41,7 +41,7 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 	}
 
 	items := []terminal.Item{
-		{Key: "Target", Value: info.Target},
+		{Key: "Target", Value: presentation.URL(info.Target, 45)},
 		{Key: "Mode", Value: info.Mode},
 	}
 	if info.Traversal != "" {
@@ -49,7 +49,7 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 	}
 	items = append(items,
 		terminal.Item{Key: "Adaptive", Value: adaptiveStr},
-		terminal.Item{Key: "Wordlist", Value: wl},
+		terminal.Item{Key: "Wordlist", Value: presentation.Path(wl, 35)},
 	)
 
 	if len(info.Extensions) > 0 {
@@ -74,11 +74,11 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 	if wl == "" {
 		wl = "embedded"
 	} else {
-		wl = filepath.Base(wl)
+		wl = presentation.Path(wl, 35)
 	}
 
 	items := []terminal.Item{
-		{Key: "Target", Value: info.Target},
+		{Key: "Target", Value: presentation.URL(info.Target, 45)},
 	}
 
 	if info.Method != "" {

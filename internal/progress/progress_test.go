@@ -150,20 +150,14 @@ func TestManager_PrintStats(t *testing.T) {
 	expectedSubstrings := []string{
 		"Statistics",
 		"General",
+		"http://localhost",
+		"bfs",
 		"Requests sent",
-		"Responses received",
-		"Filtered",
-		"Failed",
-		"Bytes received",
-		"Performance",
+		"PERFORMANCE",
+		"Total requests",
+		"TIMING",
 		"Elapsed",
 		"Workers",
-		"Active",
-		"Queue",
-		"Responses",
-		"200",
-		"404",
-		"Press any key to return",
 	}
 
 	for _, sub := range expectedSubstrings {
@@ -362,8 +356,8 @@ func TestProgress_StatsViewAndNumberFormatting(t *testing.T) {
 	progress.RenderStatsView(&buf, snap, 32, nil)
 	out := buf.String()
 
-	if !strings.Contains(out, "1,500,000") {
-		t.Errorf("expected formatted number 1,500,000 in output, got:\n%s", out)
+	if !strings.Contains(out, "1.5m") {
+		t.Errorf("expected formatted number 1.5m in output, got:\n%s", out)
 	}
 }
 

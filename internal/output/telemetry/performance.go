@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/output/terminal"
+	"github.com/unsubble/searchit/internal/presentation"
 )
 
 type PerformanceInfo struct {
@@ -23,14 +24,14 @@ func GetPerformanceItems(info PerformanceInfo) []terminal.Item {
 	}
 
 	return []terminal.Item{
-		{Key: "Wall Time", Value: fmt.Sprintf("%.2f sec", wallTimeSec)},
-		{Key: "Req/sec", Value: fmt.Sprintf("%d", reqPerSec)},
+		{Key: "Wall Time", Value: presentation.Duration(elapsed)},
+		{Key: "Req/sec", Value: presentation.Number(reqPerSec)},
 	}
 }
 
 func PrintPerformance(w io.Writer, info PerformanceInfo) {
 	items := GetPerformanceItems(info)
 	for _, item := range items {
-		fmt.Fprintln(w, terminal.FormatDotRow(item.Key, item.Value, terminal.DefaultPadWidth, 0))
+		fmt.Fprintf(w, "%-28s %s\n", item.Key, item.Value)
 	}
 }

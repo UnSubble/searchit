@@ -18,53 +18,79 @@ func Path(p string, maxLen int) string {
 
 	p = filepath.Clean(p)
 	normalized := strings.ReplaceAll(p, "\\", "/")
-	segments := strings.Split(normalized, "/")
+	if len(normalized) <= maxLen {
+		return filepath.FromSlash(normalized)
+	}
 
-	if len(segments) <= 2 {
-		return truncateMiddle(p, maxLen)
+	segments := strings.Split(normalized, "/")
+	if len(segments) == 0 {
+		return p
 	}
 
 	filename := segments[len(segments)-1]
+	parents := segments[:len(segments)-1]
 
-	var parent string
-	if len(segments) > 1 {
-		parent = segments[len(segments)-2]
-	}
-
-	startIndex := 0
-	if segments[0] == "" || strings.HasSuffix(segments[0], ":") {
-		startIndex = 1
-	}
-
-	for i := startIndex; i < len(segments)-2; i++ {
-		var test []string
-		if startIndex > 0 && segments[0] != "" {
-			test = append(test, segments[0])
-		}
-		test = append(test, "...")
-		test = append(test, segments[i+1:]...)
-
-		candidate := strings.Join(test, "/")
-		if len(candidate) <= maxLen {
-			return filepath.FromSlash(candidate)
+	for i := 0; i <= len(parents); i++ {
+		prefix := buildPrefix(parents, i)
+		if len(prefix)+len(filename) <= maxLen {
+			return filepath.FromSlash(prefix + filename)
 		}
 	}
 
-	var minimal []string
-	minimal = append(minimal, "...")
-	if parent != "" {
-		minimal = append(minimal, parent)
-	}
-	minimal = append(minimal, filename)
-	candidate := strings.Join(minimal, "/")
-	if len(candidate) > maxLen {
-		if len(filename) > maxLen-4 {
-			return ".../" + filename[len(filename)-(maxLen-4):]
-		}
-		return candidate
+	startI := len(parents) - 3
+	if startI < 0 {
+		startI = 0
 	}
 
+	for i := startI; i <= len(parents); i++ {
+		prefix := buildPrefix(parents, i)
+		if len(prefix) >= len(buildPrefix(parents, 0)) && i != 0 {
+			continue
+		}
+
+		allowed := maxLen - len(prefix)
+		if allowed >= 15 {
+			return filepath.FromSlash(prefix + truncateMiddle(filename, allowed))
+		}
+	}
+
+	shortestPrefix := buildPrefix(parents, 0)
+	for i := 1; i <= len(parents); i++ {
+		pfx := buildPrefix(parents, i)
+		if len(pfx) < len(shortestPrefix) {
+			shortestPrefix = pfx
+		}
+	}
+
+	allowed := maxLen - len(shortestPrefix)
+	if allowed >= 4 {
+		return filepath.FromSlash(shortestPrefix + truncateMiddle(filename, allowed))
+	}
+
+	candidate := shortestPrefix + filename
+	if maxLen <= len(candidate) {
+		return filepath.FromSlash(candidate[:maxLen])
+	}
 	return filepath.FromSlash(candidate)
+}
+
+func buildPrefix(parents []string, i int) string {
+	if i == 0 {
+		if len(parents) > 0 {
+			return strings.Join(parents, "/") + "/"
+		}
+		return ""
+	}
+
+	var parts []string
+	if len(parents) > 0 && strings.HasSuffix(parents[0], ":") {
+		parts = append(parts, parents[0])
+	}
+	parts = append(parts, "...")
+	if i < len(parents) {
+		parts = append(parts, parents[i:]...)
+	}
+	return strings.Join(parts, "/") + "/"
 }
 
 // URL truncates a URL from the middle by collapsing intermediate path segments

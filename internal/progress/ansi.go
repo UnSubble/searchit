@@ -3,11 +3,13 @@ package progress
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/unsubble/searchit/internal/output/terminal"
+	"github.com/unsubble/searchit/internal/presentation"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
@@ -244,8 +246,16 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 		p = 100.0
 	}
 	bar := progressBar(p, 20)
-	elapsed := terminal.FormatElapsed(time.Since(snap.StartTime))
-	eta := terminal.FormatETA(snap.QueuedJobs, snap.CurrentRequestsPerSecond)
+	elapsed := presentation.Duration(time.Since(snap.StartTime))
+
+	eta := "-"
+	if snap.CurrentRequestsPerSecond > 0 && snap.QueuedJobs > 0 {
+		etaSecs := float64(snap.QueuedJobs) / snap.CurrentRequestsPerSecond
+		if etaSecs < 1.0 {
+			etaSecs = 1.0
+		}
+		eta = presentation.Duration(time.Duration(math.Ceil(etaSecs)) * time.Second)
+	}
 
 	controls := "[p] Pause │ [q] Stop │ [a] Abort │ [s] Stats"
 	if tr.IsPaused != nil && tr.IsPaused() {
@@ -254,9 +264,9 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 
 	return []string{
 		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
-		fmt.Sprintf("Jobs: %d Queued / %d Candidates (%d Workers)", snap.QueuedJobs, totalJobs, snap.ActiveWorkers),
+		fmt.Sprintf("Jobs: %s Queued / %s Candidates (%d Workers)", presentation.Number(snap.QueuedJobs), presentation.Number(totalJobs), snap.ActiveWorkers),
 		fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta),
-		fmt.Sprintf("Results: %d Findings • %d Errors • %d Retries", snap.Discovered, snap.RequestsFailed, snap.Retries),
+		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,
 	}
 }

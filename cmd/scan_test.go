@@ -375,20 +375,20 @@ func TestCLI_StartupInformation(t *testing.T) {
 			name: "default recurse-on (excludes 404)",
 			args: []string{"scan", "-u", "http://localhost", "-r"},
 			wantPrints: []string{
-				"Target .................... http://localhost",
-				"Mode ...................... Recursive",
-				"Wordlist .................. embedded",
-				"Workers ................... 32",
+				"Target                       http://localhost",
+				"Mode                         Recursive",
+				"Wordlist                     embedded",
+				"Workers                      32",
 			},
 		},
 		{
 			name: "quiet mode with recurse-on prints startup messages",
 			args: []string{"scan", "-u", "http://localhost", "-r", "--quiet"},
 			omitPrints: []string{
-				"Target .................... http://localhost",
-				"Mode ...................... Recursive",
-				"Wordlist .................. embedded",
-				"Workers ................... 32",
+				"Target                       http://localhost",
+				"Mode                         Recursive",
+				"Wordlist                     embedded",
+				"Workers                      32",
 			},
 		},
 	}

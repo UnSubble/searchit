@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -16,18 +17,33 @@ func TestPath(t *testing.T) {
 		{"short path", "/usr/bin/ls", 50, "/usr/bin/ls"},
 		{"exact length", "/a/b/c", 6, "/a/b/c"},
 		{"needs truncation", "/home/user/projects/searchit/wordlists/raft-medium.txt", 35, ".../wordlists/raft-medium.txt"},
-		{"very long filename", "/dir/super_long_filename_that_exceeds_max_len.txt", 25, ".../t_exceeds_max_len.txt"},
+		{"very long filename", "/dir/super_long_filename_that_exceeds_max_len.txt", 25, "/dir/super_lo...x_len.txt"},
 		{"no extension", "/var/log/nginx", 15, "/var/log/nginx"},
 		{"windows path", "C:\\Windows\\System32\\cmd.exe", 25, "C:/.../System32/cmd.exe"},
 		{"root only", "/", 10, "/"},
 		{"empty string", "", 10, ""},
+
+		// New path compaction tests requested
+		{"seclists 50", "/home/unsubble/wordlists/SecLists/Discovery/Web-Content/DirBuster-2007_directory-list-lowercase-2.3-medium.txt", 50, ".../SecLists/Discovery/Web-Content/DirBus...um.txt"},
+		{"seclists 40", "/home/unsubble/wordlists/SecLists/Discovery/Web-Content/DirBuster-2007_directory-list-lowercase-2.3-medium.txt", 40, ".../Web-Content/DirBuster-...-medium.txt"},
+		{"seclists 30", "/home/unsubble/wordlists/SecLists/Discovery/Web-Content/DirBuster-2007_directory-list-lowercase-2.3-medium.txt", 30, ".../DirBuster-2...3-medium.txt"},
+		{"seclists 15", "/home/unsubble/wordlists/SecLists/Discovery/Web-Content/DirBuster-2007_directory-list-lowercase-2.3-medium.txt", 15, ".../DirB....txt"},
+
+		{"nested projects", "/var/www/html/internal/legacy/v1/api/handlers/users.php", 35, ".../v1/api/handlers/users.php"},
+		{"nested projects tiny", "/var/www/html/internal/legacy/v1/api/handlers/users.php", 12, ".../us...php"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Path(tt.path, tt.maxLen)
-			if got != tt.want {
-				t.Errorf("Path(%q, %d) = %q; want %q", tt.path, tt.maxLen, got, tt.want)
+			path := filepath.FromSlash(tt.path)
+			if tt.name == "windows path" {
+				// Special case: Windows path uses literal backslashes in test case
+				path = tt.path
+			}
+			got := Path(path, tt.maxLen)
+			want := filepath.FromSlash(tt.want)
+			if got != want {
+				t.Errorf("Path(%q, %d) = %q; want %q", path, tt.maxLen, got, want)
 			}
 			if len(got) > tt.maxLen {
 				t.Errorf("Path(%q, %d) returned length %d, which exceeds max %d", tt.path, tt.maxLen, len(got), tt.maxLen)

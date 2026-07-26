@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/unsubble/searchit/internal/output/terminal"
+	"github.com/unsubble/searchit/internal/presentation"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
@@ -36,8 +37,12 @@ func statsReport(
 		blank()
 	}
 
+	subtitle := func(name string) string {
+		return "  " + name
+	}
+
 	formatRow := func(label, value string) string {
-		return "  " + terminal.FormatDotRow(label, value, 22, contentWidth-2)
+		return "  " + fmt.Sprintf("%-20s %s", label, value)
 	}
 
 	// ── Header ──────────────────────────────────────────────────────────────
@@ -60,25 +65,25 @@ func statsReport(
 
 	// ── General ─────────────────────────────────────────────────────────────
 	section("General")
-	add(formatRow("Requests sent", formatNumber(snap.RequestsSent)))
-	add(formatRow("Responses received", formatNumber(snap.ResponsesReceived)))
-	add(formatRow("Successful", formatNumber(snap.RequestsSucceeded)))
-	add(formatRow("Filtered", formatNumber(snap.RequestsFiltered)))
-	add(formatRow("Failed", formatNumber(snap.RequestsFailed)))
-	add(formatRow("Bytes received", formatNumber(snap.BytesReceived)))
-	add(formatRow("Redirects", formatNumber(snap.Redirects)))
-	add(formatRow("Retries", formatNumber(snap.Retries)))
-
-	// ── Requests ────────────────────────────────────────────────────────────
-	section("Requests")
-	add(formatRow("Total requests", formatNumber(snap.RequestsSent)))
+	add(formatRow("Requests sent", presentation.Number(snap.RequestsSent)))
+	add(formatRow("Responses received", presentation.Number(snap.ResponsesReceived)))
+	add(formatRow("Successful", presentation.Number(snap.RequestsSucceeded)))
+	add(formatRow("Filtered", presentation.Number(snap.RequestsFiltered)))
+	add(formatRow("Failed", presentation.Number(snap.RequestsFailed)))
+	add(formatRow("Bytes received", presentation.Number(snap.BytesReceived)))
+	add(formatRow("Redirects", presentation.Number(snap.Redirects)))
+	add(formatRow("Retries", presentation.Number(snap.Retries)))
+	add("")
+	add(subtitle("PERFORMANCE"))
+	add("")
+	add(formatRow("Total requests", presentation.Number(snap.RequestsSent)))
 	add(formatRow("Current Req/s", fmt.Sprintf("%.0f", snap.CurrentRequestsPerSecond)))
 	add(formatRow("Average Req/s", fmt.Sprintf("%.0f", snap.RequestsPerSecond)))
 	add(formatRow("Peak Req/s", fmt.Sprintf("%.0f", snap.PeakRequestsPerSecond)))
-
-	// ── Performance ─────────────────────────────────────────────────────────
-	section("Performance")
-	add(formatRow("Elapsed", terminal.FormatElapsed(time.Since(snap.StartTime))))
+	add("")
+	add(subtitle("TIMING"))
+	add("")
+	add(formatRow("Elapsed", presentation.Duration(time.Since(snap.StartTime))))
 	add(formatRow("Average latency", terminal.FormatLatency(snap.AverageLatency)))
 
 	// ── Workers ─────────────────────────────────────────────────────────────
@@ -100,7 +105,7 @@ func statsReport(
 		add("  No responses received yet.")
 	} else {
 		for _, c := range codes {
-			add(fmt.Sprintf("  %-6d  %s", c, formatNumber(snap.StatusCodes[c])))
+			add(fmt.Sprintf("  %-6d  %s", c, presentation.Number(snap.StatusCodes[c])))
 		}
 	}
 
@@ -145,26 +150,4 @@ func RenderStatsViewFull(
 	for _, line := range lines {
 		fmt.Fprintf(w, "\r%s\r\n", line)
 	}
-}
-
-func formatNumber(n int64) string {
-	if n < 0 {
-		return fmt.Sprintf("%d", n)
-	}
-	in := fmt.Sprintf("%d", n)
-	if len(in) <= 3 {
-		return in
-	}
-	out := make([]byte, len(in)+(len(in)-1)/3)
-	for i, j, k := len(in)-1, len(out)-1, 0; i >= 0; i-- {
-		out[j] = in[i]
-		j--
-		k++
-		if k == 3 && i > 0 {
-			out[j] = ','
-			j--
-			k = 0
-		}
-	}
-	return string(out)
 }

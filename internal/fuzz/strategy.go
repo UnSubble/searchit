@@ -16,7 +16,7 @@ import (
 	"github.com/unsubble/searchit/internal/adaptive/types"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
-	"github.com/unsubble/searchit/internal/output/terminal"
+	"github.com/unsubble/searchit/internal/presentation"
 	"github.com/unsubble/searchit/internal/stats"
 	"golang.org/x/time/rate"
 )
@@ -651,7 +651,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			return scoredItems[i].score > scoredItems[j].score
 		})
 		for _, item := range scoredItems {
-			fmt.Fprintln(os.Stdout, "    "+terminal.FormatDotRow(item.word, fmt.Sprintf("%d", item.score), 15, 0))
+			fmt.Fprintf(os.Stdout, "    %-15s %s\n", item.word, presentation.Number(int64(item.score)))
 		}
 		fmt.Fprint(os.Stdout, "\nTraversal decisions:\n\n")
 	}
@@ -726,7 +726,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 
 			if !r.Quiet {
 				val := fmt.Sprintf("%s (rule: %s)", dec.Policy, dec.Rule)
-				fmt.Fprintln(os.Stdout, "    "+terminal.FormatDotRow("/"+fooVal, val, 12, 0))
+				fmt.Fprintf(os.Stdout, "    %-12s %s\n", "/"+fooVal, val)
 			}
 
 			decisions = append(decisions, branchDecision{

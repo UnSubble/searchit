@@ -43,7 +43,7 @@ func TestUnifiedDesignLanguageConsistency(t *testing.T) {
 		IsFuzz:          true,
 	})
 	got := scanBuf.String()
-	if !strings.Contains(got, "Target .................... http://127.0.0.1:8080") {
+	if !strings.Contains(got, "Target                       http://127.0.0.1:8080") {
 		t.Errorf("Scan snapshot target line mismatch:\n%s", got)
 	}
 }
@@ -67,7 +67,7 @@ func TestSnapshot_Scan(t *testing.T) {
 	if !strings.Contains(got, "SCAN CONFIGURATION") {
 		t.Errorf("Scan snapshot header missing:\n%s", got)
 	}
-	if !strings.Contains(got, "Target .................... http://127.0.0.1:8080") {
+	if !strings.Contains(got, "Target                       http://127.0.0.1:8080") {
 		t.Errorf("Scan snapshot target line mismatch:\n%s", got)
 	}
 }
@@ -93,7 +93,7 @@ func TestSnapshot_Fuzz(t *testing.T) {
 	if !strings.Contains(got, "FUZZ CONFIGURATION") {
 		t.Errorf("Fuzz snapshot header missing:\n%s", got)
 	}
-	if !strings.Contains(got, "Primary Wordlist .......... users.txt") {
+	if !strings.Contains(got, "Primary Wordlist             users.txt") {
 		t.Errorf("Fuzz snapshot wordlist line mismatch:\n%s", got)
 	}
 }
@@ -113,7 +113,7 @@ func TestSnapshot_Recursive(t *testing.T) {
 		IsFuzz:          false,
 	})
 
-	if !strings.Contains(buf.String(), "Mode ...................... Recursive") {
+	if !strings.Contains(buf.String(), "Mode                         Recursive") {
 		t.Errorf("Recursive snapshot strategy line mismatch:\n%s", buf.String())
 	}
 }
@@ -137,7 +137,7 @@ func TestSnapshot_Adaptive(t *testing.T) {
 	if !strings.Contains(got, "ADAPTIVE SUMMARY") {
 		t.Errorf("Adaptive snapshot header missing:\n%s", got)
 	}
-	if !strings.Contains(got, "Technologies .............. Laravel, WordPress") {
+	if !strings.Contains(got, "Technologies                 Laravel, WordPress") {
 		t.Errorf("Adaptive snapshot technologies line mismatch:\n%s", got)
 	}
 }
@@ -159,7 +159,7 @@ func TestSnapshot_SmartStrategy(t *testing.T) {
 		IsFuzz:          true,
 	})
 
-	if !strings.Contains(buf.String(), "Mode ...................... Adaptive") {
+	if !strings.Contains(buf.String(), "Mode                         Adaptive") {
 		t.Errorf("Smart strategy snapshot mismatch:\n%s", buf.String())
 	}
 }
@@ -178,7 +178,7 @@ func TestSnapshot_Profiles(t *testing.T) {
 		IsFuzz:          false,
 	})
 
-	if !strings.Contains(buf.String(), "Mode ...................... scan-extra/laravel (PHP)") {
+	if !strings.Contains(buf.String(), "Mode                         scan-extra/laravel (PHP)") {
 		t.Errorf("Profiles snapshot strategy line mismatch:\n%s", buf.String())
 	}
 }
@@ -197,7 +197,7 @@ func TestSnapshot_RequestTemplates(t *testing.T) {
 		IsFuzz:          true,
 	})
 
-	if !strings.Contains(buf.String(), "Mode ...................... template (request.txt)") {
+	if !strings.Contains(buf.String(), "Mode                         template (request.txt)") {
 		t.Errorf("Request templates snapshot strategy line mismatch:\n%s", buf.String())
 	}
 }
@@ -271,7 +271,7 @@ func TestSnapshot_SummaryFormat(t *testing.T) {
 	if !strings.Contains(got, "SCAN SUMMARY") {
 		t.Errorf("Summary snapshot header missing:\n%s", got)
 	}
-	if !strings.Contains(buf.String(), "Findings .................. 451") {
+	if !strings.Contains(buf.String(), "Findings                     451") {
 		t.Errorf("Summary snapshot findings line mismatch:\n%s", got)
 	}
 }

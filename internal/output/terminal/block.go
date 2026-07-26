@@ -67,7 +67,11 @@ func RenderBlockWithWidth(w io.Writer, title string, items []Item, sepWidth, max
 		fmt.Fprintln(w, sep)
 	}
 	for _, item := range items {
-		fmt.Fprintln(w, FormatDotRow(item.Key, item.Value, 0, maxColumns))
+		line := fmt.Sprintf("%-28s %s", item.Key, item.Value)
+		if maxColumns > 0 && len(line) > maxColumns {
+			line = line[:maxColumns]
+		}
+		fmt.Fprintln(w, line)
 	}
 	fmt.Fprintln(w, sep)
 }
