@@ -72,8 +72,10 @@ func Worker(
 		defer collector.DecrementActiveWorkers()
 	}
 	for job := range jobs {
+		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, 1)
 		if pauseBlocker != nil {
 			if err := pauseBlocker(ctx); err != nil {
+				atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
 				return
 			}
 		}
@@ -83,12 +85,14 @@ func Worker(
 			err := limiter.Wait(ctx)
 			if err != nil {
 				atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRej, 1)
-				return
+				atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
+				continue
 			}
 		}
 
 		process(ctx, client, fs, incHeaders, excHeaders, method, body, headers, cookieStr, job, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
+		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
 		if collector != nil {
 			collector.DecrementQueuedJobs()
 		}

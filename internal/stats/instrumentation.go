@@ -35,6 +35,7 @@ type Instrumentation struct {
 	WorkerJobsComp int64
 	WorkerJobsRej  int64
 	WorkersExited  int64
+	WorkersActive  int64
 
 	// HTTP Lifecycle
 	RequestsBuilt     int64
