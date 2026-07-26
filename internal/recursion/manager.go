@@ -236,6 +236,9 @@ func (m *Manager) Run(
 					stats.GlobalInstrumentation.LogEvent("jobs channel close")
 					close(jobs)
 					for result := range results {
+						if m.stats != nil {
+							m.stats.RecordSearchSpaceProgress(1)
+						}
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 						if result.Accepted {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
@@ -269,6 +272,9 @@ func (m *Manager) Run(
 					stats.GlobalInstrumentation.LogEvent("jobs channel close")
 					close(jobs)
 					for result := range results {
+						if m.stats != nil {
+							m.stats.RecordSearchSpaceProgress(1)
+						}
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 						if result.Accepted {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
@@ -313,6 +319,10 @@ func (m *Manager) handleResult(
 	injectedExpress map[string]bool,
 	onResult func(engine.Result),
 ) {
+	if m.stats != nil {
+		m.stats.RecordSearchSpaceProgress(1)
+	}
+
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 		return
