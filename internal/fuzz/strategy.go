@@ -66,11 +66,11 @@ func NewExecutor(
 	return e
 }
 
-// Execute schedules a job and blocks until its result is received.
-func (e *Executor) Execute(job RequestDTO) (Result, error) {
+// ExecuteAsync schedules a job and returns a channel that will receive the result.
+func (e *Executor) ExecuteAsync(job RequestDTO) (<-chan Result, error) {
 	if e.PauseBlocker != nil {
 		if err := e.PauseBlocker(e.ctx); err != nil {
-			return Result{}, err
+			return nil, err
 		}
 	}
 
@@ -80,16 +80,26 @@ func (e *Executor) Execute(job RequestDTO) (Result, error) {
 		Reply: ch,
 	}
 
+	select {
+	case <-e.ctx.Done():
+		return nil, e.ctx.Err()
+	case e.jobsChan <- item:
+	}
+
 	atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 	atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 	if e.collector != nil {
 		e.collector.RecordJobProduced()
 	}
 
-	select {
-	case <-e.ctx.Done():
-		return Result{}, e.ctx.Err()
-	case e.jobsChan <- item:
+	return ch, nil
+}
+
+// Execute schedules a job and blocks until its result is received.
+func (e *Executor) Execute(job RequestDTO) (Result, error) {
+	ch, err := e.ExecuteAsync(job)
+	if err != nil {
+		return Result{}, err
 	}
 
 	select {
@@ -408,41 +418,51 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 	cTmpl1 := CompileTemplate(tmpl1, fuzzPlaceholders)
 	var foundFOO []string
 
-	type jobResult struct {
+	type pendingJob1 struct {
 		word string
-		res  Result
+		ch   <-chan Result
+		err  error
 	}
-	results1 := make([]jobResult, len(r.FooWords))
-	var wg sync.WaitGroup
+	pending1 := make(chan pendingJob1, 1024)
 
-	for i, word := range r.FooWords {
-		wg.Add(1)
-		go func(idx int, w string) {
-			defer wg.Done()
-			vars := map[string]string{"FOO": w}
+	go func() {
+		defer close(pending1)
+		for _, word := range r.FooWords {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			vars := map[string]string{"FOO": word}
 			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
-
-				return
+				pending1 <- pendingJob1{word: word, err: err}
+				continue
 			}
-			res, err := e.Execute(job)
+			asyncCh, err := e.ExecuteAsync(job)
+			pending1 <- pendingJob1{word: word, ch: asyncCh, err: err}
+		}
+	}()
 
-			if err == nil {
-				results1[idx] = jobResult{word: w, res: res}
-			}
-		}(i, word)
-	}
-	wg.Wait()
+	for p := range pending1 {
+		if p.err != nil {
+			continue
+		}
+		var res Result
+		select {
+		case <-ctx.Done():
+			continue
+		case res = <-p.ch:
+		}
 
-	for _, jr := range results1 {
-		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
-			yield(jr.res)
+		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
+			yield(res)
 		}
 		if ctx.Err() != nil {
 			continue
 		}
-		if jr.res.Accepted {
-			foundFOO = append(foundFOO, jr.word)
+		if res.Accepted {
+			foundFOO = append(foundFOO, p.word)
 			if maxDepth == 1 && r.Collector != nil {
 				r.Collector.RecordSearchSpaceProgress(1)
 			}
@@ -470,54 +490,65 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		bar string
 	}
 
-	results2 := make([]jobResult, len(foundFOO)*len(r.BarWords))
-	jobIdx := 0
 	type barJob struct {
 		foo string
 		bar string
-		idx int
 	}
 	var barJobs []barJob
 
 	for _, fooVal := range foundFOO {
 		for _, barVal := range r.BarWords {
-			barJobs = append(barJobs, barJob{foo: fooVal, bar: barVal, idx: jobIdx})
-			jobIdx++
+			barJobs = append(barJobs, barJob{foo: fooVal, bar: barVal})
 		}
 	}
+	type pendingJob2 struct {
+		info barJob
+		ch   <-chan Result
+		err  error
+	}
+	pending2 := make(chan pendingJob2, 1024)
 
-	for _, bj := range barJobs {
-		wg.Add(1)
-		go func(info barJob) {
-			defer wg.Done()
-			vars := map[string]string{"FOO": info.foo, "BAR": info.bar}
+	go func() {
+		defer close(pending2)
+		for _, bj := range barJobs {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			vars := map[string]string{"FOO": bj.foo, "BAR": bj.bar}
 			job, err := r.buildJob(cTmpl2, vars)
 			if err != nil {
-
-				return
+				pending2 <- pendingJob2{info: bj, err: err}
+				continue
 			}
-			res, err := e.Execute(job)
+			asyncCh, err := e.ExecuteAsync(job)
+			pending2 <- pendingJob2{info: bj, ch: asyncCh, err: err}
+		}
+	}()
 
-			if err == nil {
-				results2[info.idx] = jobResult{word: info.foo + "/" + info.bar, res: res}
-			}
-		}(bj)
-	}
-	wg.Wait()
+	for p := range pending2 {
+		if p.err != nil {
+			continue
+		}
+		var res Result
+		select {
+		case <-ctx.Done():
+			continue
+		case res = <-p.ch:
+		}
 
-	for _, bj := range barJobs {
-		jr := results2[bj.idx]
-		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
-			yield(jr.res)
+		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
+			yield(res)
 		}
 		if ctx.Err() != nil {
 			continue
 		}
-		if jr.res.Accepted {
+		if res.Accepted {
 			foundBAR = append(foundBAR, struct {
 				foo string
 				bar string
-			}{foo: bj.foo, bar: bj.bar})
+			}{foo: p.info.foo, bar: p.info.bar})
 			if maxDepth == 2 && r.Collector != nil {
 				r.Collector.RecordSearchSpaceProgress(1)
 			}
@@ -535,46 +566,57 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 	}
 
 	// Level 3: Fuzz BUZZ
-	results3 := make([]jobResult, len(foundBAR)*len(r.BuzzWords))
-	jobIdx = 0
 	type buzzJob struct {
 		foo  string
 		bar  string
 		buzz string
-		idx  int
 	}
 	var buzzJobs []buzzJob
 
 	for _, parent := range foundBAR {
 		for _, buzzVal := range r.BuzzWords {
-			buzzJobs = append(buzzJobs, buzzJob{foo: parent.foo, bar: parent.bar, buzz: buzzVal, idx: jobIdx})
-			jobIdx++
+			buzzJobs = append(buzzJobs, buzzJob{foo: parent.foo, bar: parent.bar, buzz: buzzVal})
 		}
 	}
+	type pendingJob3 struct {
+		info buzzJob
+		ch   <-chan Result
+		err  error
+	}
+	pending3 := make(chan pendingJob3, 1024)
 
-	for _, bj := range buzzJobs {
-		wg.Add(1)
-		go func(info buzzJob) {
-			defer wg.Done()
-			vars := map[string]string{"FOO": info.foo, "BAR": info.bar, "BUZZ": info.buzz}
+	go func() {
+		defer close(pending3)
+		for _, bj := range buzzJobs {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			vars := map[string]string{"FOO": bj.foo, "BAR": bj.bar, "BUZZ": bj.buzz}
 			job, err := r.buildJob(r.compiledReq.targetURL, vars)
 			if err != nil {
-
-				return
+				pending3 <- pendingJob3{info: bj, err: err}
+				continue
 			}
-			res, err := e.Execute(job)
+			asyncCh, err := e.ExecuteAsync(job)
+			pending3 <- pendingJob3{info: bj, ch: asyncCh, err: err}
+		}
+	}()
 
-			if err == nil {
-				results3[info.idx] = jobResult{word: info.foo + "/" + info.bar + "/" + info.buzz, res: res}
-			}
-		}(bj)
-	}
-	wg.Wait()
+	for p := range pending3 {
+		if p.err != nil {
+			continue
+		}
+		var res Result
+		select {
+		case <-ctx.Done():
+			continue
+		case res = <-p.ch:
+		}
 
-	for _, bj := range buzzJobs {
-		jr := results3[bj.idx]
-		if (jr.res.Accepted || jr.res.Err != nil) && ctx.Err() == nil {
-			yield(jr.res)
+		if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
+			yield(res)
 		}
 		if ctx.Err() == nil && r.Collector != nil {
 			r.Collector.RecordSearchSpaceProgress(1)
@@ -602,124 +644,188 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		case 1:
 			tmpl := TruncateTemplate(r.TargetURL, 1)
 			cTmpl := CompileTemplate(tmpl, fuzzPlaceholders)
-			results := make([]Result, len(r.FooWords))
-			var wg sync.WaitGroup
-			for i, word := range r.FooWords {
-				wg.Add(1)
-				go func(idx int, w string) {
-					defer wg.Done()
-					vars := map[string]string{"FOO": w}
+
+			type pendingDFS struct {
+				word string
+				ch   <-chan Result
+				err  error
+			}
+			pending1 := make(chan pendingDFS, 1024)
+
+			go func() {
+				defer close(pending1)
+				for _, word := range r.FooWords {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+					vars := map[string]string{"FOO": word}
 					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
-
-						return
+						pending1 <- pendingDFS{word: word, err: err}
+						continue
 					}
-					res, err := e.Execute(job)
+					asyncCh, err := e.ExecuteAsync(job)
+					pending1 <- pendingDFS{word: word, ch: asyncCh, err: err}
+				}
+			}()
 
-					if err == nil {
-						results[idx] = res
+			for p := range pending1 {
+				if p.err != nil {
+					continue
+				}
+				var res Result
+				select {
+				case <-ctx.Done():
+					continue
+				case res = <-p.ch:
+				}
+				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
+					continue
+				}
+				if ctx.Err() == nil {
+					if res.Accepted || res.Err != nil {
+						yield(res)
 					}
-				}(i, word)
-			}
-			wg.Wait()
-
-			for i, res := range results {
-				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
-					yield(res)
+					if !res.Accepted && r.Collector != nil {
+						pruned := int64(1)
+						if maxDepth >= 2 {
+							pruned *= int64(len(r.BarWords))
+						}
+						if maxDepth >= 3 {
+							pruned *= int64(len(r.BuzzWords))
+						}
+						r.Collector.RecordSearchSpaceProgress(pruned)
+					}
 				}
 				if ctx.Err() != nil {
 					continue
 				}
+
 				if res.Accepted {
 					if maxDepth >= 2 {
-						dfsVisit(r.FooWords[i], "", 2)
+						dfsVisit(p.word, "", 2)
 					} else if r.Collector != nil {
 						r.Collector.RecordSearchSpaceProgress(1)
 					}
-				} else if r.Collector != nil {
-					pruned := int64(1)
-					if maxDepth >= 2 {
-						pruned *= int64(len(r.BarWords))
-					}
-					if maxDepth >= 3 {
-						pruned *= int64(len(r.BuzzWords))
-					}
-					r.Collector.RecordSearchSpaceProgress(pruned)
 				}
 			}
 		case 2:
 			tmpl := TruncateTemplate(r.TargetURL, 2)
 			cTmpl := CompileTemplate(tmpl, fuzzPlaceholders)
-			results := make([]Result, len(r.BarWords))
-			var wg sync.WaitGroup
-			for i, word := range r.BarWords {
-				wg.Add(1)
-				go func(idx int, w string) {
-					defer wg.Done()
-					vars := map[string]string{"FOO": parentFoo, "BAR": w}
+
+			type pendingDFS struct {
+				word string
+				ch   <-chan Result
+				err  error
+			}
+			pending2 := make(chan pendingDFS, 1024)
+
+			go func() {
+				defer close(pending2)
+				for _, word := range r.BarWords {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+					vars := map[string]string{"FOO": parentFoo, "BAR": word}
 					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
-
-						return
+						pending2 <- pendingDFS{word: word, err: err}
+						continue
 					}
-					res, err := e.Execute(job)
-
-					if err == nil {
-						results[idx] = res
-					}
-				}(i, word)
-			}
-			wg.Wait()
-
-			for i, res := range results {
-				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
-					yield(res)
+					asyncCh, err := e.ExecuteAsync(job)
+					pending2 <- pendingDFS{word: word, ch: asyncCh, err: err}
 				}
+			}()
+
+			for p := range pending2 {
+				if p.err != nil {
+					continue
+				}
+				var res Result
+				select {
+				case <-ctx.Done():
+					continue
+				case res = <-p.ch:
+				}
+				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
+					continue
+				}
+				if ctx.Err() == nil {
+					if res.Accepted || res.Err != nil {
+						yield(res)
+					}
+					if !res.Accepted && r.Collector != nil {
+						pruned := int64(1)
+						if maxDepth >= 3 {
+							pruned *= int64(len(r.BuzzWords))
+						}
+						r.Collector.RecordSearchSpaceProgress(pruned)
+					}
+				}
+
 				if ctx.Err() != nil {
 					continue
 				}
+
 				if res.Accepted {
 					if maxDepth >= 3 {
-						dfsVisit(parentFoo, r.BarWords[i], 3)
+						dfsVisit(parentFoo, p.word, 3)
 					} else if r.Collector != nil {
 						r.Collector.RecordSearchSpaceProgress(1)
 					}
-				} else if r.Collector != nil {
-					pruned := int64(1)
-					if maxDepth >= 3 {
-						pruned *= int64(len(r.BuzzWords))
-					}
-					r.Collector.RecordSearchSpaceProgress(pruned)
 				}
 			}
 		case 3:
-			results := make([]Result, len(r.BuzzWords))
-			var wg sync.WaitGroup
-			for i, word := range r.BuzzWords {
-				wg.Add(1)
-				go func(idx int, w string) {
-					defer wg.Done()
-					vars := map[string]string{"FOO": parentFoo, "BAR": parentBar, "BUZZ": w}
+			type pendingDFS struct {
+				word string
+				ch   <-chan Result
+				err  error
+			}
+			pending3 := make(chan pendingDFS, 1024)
+
+			go func() {
+				defer close(pending3)
+				for _, word := range r.BuzzWords {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+					vars := map[string]string{"FOO": parentFoo, "BAR": parentBar, "BUZZ": word}
 					job, err := r.buildJob(r.compiledReq.targetURL, vars)
 					if err != nil {
-
-						return
+						pending3 <- pendingDFS{word: word, err: err}
+						continue
 					}
-					res, err := e.Execute(job)
-
-					if err == nil {
-						results[idx] = res
-					}
-				}(i, word)
-			}
-			wg.Wait()
-
-			for _, res := range results {
-				if (res.Accepted || res.Err != nil) && ctx.Err() == nil {
-					yield(res)
+					asyncCh, err := e.ExecuteAsync(job)
+					pending3 <- pendingDFS{word: word, ch: asyncCh, err: err}
 				}
-				if ctx.Err() == nil && r.Collector != nil {
-					r.Collector.RecordSearchSpaceProgress(1)
+			}()
+
+			for p := range pending3 {
+				if p.err != nil {
+					continue
+				}
+				var res Result
+				select {
+				case <-ctx.Done():
+					continue
+				case res = <-p.ch:
+				}
+				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
+					continue
+				}
+				if ctx.Err() == nil {
+					if res.Accepted || res.Err != nil {
+						yield(res)
+					}
+					if r.Collector != nil {
+						r.Collector.RecordSearchSpaceProgress(1)
+					}
 				}
 			}
 		}
