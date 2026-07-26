@@ -184,10 +184,10 @@ func TestNumber(t *testing.T) {
 	if got := Number(123); got != "123" {
 		t.Errorf("Number(123) = %q; want 123", got)
 	}
-	if got := Number(124500); got != "124.5k" {
-		t.Errorf("Number(124500) = %q; want 124.5k", got)
+	if got := Number(124500); got != "124.5K" {
+		t.Errorf("Number(124500) = %q; want 124.5K", got)
 	}
-	if got := Number(1500000); got != "1.5m" {
-		t.Errorf("Number(1500000) = %q; want 1.5m", got)
+	if got := Number(1500000); got != "1.5M" {
+		t.Errorf("Number(1500000) = %q; want 1.5M", got)
 	}
 }

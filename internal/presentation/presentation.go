@@ -234,9 +234,15 @@ func Number(n int64) string {
 		return fmt.Sprintf("%d", n)
 	}
 	if n < 1000000 {
-		return fmt.Sprintf("%.1fk", float64(n)/1000.0)
+		return fmt.Sprintf("%.1fK", float64(n)/1000.0)
 	}
-	return fmt.Sprintf("%.1fm", float64(n)/1000000.0)
+	if n < 1000000000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1000000.0)
+	}
+	if n < 1000000000000 {
+		return fmt.Sprintf("%.1fB", float64(n)/1000000000.0)
+	}
+	return fmt.Sprintf("%.1fT", float64(n)/1000000000000.0)
 }
 
 func truncateMiddle(s string, max int) string {
