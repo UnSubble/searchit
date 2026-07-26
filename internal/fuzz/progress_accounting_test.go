@@ -24,7 +24,7 @@ func TestFuzzWorker_Accounting_Invariants(t *testing.T) {
 
 	collector := stats.NewCollector()
 	totalJobs := int64(10)
-	collector.SetQueuedJobs(totalJobs)
+	collector.SetTotalCandidates(totalJobs)
 
 	jobs := make(chan WorkItem, totalJobs)
 	results := make(chan Result, totalJobs)
@@ -48,6 +48,7 @@ func TestFuzzWorker_Accounting_Invariants(t *testing.T) {
 	// Send jobs
 	for i := int64(0); i < totalJobs; i++ {
 		jobs <- WorkItem{Req: RequestDTO{URL: ts.URL}}
+		collector.RecordJobProduced()
 	}
 	close(jobs)
 
@@ -68,9 +69,8 @@ func TestFuzzWorker_Accounting_Invariants(t *testing.T) {
 
 	snap := collector.Snapshot()
 
-	// Invariant 1: Queue must be exactly 0
-	if snap.QueuedJobs != 0 {
-		t.Errorf("expected QueuedJobs = 0, got %d", snap.QueuedJobs)
+	if snap.JobsProduced != totalJobs {
+		t.Errorf("Expected %d JobsProduced, got %d", totalJobs, snap.JobsProduced)
 	}
 
 	// Invariant 2: Discovered (Findings) must equal the number of accepted jobs

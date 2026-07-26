@@ -551,22 +551,12 @@ var fuzzCmd = &cobra.Command{
 			cfg.Quiet = true
 		}
 
-		totalCandidates := 1
+		baseCount := 4600 // Embedded list size
 		if flagFuzzWordlist != "" {
-			baseCount := countFileLines(flagFuzzWordlist)
-			if len(cfg.Extensions) > 0 {
-				baseCount *= (1 + len(cfg.Extensions))
-			}
-			totalCandidates *= baseCount
+			baseCount = countFileLines(flagFuzzWordlist)
 		}
-		if flagFuzzFoo != "" {
-			totalCandidates *= countFileLines(flagFuzzFoo)
-		}
-		if flagFuzzBar != "" {
-			totalCandidates *= countFileLines(flagFuzzBar)
-		}
-		if flagFuzzBuzz != "" {
-			totalCandidates *= countFileLines(flagFuzzBuzz)
+		if len(cfg.Extensions) > 0 {
+			baseCount *= (1 + len(cfg.Extensions))
 		}
 		targetManager := targets.NewManager(resolvedFuzzTargets)
 		globalSummary := targets.NewGlobalSummary(len(resolvedFuzzTargets))
@@ -600,21 +590,31 @@ var fuzzCmd = &cobra.Command{
 			if !cfg.Quiet {
 				wordlistsCount := 0
 				var placeholders []string
-				if flagFuzzWordlist != "" {
+				primaryWl := flagFuzzWordlist
+				if flagFuzzWordlist != "" || strings.Contains(targetURL, "FUZZ") {
 					wordlistsCount++
 					placeholders = append(placeholders, "FUZZ")
 				}
 				if flagFuzzFoo != "" {
 					wordlistsCount++
 					placeholders = append(placeholders, "FOO")
+					if primaryWl == "" {
+						primaryWl = flagFuzzFoo
+					}
 				}
 				if flagFuzzBar != "" {
 					wordlistsCount++
 					placeholders = append(placeholders, "BAR")
+					if primaryWl == "" {
+						primaryWl = flagFuzzBar
+					}
 				}
 				if flagFuzzBuzz != "" {
 					wordlistsCount++
 					placeholders = append(placeholders, "BUZZ")
+					if primaryWl == "" {
+						primaryWl = flagFuzzBuzz
+					}
 				}
 				placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(placeholders, ", "), len(placeholders))
 
@@ -623,21 +623,32 @@ var fuzzCmd = &cobra.Command{
 					excludeStatusStr = "none"
 				}
 
+				tmpRunner := &fuzz.Runner{
+					TargetURL:       targetURL,
+					BodyTemplate:    flagFuzzData,
+					HeaderTemplates: headers,
+					CookieTemplate:  flagFuzzCookie,
+					FooWords:        fooWords,
+					BarWords:        barWords,
+					BuzzWords:       buzzWords,
+				}
+				totalCandidates := tmpRunner.EstimateCandidates(baseCount)
+
 				if flagFuzzLogCount > 0 {
 					info := telemetry.ConfigInfo{
-						Target:          flagFuzzURL,
+						Target:          targetURL,
 						Method:          cfg.Method,
 						Workers:         cfg.Threads,
 						Mode:            "Fuzz",
 						Traversal:       strings.ToUpper(cfg.FuzzStrategy),
 						AdaptiveEnabled: cfg.Adaptive,
 						WordlistsCount:  wordlistsCount,
-						PrimaryWordlist: flagFuzzWordlist,
+						PrimaryWordlist: primaryWl,
 						Placeholders:    placeholdersStr,
 						HTTPVersion:     "auto",
 						FollowRedirects: cfg.FollowRedirects,
 						FilterStatus:    excludeStatusStr,
-						TotalCandidates: totalCandidates,
+						TotalCandidates: int(totalCandidates),
 						IsFuzz:          true,
 						Extensions:      cfg.Extensions,
 					}
@@ -768,13 +779,19 @@ var fuzzCmd = &cobra.Command{
 
 			stateMgr.Transition(state.PhaseRunning)
 
-			// Setup the primary wordlist reader if provided
-			var reader wordlist.Reader
+			var readerWg sync.WaitGroup
 			var primaryChan chan string
-			if flagFuzzWordlist != "" {
-				reader = wordlist.FileReader{Path: flagFuzzWordlist}
+			if flagFuzzWordlist != "" || strings.Contains(targetURL, "FUZZ") {
+				var reader wordlist.Reader
+				if flagFuzzWordlist != "" {
+					reader = wordlist.FileReader{Path: flagFuzzWordlist}
+				} else {
+					reader = wordlist.EmbeddedReader{}
+				}
 				primaryChan = make(chan string, 100)
+				readerWg.Add(1)
 				go func() {
+					defer readerWg.Done()
 					defer close(primaryChan)
 					tempChan := make(chan string, 100)
 					go func() {
@@ -836,7 +853,7 @@ var fuzzCmd = &cobra.Command{
 				PauseBlocker:    stateMgr.WaitUntilRunning,
 			}
 
-			collector.SetQueuedJobs(int64(totalCandidates))
+			collector.SetTotalCandidates(runner.EstimateCandidates(baseCount))
 
 			runErr := runner.Run(fuzzCtx, drainCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
 				if r.Accepted {
@@ -867,6 +884,10 @@ var fuzzCmd = &cobra.Command{
 			if runErr != nil {
 				return runErr
 			}
+
+			// Fuzzing has naturally completed, synchronize target candidate count
+			// with actual JobsProduced in case of BFS/DFS pruning.
+			collector.SetTotalCandidates(collector.Snapshot().JobsProduced)
 
 			if fmttr != nil {
 				_ = fmttr.Close()

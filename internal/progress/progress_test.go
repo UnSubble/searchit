@@ -136,7 +136,7 @@ func TestManager_PrintStats(t *testing.T) {
 	c.RecordRequestFiltered()
 	c.RecordRequestFailed()
 	c.SetActiveWorkers(5)
-	c.SetQueuedJobs(10)
+	c.SetTotalCandidates(10)
 
 	var buf bytes.Buffer
 	tm := terminal.New(&buf)
@@ -184,7 +184,7 @@ func TestANSIRenderer_TerminalAndFrozen(t *testing.T) {
 	c := stats.NewCollector()
 	snap := c.Snapshot()
 	snap.ActiveWorkers = 4
-	snap.QueuedJobs = 20
+	snap.TotalCandidates = 10
 	snap.RequestsPerSecond = 5.0
 	snap.CurrentRequestsPerSecond = 5.0
 

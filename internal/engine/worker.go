@@ -94,7 +94,6 @@ func Worker(
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
 		if collector != nil {
-			collector.DecrementQueuedJobs()
 		}
 
 		if delay > 0 {

@@ -137,6 +137,40 @@ type Runner struct {
 	compiledReq *compiledRequest
 }
 
+// EstimateCandidates calculates the theoretical maximum search space based on
+// the number of primary words, secondary placeholders, and the target template.
+func (r *Runner) EstimateCandidates(primaryWordlistSize int) int64 {
+	hasFUZZ := strings.Contains(r.TargetURL, "FUZZ") ||
+		strings.Contains(r.BodyTemplate, "FUZZ") ||
+		strings.Contains(r.CookieTemplate, "FUZZ")
+	for k, vals := range r.HeaderTemplates {
+		if strings.Contains(k, "FUZZ") {
+			hasFUZZ = true
+		}
+		for _, v := range vals {
+			if strings.Contains(v, "FUZZ") {
+				hasFUZZ = true
+			}
+		}
+	}
+
+	total := int64(1)
+	if hasFUZZ && primaryWordlistSize > 0 {
+		total *= int64(primaryWordlistSize)
+	}
+	if len(r.FooWords) > 0 {
+		total *= int64(len(r.FooWords))
+	}
+	if len(r.BarWords) > 0 {
+		total *= int64(len(r.BarWords))
+	}
+	if len(r.BuzzWords) > 0 {
+		total *= int64(len(r.BuzzWords))
+	}
+
+	return total
+}
+
 type compiledRequest struct {
 	targetURL CompiledTemplate
 	body      CompiledTemplate

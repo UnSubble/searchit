@@ -90,7 +90,15 @@ func statsReport(
 	section("Workers")
 	add(formatRow("Configured", fmt.Sprintf("%d", configuredThreads)))
 	add(formatRow("Active", fmt.Sprintf("%d", snap.ActiveWorkers)))
-	add(formatRow("Queue", fmt.Sprintf("%d", snap.QueuedJobs)))
+	totalJobs := snap.TotalCandidates
+	if totalJobs == 0 {
+		totalJobs = snap.RequestsSent
+	}
+	remaining := totalJobs - snap.JobsProduced
+	if remaining < 0 {
+		remaining = 0
+	}
+	add(formatRow("Remaining Jobs", fmt.Sprintf("%d", remaining)))
 
 	// ── Response Codes ──────────────────────────────────────────────────────
 	section("Response Codes")

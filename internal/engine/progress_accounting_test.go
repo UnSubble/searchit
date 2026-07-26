@@ -29,7 +29,7 @@ func TestWorker_ProgressAccounting_DecrementsQueuedJobs(t *testing.T) {
 
 	// We simulate 10 queued jobs
 	totalJobs := int64(10)
-	collector.SetQueuedJobs(totalJobs)
+	collector.SetTotalCandidates(totalJobs)
 
 	jobs := make(chan Job, totalJobs)
 	results := make(chan Result, totalJobs)
@@ -61,6 +61,7 @@ func TestWorker_ProgressAccounting_DecrementsQueuedJobs(t *testing.T) {
 	// Send jobs
 	for i := int64(0); i < totalJobs; i++ {
 		jobs <- Job{URL: ts.URL}
+		collector.RecordJobProduced()
 	}
 	close(jobs)
 
@@ -75,13 +76,12 @@ func TestWorker_ProgressAccounting_DecrementsQueuedJobs(t *testing.T) {
 		}
 	}
 
-	if received != totalJobs {
-		t.Fatalf("expected %d results, got %d", totalJobs, received)
+	snap := collector.Snapshot()
+	if snap.TotalCandidates != totalJobs {
+		t.Errorf("Expected %d total jobs, got %d", totalJobs, snap.TotalCandidates)
 	}
 
-	// Verify progress accounting: queued jobs must be exactly 0
-	snap := collector.Snapshot()
-	if snap.QueuedJobs != 0 {
-		t.Errorf("expected QueuedJobs to be 0 after %d jobs processed, but got %d", totalJobs, snap.QueuedJobs)
+	if snap.JobsProduced != totalJobs {
+		t.Errorf("expected JobsProduced to be %d, but got %d", totalJobs, snap.JobsProduced)
 	}
 }

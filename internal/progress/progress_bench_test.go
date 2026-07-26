@@ -16,7 +16,7 @@ func BenchmarkANSIRenderer_Render(b *testing.B) {
 	c.RecordRequestSent()
 	c.RecordResponseReceived(200, 1024)
 	c.SetActiveWorkers(10)
-	c.SetQueuedJobs(50)
+	c.SetTotalCandidates(50)
 	c.RecordDiscovered()
 
 	snap := c.Snapshot()

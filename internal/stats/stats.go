@@ -30,7 +30,7 @@ type Collector struct {
 	requestsSucceeded int64
 	bytesReceived     int64
 	activeWorkers     int64
-	queuedJobs        int64
+	totalCandidates   int64
 	discovered        int64
 	invalidWords      int64
 	jobsProduced      int64
@@ -130,24 +130,14 @@ func (c *Collector) SetActiveWorkers(workers int64) {
 	atomic.StoreInt64(&c.activeWorkers, workers)
 }
 
-// SetQueuedJobs sets the number of queued jobs.
-func (c *Collector) SetQueuedJobs(jobs int64) {
-	atomic.StoreInt64(&c.queuedJobs, jobs)
+// SetTotalCandidates sets the theoretical or dynamic search space total.
+func (c *Collector) SetTotalCandidates(candidates int64) {
+	atomic.StoreInt64(&c.totalCandidates, candidates)
 }
 
-// AddQueuedJobs adds the specified number of jobs to the queue.
-func (c *Collector) AddQueuedJobs(jobs int64) {
-	atomic.AddInt64(&c.queuedJobs, jobs)
-}
-
-// DecrementQueuedJobs decrements the number of queued jobs by 1.
-func (c *Collector) DecrementQueuedJobs() {
-	atomic.AddInt64(&c.queuedJobs, -1)
-}
-
-// RemoveQueuedJobs decrements the number of queued jobs by n.
-func (c *Collector) RemoveQueuedJobs(n int64) {
-	atomic.AddInt64(&c.queuedJobs, -n)
+// AddTotalCandidates adds the specified number of candidates to the total.
+func (c *Collector) AddTotalCandidates(candidates int64) {
+	atomic.AddInt64(&c.totalCandidates, candidates)
 }
 
 // RecordRetry increments the retries counter.
@@ -180,7 +170,7 @@ func (c *Collector) Snapshot() Snapshot {
 	succ := atomic.LoadInt64(&c.requestsSucceeded)
 	bytes := atomic.LoadInt64(&c.bytesReceived)
 	workers := atomic.LoadInt64(&c.activeWorkers)
-	queued := atomic.LoadInt64(&c.queuedJobs)
+	candidates := atomic.LoadInt64(&c.totalCandidates)
 	disc := atomic.LoadInt64(&c.discovered)
 	invalid := atomic.LoadInt64(&c.invalidWords)
 	jobs := atomic.LoadInt64(&c.jobsProduced)
@@ -264,7 +254,7 @@ func (c *Collector) Snapshot() Snapshot {
 		RequestsSucceeded:        succ,
 		BytesReceived:            bytes,
 		ActiveWorkers:            workers,
-		QueuedJobs:               queued,
+		TotalCandidates:          candidates,
 		Discovered:               disc,
 		InvalidWords:             invalid,
 		JobsProduced:             jobs,

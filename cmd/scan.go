@@ -589,7 +589,7 @@ var scanCmd = &cobra.Command{
 
 			collector := stats.NewCollector()
 			if totalWords > 0 {
-				collector.SetQueuedJobs(int64(totalWords))
+				collector.SetTotalCandidates(int64(totalWords))
 			}
 			var progMgr *progress.Manager
 			var renderer *progress.ANSIRenderer

@@ -174,7 +174,7 @@ func (m *Manager) Run(
 				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 				m.MediumPriorityCount++
 				if m.stats != nil {
-					m.stats.AddQueuedJobs(1)
+					m.stats.AddTotalCandidates(1)
 				}
 				frontier.Push(NewSliceGenerator([]engine.Job{{URL: u, Depth: 0, Origin: engine.OriginProfile}}))
 			}
@@ -216,10 +216,6 @@ func (m *Manager) Run(
 			if activeGenerator == nil && frontier.Len() > 0 {
 				activeGenerator, _ = frontier.Peek()
 				frontier.Pop()
-			}
-
-			if m.stats != nil {
-				m.stats.SetQueuedJobs(int64(frontier.Len()))
 			}
 
 			if !hasNextJob && activeGenerator != nil {
@@ -295,9 +291,7 @@ func (m *Manager) Run(
 		atomic.StoreInt64(&stats.GlobalInstrumentation.JobsRemaining, int64(frontier.Len()))
 		stats.GlobalInstrumentation.LogEvent("jobs channel close")
 		close(jobs)
-		if m.stats != nil {
-			m.stats.SetQueuedJobs(0)
-		}
+
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
@@ -367,7 +361,7 @@ func (m *Manager) handleResult(
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 			if m.stats != nil {
-				m.stats.AddQueuedJobs(1)
+				m.stats.AddTotalCandidates(1)
 			}
 			frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
 		}
@@ -444,7 +438,7 @@ func (m *Manager) handleResult(
 					}
 					if len(jobs) > 0 {
 						if m.stats != nil {
-							m.stats.AddQueuedJobs(int64(len(jobs)))
+							m.stats.AddTotalCandidates(int64(len(jobs)))
 						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
@@ -474,7 +468,7 @@ func (m *Manager) handleResult(
 					}
 					if len(jobs) > 0 {
 						if m.stats != nil {
-							m.stats.AddQueuedJobs(int64(len(jobs)))
+							m.stats.AddTotalCandidates(int64(len(jobs)))
 						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
@@ -504,7 +498,7 @@ func (m *Manager) handleResult(
 					}
 					if len(jobs) > 0 {
 						if m.stats != nil {
-							m.stats.AddQueuedJobs(int64(len(jobs)))
+							m.stats.AddTotalCandidates(int64(len(jobs)))
 						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
@@ -552,7 +546,7 @@ func (m *Manager) handleResult(
 			}
 			if len(jobs) > 0 {
 				if m.stats != nil {
-					m.stats.AddQueuedJobs(int64(len(jobs)))
+					m.stats.AddTotalCandidates(int64(len(jobs)))
 				}
 				frontier.PushFront(NewSliceGenerator(jobs))
 			}
@@ -612,7 +606,7 @@ func (m *Manager) handleResult(
 	}
 
 	if m.stats != nil {
-		m.stats.AddQueuedJobs(int64(m.baseWordlistSize))
+		m.stats.AddTotalCandidates(int64(m.baseWordlistSize))
 	}
 
 	gen := NewDirectoryGenerator(
@@ -754,7 +748,7 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		m.MediumPriorityCount++
 		if m.stats != nil {
-			m.stats.AddQueuedJobs(1)
+			m.stats.AddTotalCandidates(1)
 		}
 		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: engine.OriginRobots}}))
 	}
@@ -813,7 +807,7 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		m.MediumPriorityCount++
 		if m.stats != nil {
-			m.stats.AddQueuedJobs(1)
+			m.stats.AddTotalCandidates(1)
 		}
 		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: origin}}))
 	})

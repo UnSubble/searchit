@@ -230,14 +230,22 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	// 5-line compact progress
 	// Line 1: Target: <url>
 	// Line 2: Progress: [██████████░░░░░░░░░░] 50.0%
-	// Line 3: Jobs: X Queued / Y Candidates (Z Workers)
+	// Line 3: Jobs: X Remaining / Y Candidates (Z Workers)
 	// Line 4: Metrics: X Req/s • Y Elapsed • Z ETA
 	// Line 5: Results: X Findings • Y Errors • Z Retries
 
 	var p float64
-	totalJobs := snap.RequestsSent + snap.QueuedJobs
+	totalJobs := snap.TotalCandidates
+	if totalJobs == 0 {
+		totalJobs = snap.RequestsSent // fallback for undefined search space
+	}
+	remainingJobs := totalJobs - snap.JobsProduced
+	if remainingJobs < 0 {
+		remainingJobs = 0
+	}
+
 	if totalJobs > 0 {
-		p = float64(snap.RequestsSent) / float64(totalJobs) * 100.0
+		p = float64(snap.JobsProduced) / float64(totalJobs) * 100.0
 	}
 	if p < 0.0 {
 		p = 0.0
@@ -249,8 +257,8 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	elapsed := presentation.Duration(time.Since(snap.StartTime))
 
 	eta := "-"
-	if snap.CurrentRequestsPerSecond > 0 && snap.QueuedJobs > 0 {
-		etaSecs := float64(snap.QueuedJobs) / snap.CurrentRequestsPerSecond
+	if snap.CurrentRequestsPerSecond > 0 && remainingJobs > 0 {
+		etaSecs := float64(remainingJobs) / snap.CurrentRequestsPerSecond
 		if etaSecs < 1.0 {
 			etaSecs = 1.0
 		}
@@ -259,7 +267,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 
 	completedRequests := snap.ResponsesReceived + snap.RequestsFailed
 	isWarmingUp := false
-	if snap.ActiveWorkers > 0 || snap.QueuedJobs > 0 {
+	if snap.ActiveWorkers > 0 || remainingJobs > 0 {
 		if completedRequests < (snap.ActiveWorkers*3) || completedRequests == 0 {
 			isWarmingUp = true
 		}
@@ -279,7 +287,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 
 	return []string{
 		fmt.Sprintf("Progress: %s %.1f%%", bar, p),
-		fmt.Sprintf("Jobs: %s Queued / %s Candidates (%d Workers)", presentation.Number(snap.QueuedJobs), presentation.Number(totalJobs), snap.ActiveWorkers),
+		fmt.Sprintf("Jobs: %s Remaining / %s Candidates (%d Workers)", presentation.Number(remainingJobs), presentation.Number(totalJobs), snap.ActiveWorkers),
 		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,

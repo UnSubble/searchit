@@ -127,7 +127,7 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 		cleaned, ok := wordlist.CleanWord(word, g.normalizePaths, g.collapseSlashes)
 		if !ok {
 			if g.statsCollector != nil {
-				g.statsCollector.RemoveQueuedJobs(int64(1 + len(g.extensions)))
+				g.statsCollector.AddTotalCandidates(-int64(1 + len(g.extensions)))
 			}
 			continue
 		}
@@ -137,14 +137,14 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 			childURL, err := wordlist.Join(g.parentURL, variant)
 			if err != nil {
 				if g.statsCollector != nil {
-					g.statsCollector.DecrementQueuedJobs()
+					g.statsCollector.AddTotalCandidates(-1)
 				}
 				continue
 			}
 			key := normalizeURL(childURL)
 			if _, seen := g.visited[key]; seen {
 				if g.statsCollector != nil {
-					g.statsCollector.DecrementQueuedJobs()
+					g.statsCollector.AddTotalCandidates(-1)
 				}
 				continue
 			}

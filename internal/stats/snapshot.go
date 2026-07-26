@@ -11,7 +11,7 @@ type Snapshot struct {
 	RequestsSucceeded int64
 	BytesReceived     int64
 	ActiveWorkers     int64
-	QueuedJobs        int64
+	TotalCandidates   int64
 	Discovered        int64
 	InvalidWords      int64
 	JobsProduced      int64

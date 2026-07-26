@@ -33,8 +33,8 @@ func TestCollector_ZeroValues(t *testing.T) {
 	if snap.ActiveWorkers != 0 {
 		t.Errorf("expected 0 active workers, got %d", snap.ActiveWorkers)
 	}
-	if snap.QueuedJobs != 0 {
-		t.Errorf("expected 0 queued jobs, got %d", snap.QueuedJobs)
+	if snap.TotalCandidates != 0 {
+		t.Errorf("TotalCandidates: expected 0, got %d", snap.TotalCandidates)
 	}
 	if snap.Discovered != 0 {
 		t.Errorf("expected 0 discovered, got %d", snap.Discovered)
@@ -58,7 +58,7 @@ func TestCollector_BasicOperations(t *testing.T) {
 	c.IncrementActiveWorkers()
 	c.IncrementActiveWorkers()
 	c.DecrementActiveWorkers()
-	c.SetQueuedJobs(42)
+	c.SetTotalCandidates(42)
 
 	// Latency sample
 	c.RecordLatency(100 * time.Millisecond)
@@ -95,8 +95,8 @@ func TestCollector_BasicOperations(t *testing.T) {
 	if snap.ActiveWorkers != 1 {
 		t.Errorf("expected 1 active worker, got %d", snap.ActiveWorkers)
 	}
-	if snap.QueuedJobs != 42 {
-		t.Errorf("expected 42 queued jobs, got %d", snap.QueuedJobs)
+	if snap.TotalCandidates != 42 {
+		t.Errorf("expected 42 queued jobs, got %d", snap.TotalCandidates)
 	}
 	if snap.Retries != 1 {
 		t.Errorf("expected 1 retry, got %d", snap.Retries)
@@ -201,15 +201,14 @@ func TestCounter_GenericCounter(t *testing.T) {
 func TestCollector_ActiveWorkersAndQueuedJobs(t *testing.T) {
 	c := stats.NewCollector()
 	c.SetActiveWorkers(10)
-	c.SetQueuedJobs(50)
-	c.DecrementQueuedJobs()
+	c.SetTotalCandidates(50)
 
 	snap := c.Snapshot()
 	if snap.ActiveWorkers != 10 {
 		t.Errorf("expected 10 active workers, got %d", snap.ActiveWorkers)
 	}
-	if snap.QueuedJobs != 49 {
-		t.Errorf("expected 49 queued jobs, got %d", snap.QueuedJobs)
+	if snap.TotalCandidates != 50 {
+		t.Errorf("expected 50 total candidates, got %d", snap.TotalCandidates)
 	}
 }
 
