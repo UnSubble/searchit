@@ -183,7 +183,12 @@ func (m *Manager) HandleResult(r engine.Result) {
 		return
 	}
 
-	path := presentation.RelativeURL(m.Renderer.Target, r.URL)
+	var path string
+	if r.StatusCode >= 200 && r.StatusCode <= 299 {
+		path = r.URL
+	} else {
+		path = presentation.RelativeURL(m.Renderer.Target, r.URL)
+	}
 
 	sizeStr := "     -"
 	if r.Length >= 0 {
