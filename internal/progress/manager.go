@@ -183,7 +183,7 @@ func (m *Manager) HandleResult(r engine.Result) {
 		return
 	}
 
-	path := r.URL
+	path := presentation.RelativeURL(m.Renderer.Target, r.URL)
 
 	sizeStr := "     -"
 	if r.Length >= 0 {
