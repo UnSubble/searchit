@@ -286,3 +286,58 @@ func TestStrategies(t *testing.T) {
 		}
 	})
 }
+
+func TestFuzzAccounting_Regressions(t *testing.T) {
+	// Setup a mock HTTP server that simulates network errors (e.g., closing the connection)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "network_error") {
+			// Simulate a transport failure
+			hj, ok := w.(http.Hijacker)
+			if ok {
+				conn, _, _ := hj.Hijack()
+				conn.Close()
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	fs, _ := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
+	// word "\x7f" is an invalid control character that causes http.NewRequest to return an error,
+	// triggering the ExecuteAsync/Execute failure path in fuzz strategies.
+	fooWords := []string{"admin", "network_error", "\x7f"}
+	barWords := []string{"users", "data"}
+
+	testStrategies := []string{"eager", "bfs", "dfs"}
+
+	for _, strategy := range testStrategies {
+		t.Run(strategy, func(t *testing.T) {
+			col := stats.NewCollector()
+
+			r := &fuzz.Runner{
+				TargetURL: srv.URL + "/FOO/BAR",
+				Method:    "GET",
+				FooWords:  fooWords,
+				BarWords:  barWords,
+				Client:    srv.Client(),
+				FS:        fs,
+				Threads:   2,
+				Collector: col,
+			}
+
+			// Initialize TotalCandidates exactly like cmd/fuzz.go does
+			col.SetTotalCandidates(r.EstimateCandidates(0))
+
+			err := r.Run(context.Background(), context.Background(), strategy, nil, func(res fuzz.Result) {})
+			if err != nil {
+				t.Fatalf("%s Run failed: %v", strategy, err)
+			}
+
+			snap := col.Snapshot()
+			if snap.SearchSpaceProgress != snap.TotalCandidates {
+				t.Errorf("[%s] Expected SearchSpaceProgress == TotalCandidates (%d), got %d", strategy, snap.TotalCandidates, snap.SearchSpaceProgress)
+			}
+		})
+	}
+}

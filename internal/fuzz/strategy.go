@@ -342,6 +342,9 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 									defer producerWg.Done()
 									job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FUZZ": f, "FOO": foo, "BAR": bar, "BUZZ": buzz})
 									if err != nil {
+										if r.Collector != nil {
+											r.Collector.RecordSearchSpaceProgress(1)
+										}
 										ch <- Result{Err: err}
 										return
 									}
@@ -374,6 +377,9 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 							defer producerWg.Done()
 							job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FOO": foo, "BAR": bar, "BUZZ": buzz})
 							if err != nil {
+								if r.Collector != nil {
+									r.Collector.RecordSearchSpaceProgress(1)
+								}
 								ch <- Result{Err: err}
 								return
 							}
@@ -448,6 +454,16 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	for p := range pending1 {
 		if p.err != nil {
+			if r.Collector != nil {
+				pruned := int64(1)
+				if maxDepth >= 2 {
+					pruned *= int64(len(r.BarWords))
+				}
+				if maxDepth >= 3 {
+					pruned *= int64(len(r.BuzzWords))
+				}
+				r.Collector.RecordSearchSpaceProgress(pruned)
+			}
 			continue
 		}
 		res := <-p.ch
@@ -526,6 +542,13 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	for p := range pending2 {
 		if p.err != nil {
+			if r.Collector != nil {
+				pruned := int64(1)
+				if maxDepth >= 3 {
+					pruned *= int64(len(r.BuzzWords))
+				}
+				r.Collector.RecordSearchSpaceProgress(pruned)
+			}
 			continue
 		}
 		res := <-p.ch
@@ -598,6 +621,9 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	for p := range pending3 {
 		if p.err != nil {
+			if r.Collector != nil {
+				r.Collector.RecordSearchSpaceProgress(1)
+			}
 			continue
 		}
 		res := <-p.ch
@@ -660,12 +686,20 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 			for p := range pending1 {
 				if p.err != nil {
+					if r.Collector != nil {
+						pruned := int64(1)
+						if maxDepth >= 2 {
+							pruned *= int64(len(r.BarWords))
+						}
+						if maxDepth >= 3 {
+							pruned *= int64(len(r.BuzzWords))
+						}
+						r.Collector.RecordSearchSpaceProgress(pruned)
+					}
 					continue
 				}
 				res := <-p.ch
-				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
-					continue
-				}
+
 				if ctx.Err() == nil {
 					if res.Accepted || res.Err != nil {
 						yield(res)
@@ -725,12 +759,17 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 			for p := range pending2 {
 				if p.err != nil {
+					if r.Collector != nil {
+						pruned := int64(1)
+						if maxDepth >= 3 {
+							pruned *= int64(len(r.BuzzWords))
+						}
+						r.Collector.RecordSearchSpaceProgress(pruned)
+					}
 					continue
 				}
 				res := <-p.ch
-				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
-					continue
-				}
+
 				if ctx.Err() == nil {
 					if res.Accepted || res.Err != nil {
 						yield(res)
@@ -785,12 +824,13 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 			for p := range pending3 {
 				if p.err != nil {
+					if r.Collector != nil {
+						r.Collector.RecordSearchSpaceProgress(1)
+					}
 					continue
 				}
 				res := <-p.ch
-				if res.Err != nil && res.StatusCode == 0 && !res.Accepted {
-					continue
-				}
+
 				if ctx.Err() == nil {
 					if res.Accepted || res.Err != nil {
 						yield(res)
