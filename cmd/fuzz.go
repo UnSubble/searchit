@@ -29,8 +29,8 @@ import (
 	"github.com/unsubble/searchit/internal/output/telemetry"
 	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/profile"
+	fuzzProfile "github.com/unsubble/searchit/internal/profile/fuzz"
 	"github.com/unsubble/searchit/internal/profile/resolver"
-	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/signals"
 	"github.com/unsubble/searchit/internal/size"
@@ -164,79 +164,6 @@ var fuzzCmd = &cobra.Command{
 
 		if len(resolvedFuzzTargets) != 1 {
 			return fuzzTargetError()
-		}
-
-		usesFUZZ, usesFOO, usesBAR, usesBUZZ := false, false, false, false
-		t := resolvedFuzzTargets[0]
-		if strings.Contains(t.URL, "FUZZ") || strings.Contains(t.Body, "FUZZ") {
-			usesFUZZ = true
-		}
-		if strings.Contains(t.URL, "FOO") || strings.Contains(t.Body, "FOO") {
-			usesFOO = true
-		}
-		if strings.Contains(t.URL, "BAR") || strings.Contains(t.Body, "BAR") {
-			usesBAR = true
-		}
-		if strings.Contains(t.URL, "BUZZ") || strings.Contains(t.Body, "BUZZ") {
-			usesBUZZ = true
-		}
-
-		for _, h := range t.Headers {
-			if strings.Contains(h, "FUZZ") {
-				usesFUZZ = true
-			}
-			if strings.Contains(h, "FOO") {
-				usesFOO = true
-			}
-			if strings.Contains(h, "BAR") {
-				usesBAR = true
-			}
-			if strings.Contains(h, "BUZZ") {
-				usesBUZZ = true
-			}
-		}
-
-		for _, h := range flagFuzzHeaders {
-			if strings.Contains(h, "FUZZ") {
-				usesFUZZ = true
-			}
-			if strings.Contains(h, "FOO") {
-				usesFOO = true
-			}
-			if strings.Contains(h, "BAR") {
-				usesBAR = true
-			}
-			if strings.Contains(h, "BUZZ") {
-				usesBUZZ = true
-			}
-		}
-
-		if !usesFUZZ && !usesFOO && !usesBAR && !usesBUZZ {
-			return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body or headers")
-		}
-
-		if usesFUZZ {
-			if flagFuzzWordlist == "" {
-				return fmt.Errorf("placeholder FUZZ is used but no primary wordlist provided (use -w or --wordlist)")
-			}
-		}
-
-		if usesFOO {
-			if flagFuzzFoo == "" {
-				return fmt.Errorf("placeholder FOO is used but no --foo wordlist provided")
-			}
-		}
-
-		if usesBAR {
-			if flagFuzzBar == "" {
-				return fmt.Errorf("placeholder BAR is used but no --bar wordlist provided")
-			}
-		}
-
-		if usesBUZZ {
-			if flagFuzzBuzz == "" {
-				return fmt.Errorf("placeholder BUZZ is used but no --buzz wordlist provided")
-			}
 		}
 
 		if flagFuzzExcludeStat != "" {
@@ -439,14 +366,14 @@ var fuzzCmd = &cobra.Command{
 				}
 
 				// Decode and Apply
-				var overlay scanProfile.Overlay
+				var overlay fuzzProfile.Overlay
 				if err := p.Decode(&overlay); err != nil {
 					cmd.SilenceErrors = true
 					cmd.SilenceUsage = true
 					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
 					return fmt.Errorf("decode failed")
 				}
-				scanProfile.Apply(&cfg, overlay)
+				fuzzProfile.Apply(&cfg, overlay)
 			}
 		}
 
@@ -527,6 +454,48 @@ var fuzzCmd = &cobra.Command{
 			headers = cliHeaders
 		}
 
+		reqTmpl := fuzz.RequestTemplate{
+			URL:     flagFuzzURL,
+			Method:  flagFuzzMethod,
+			Body:    flagFuzzData,
+			Headers: headers,
+			Cookie:  flagFuzzCookie,
+		}
+		detectedPlaceholders := fuzz.FindPlaceholders(reqTmpl)
+
+		if len(detectedPlaceholders) == 0 {
+			return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body, cookies or headers")
+		}
+
+		usesFUZZ, usesFOO, usesBAR, usesBUZZ := false, false, false, false
+		for _, p := range detectedPlaceholders {
+			if p == "FUZZ" {
+				usesFUZZ = true
+			}
+			if p == "FOO" {
+				usesFOO = true
+			}
+			if p == "BAR" {
+				usesBAR = true
+			}
+			if p == "BUZZ" {
+				usesBUZZ = true
+			}
+		}
+
+		if usesFUZZ && flagFuzzWordlist == "" {
+			return fmt.Errorf("placeholder FUZZ is used but no primary wordlist provided (use -w or --wordlist)")
+		}
+		if usesFOO && flagFuzzFoo == "" {
+			return fmt.Errorf("placeholder FOO is used but no --foo wordlist provided")
+		}
+		if usesBAR && flagFuzzBar == "" {
+			return fmt.Errorf("placeholder BAR is used but no --bar wordlist provided")
+		}
+		if usesBUZZ && flagFuzzBuzz == "" {
+			return fmt.Errorf("placeholder BUZZ is used but no --buzz wordlist provided")
+		}
+
 		// Resolve output format
 		outFormat := output.FormatText
 		if flagFuzzOutput != "" {
@@ -589,34 +558,29 @@ var fuzzCmd = &cobra.Command{
 
 			if !cfg.Quiet {
 				wordlistsCount := 0
-				var placeholders []string
 				primaryWl := flagFuzzWordlist
-				if flagFuzzWordlist != "" || strings.Contains(targetURL, "FUZZ") {
+				if usesFUZZ {
 					wordlistsCount++
-					placeholders = append(placeholders, "FUZZ")
 				}
-				if flagFuzzFoo != "" {
+				if usesFOO {
 					wordlistsCount++
-					placeholders = append(placeholders, "FOO")
 					if primaryWl == "" {
 						primaryWl = flagFuzzFoo
 					}
 				}
-				if flagFuzzBar != "" {
+				if usesBAR {
 					wordlistsCount++
-					placeholders = append(placeholders, "BAR")
 					if primaryWl == "" {
 						primaryWl = flagFuzzBar
 					}
 				}
-				if flagFuzzBuzz != "" {
+				if usesBUZZ {
 					wordlistsCount++
-					placeholders = append(placeholders, "BUZZ")
 					if primaryWl == "" {
 						primaryWl = flagFuzzBuzz
 					}
 				}
-				placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(placeholders, ", "), len(placeholders))
+				placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(detectedPlaceholders, ", "), len(detectedPlaceholders))
 
 				excludeStatusStr := cfg.Status.Exclude.String()
 				if excludeStatusStr == "" {
@@ -1035,6 +999,9 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("proxy") {
 		cfg.Proxy = flagFuzzProxy
+	}
+	if cmd.Flags().Changed("header") {
+		cfg.Headers = flagFuzzHeaders
 	}
 	if cmd.Flags().Changed("show-headers") {
 		cfg.ShowHeaders = flagFuzzShowHeaders

@@ -99,21 +99,24 @@ func TestScanProfile_MultipleProfiles(t *testing.T) {
 
 func TestScanProfile_OverlayOrdering(t *testing.T) {
 	var captured config.Config
-	// Reverse order of spring and node (which are independent targets resolving base first)
-	err := runScanProfileTest([]string{"scan", "--profile", "scan-extra/node", "--profile", "scan-extra/spring"}, func(cfg config.Config) {
+	// Use paranoid and lightspeed
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/paranoid", "--profile", "scan/lightspeed"}, func(cfg config.Config) {
 		captured = cfg
 	})
 	if err != nil {
 		t.Fatalf("scan command failed: %v", err)
 	}
 
-	// scan-extra/spring should win on timeout
-	if captured.Timeout != 12*time.Second {
-		t.Errorf("expected timeout 12 (from spring overriding node), got %v", captured.Timeout)
+	// scan/lightspeed should win on timeout and threads
+	if captured.Timeout != 3*time.Second {
+		t.Errorf("expected timeout 3 (from lightspeed), got %v", captured.Timeout)
 	}
-	// But scan-extra/node's threads setting (since scan-extra/spring doesn't define it) should still be 48!
-	if captured.Threads != 48 {
-		t.Errorf("expected threads 48 (retained from node because spring is an overlay and does not define it), got %d", captured.Threads)
+	if captured.Threads != 256 {
+		t.Errorf("expected threads 256 (from lightspeed), got %d", captured.Threads)
+	}
+	// But scan/paranoid's delay setting (since lightspeed doesn't define it) should still be 1s!
+	if captured.Delay != time.Second {
+		t.Errorf("expected delay 1s (retained from paranoid), got %v", captured.Delay)
 	}
 }
 

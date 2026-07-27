@@ -3,7 +3,6 @@ package fuzz
 import (
 	"fmt"
 
-	"github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/profile/types"
 )
 
@@ -22,7 +21,7 @@ func (v *FuzzValidator) Tool() string {
 
 // Validate verifies that the profile configuration matches fuzz overlays.
 func (v *FuzzValidator) Validate(p *types.Profile) error {
-	var o scan.Overlay
+	var o Overlay
 	if err := p.Decode(&o); err != nil {
 		return fmt.Errorf("decode config: %w", err)
 	}
@@ -33,6 +32,12 @@ func (v *FuzzValidator) Validate(p *types.Profile) error {
 	}
 	if o.Rate != nil && *o.Rate <= 0 {
 		return fmt.Errorf("rate must be greater than 0")
+	}
+	if o.Strategy != nil {
+		s := *o.Strategy
+		if s != "eager" && s != "bfs" && s != "dfs" {
+			return fmt.Errorf("invalid strategy %q: must be eager, bfs, or dfs", s)
+		}
 	}
 
 	return nil

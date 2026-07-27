@@ -153,17 +153,20 @@ type Runner struct {
 // EstimateCandidates calculates the theoretical maximum search space based on
 // the number of primary words, secondary placeholders, and the target template.
 func (r *Runner) EstimateCandidates(primaryWordlistSize int) int64 {
-	hasFUZZ := strings.Contains(r.TargetURL, "FUZZ") ||
-		strings.Contains(r.BodyTemplate, "FUZZ") ||
-		strings.Contains(r.CookieTemplate, "FUZZ")
-	for k, vals := range r.HeaderTemplates {
-		if strings.Contains(k, "FUZZ") {
+	req := RequestTemplate{
+		URL:     r.TargetURL,
+		Method:  r.Method,
+		Body:    r.BodyTemplate,
+		Headers: r.HeaderTemplates,
+		Cookie:  r.CookieTemplate,
+	}
+	placeholders := FindPlaceholders(req)
+
+	hasFUZZ := false
+	for _, p := range placeholders {
+		if p == "FUZZ" {
 			hasFUZZ = true
-		}
-		for _, v := range vals {
-			if strings.Contains(v, "FUZZ") {
-				hasFUZZ = true
-			}
+			break
 		}
 	}
 
@@ -191,20 +194,18 @@ type compiledRequest struct {
 	cookie    CompiledTemplate
 }
 
-var fuzzPlaceholders = []string{"FUZZ", "FOO", "BAR", "BUZZ"}
-
 func (r *Runner) compileRequest() *compiledRequest {
 	cr := &compiledRequest{
-		targetURL: CompileTemplate(r.TargetURL, fuzzPlaceholders),
-		body:      CompileTemplate(r.BodyTemplate, fuzzPlaceholders),
-		cookie:    CompileTemplate(r.CookieTemplate, fuzzPlaceholders),
+		targetURL: CompileTemplate(r.TargetURL, SupportedPlaceholders),
+		body:      CompileTemplate(r.BodyTemplate, SupportedPlaceholders),
+		cookie:    CompileTemplate(r.CookieTemplate, SupportedPlaceholders),
 		headers:   make(map[*CompiledTemplate][]CompiledTemplate),
 	}
 	for k, vals := range r.HeaderTemplates {
-		ck := CompileTemplate(k, fuzzPlaceholders)
-		var cvals []CompiledTemplate
+		ck := CompileTemplate(k, SupportedPlaceholders)
+		cvals := make([]CompiledTemplate, 0, len(vals))
 		for _, v := range vals {
-			cvals = append(cvals, CompileTemplate(v, fuzzPlaceholders))
+			cvals = append(cvals, CompileTemplate(v, SupportedPlaceholders))
 		}
 		cr.headers[&ck] = cvals
 	}
@@ -423,7 +424,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	// Level 1: Fuzz FOO
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
-	cTmpl1 := CompileTemplate(tmpl1, fuzzPlaceholders)
+	cTmpl1 := CompileTemplate(tmpl1, SupportedPlaceholders)
 	var foundFOO []string
 
 	type pendingJob1 struct {
@@ -497,7 +498,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 
 	// Level 2: Fuzz BAR
 	tmpl2 := TruncateTemplate(r.TargetURL, 2)
-	cTmpl2 := CompileTemplate(tmpl2, fuzzPlaceholders)
+	cTmpl2 := CompileTemplate(tmpl2, SupportedPlaceholders)
 	var foundBAR []struct {
 		foo string
 		bar string
@@ -656,7 +657,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		switch currentDepth {
 		case 1:
 			tmpl := TruncateTemplate(r.TargetURL, 1)
-			cTmpl := CompileTemplate(tmpl, fuzzPlaceholders)
+			cTmpl := CompileTemplate(tmpl, SupportedPlaceholders)
 
 			type pendingDFS struct {
 				word string
@@ -729,7 +730,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 			}
 		case 2:
 			tmpl := TruncateTemplate(r.TargetURL, 2)
-			cTmpl := CompileTemplate(tmpl, fuzzPlaceholders)
+			cTmpl := CompileTemplate(tmpl, SupportedPlaceholders)
 
 			type pendingDFS struct {
 				word string
@@ -880,7 +881,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	}
 
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
-	cTmpl1 := CompileTemplate(tmpl1, fuzzPlaceholders)
+	cTmpl1 := CompileTemplate(tmpl1, SupportedPlaceholders)
 
 	payloads1 := make([]payload, len(r.FooWords))
 	for i, w := range r.FooWords {
@@ -995,7 +996,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 	}
 
 	tmpl2 := TruncateTemplate(r.TargetURL, 2)
-	cTmpl2 := CompileTemplate(tmpl2, fuzzPlaceholders)
+	cTmpl2 := CompileTemplate(tmpl2, SupportedPlaceholders)
 	var branchWg sync.WaitGroup
 
 	for _, dec := range decisions {
