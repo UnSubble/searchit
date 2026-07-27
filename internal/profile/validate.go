@@ -62,9 +62,7 @@ func Validate(p *Profile) error {
 		return fmt.Errorf("invalid profile name: %w", err)
 	}
 	expectedTool := parsed.Tool
-	if expectedTool == "scan-extra" {
-		expectedTool = "scan"
-	} else if expectedTool == "fuzz-extra" {
+	if expectedTool == "fuzz-extra" {
 		expectedTool = "fuzz"
 	}
 	if expectedTool != p.Tool {

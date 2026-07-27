@@ -259,6 +259,7 @@ func TestFuzz_PlaceholderValidation(t *testing.T) {
 	// Create a temporary profile that inherits from fuzz-extra/user-agent
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)
 
 	profileDir := tmpHome + "/.config/searchit/profiles/fuzz"
 	if err := os.MkdirAll(profileDir, 0755); err != nil {

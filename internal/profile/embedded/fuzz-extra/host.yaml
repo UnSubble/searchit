@@ -1,0 +1,23 @@
+schema: 1
+
+name: fuzz-extra/host
+tool: fuzz
+
+description: Configure fuzzing for the Host request header
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - host
+  - header
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  headers:
+    - "Host=FUZZ"

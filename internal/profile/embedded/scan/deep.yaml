@@ -1,19 +1,29 @@
 schema: 1
+
 name: scan/deep
 tool: scan
-description: Aggressive recursive discovery with higher depth and strategy tuning
+
+description: Comprehensive recursive discovery with adaptive scanning and increased recursion depth
+
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
+
 tags:
-  - aggressive
   - deep
+  - recursive
+  - discovery
+
 depends:
-  - quick
+  - scan/base
+
 experimental: false
+
 config:
   threads: 16
   timeout: 30
   recursive: true
+  adaptive: true
   max-depth: 5
   strategy: bfs
+  random-agent: true

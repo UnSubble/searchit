@@ -1,0 +1,26 @@
+schema: 1
+
+name: fuzz/maniac
+tool: fuzz
+
+description: Maximum-discovery fuzzing profile optimized for aggressive testing
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - maniac
+  - aggressive
+  - maximum
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  threads: 128
+  timeout: 5
+
+  random-agent: true

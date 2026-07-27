@@ -1,0 +1,23 @@
+schema: 1
+
+name: fuzz-extra/cookie
+tool: fuzz
+
+description: Configure fuzzing for the Cookie request header
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - cookie
+  - header
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  strategy: bfs
+  cookie: "FOO=BAR"

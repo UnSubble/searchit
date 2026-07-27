@@ -1,9 +1,9 @@
 schema: 1
 
-name: scan/paranoid
-tool: scan
+name: fuzz/paranoid
+tool: fuzz
 
-description: Conservative scanning profile optimized to reduce request rate and target impact.
+description: Conservative fuzzing profile optimized to reduce target impact
 
 author: searchit
 license: MIT
@@ -15,15 +15,15 @@ tags:
   - conservative
 
 depends:
-  - scan/base
+  - fuzz/base
 
 experimental: false
 
 config:
   threads: 1
-  delay: 1000ms
-  rate: 1.0
   timeout: 20
   connect-timeout: 10
+  delay: 1000ms
+  rate: 1
 
   random-agent: true

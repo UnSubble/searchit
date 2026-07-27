@@ -1,0 +1,24 @@
+schema: 1
+
+name: fuzz/deep
+tool: fuzz
+
+description: Comprehensive fuzzing profile optimized for coverage over speed
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - deep
+  - comprehensive
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  threads: 16
+  timeout: 30
+  random-agent: true

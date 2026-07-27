@@ -128,13 +128,13 @@ func TestLoadMissingProfile(t *testing.T) {
 func TestLoadProfile_FuzzyBaseName(t *testing.T) {
 	store := profile.NewStore()
 
-	// Should successfully resolve "wordpress" to "scan-extra/wordpress"
-	p, err := store.Load("wordpress")
+	// Should successfully resolve "auth" to "fuzz-extra/auth"
+	p, err := store.Load("auth")
 	if err != nil {
-		t.Fatalf("Load(wordpress) failed: %v", err)
+		t.Fatalf("Load(auth) failed: %v", err)
 	}
-	if p.Name != "scan-extra/wordpress" {
-		t.Errorf("expected loaded profile name to be 'scan-extra/wordpress', got %q", p.Name)
+	if p.Name != "fuzz-extra/auth" {
+		t.Errorf("expected loaded profile name to be 'fuzz-extra/auth', got %q", p.Name)
 	}
 
 	// Should fail to load nonexistent fuzzy name
@@ -1066,12 +1066,12 @@ config:
 func TestLoad_DeprecatedRedirect(t *testing.T) {
 	store := profile.NewStore()
 
-	// Should redirect "scan/laravel" to "scan-extra/laravel" and load successfully
-	p, err := store.Load("scan/laravel")
+	// Should redirect "fuzz/auth" to "fuzz-extra/auth" and load successfully
+	p, err := store.Load("fuzz/auth")
 	if err != nil {
-		t.Fatalf("Load(scan/laravel) failed: %v", err)
+		t.Fatalf("Load(fuzz/auth) failed: %v", err)
 	}
-	if p.Name != "scan-extra/laravel" {
-		t.Errorf("expected p.Name to be 'scan-extra/laravel', got %q", p.Name)
+	if p.Name != "fuzz-extra/auth" {
+		t.Errorf("expected p.Name to be 'fuzz-extra/auth', got %q", p.Name)
 	}
 }

@@ -1,9 +1,9 @@
 schema: 1
 
-name: scan/default
-tool: scan
+name: fuzz/default
+tool: fuzz
 
-description: Recommended profile for balanced web application discovery
+description: Recommended profile for balanced fuzzing
 
 author: searchit
 license: MIT
@@ -15,10 +15,9 @@ tags:
   - recommended
 
 depends:
-  - scan/base
+  - fuzz/base
 
 experimental: false
 
 config:
-  adaptive: true
   random-agent: true

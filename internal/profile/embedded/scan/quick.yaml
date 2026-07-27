@@ -1,19 +1,26 @@
 schema: 1
+
 name: scan/quick
 tool: scan
-description: Fast lightweight scan profile with lower recursion depth and fast execution
+
+description: Fast scan profile optimized for quick initial discovery.
+
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
+
 tags:
   - fast
   - quick
+
 depends:
-  - base
+  - scan/base
+
 experimental: false
+
 config:
   threads: 64
   timeout: 5
   connect-timeout: 2
-  max-depth: 1
-  recursive: false
+
+  random-agent: true

@@ -73,15 +73,6 @@ func (s *DefaultStore) Load(name string) (*Profile, error) {
 		return p, nil
 	}
 
-	// Backward compatibility fallback from scan/ to scan-extra/ namespace
-	if strings.HasPrefix(name, "scan/") {
-		extraName := "scan-extra/" + strings.TrimPrefix(name, "scan/")
-		if p, ok := embedded[extraName]; ok {
-			fmt.Fprintf(os.Stderr, "WARNING: profile %q is deprecated and has been renamed to %q. Please update your references.\n", name, extraName)
-			return p, nil
-		}
-	}
-
 	// Backward compatibility fallback from fuzz/ to fuzz-extra/ namespace
 	if strings.HasPrefix(name, "fuzz/") {
 		extraName := "fuzz-extra/" + strings.TrimPrefix(name, "fuzz/")

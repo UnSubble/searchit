@@ -1,0 +1,23 @@
+schema: 1
+
+name: fuzz-extra/user-agent
+tool: fuzz
+
+description: Configure fuzzing for the User-Agent request header
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - user-agent
+  - header
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  headers:
+    - "User-Agent=FUZZ"

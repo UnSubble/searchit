@@ -1,16 +1,26 @@
 schema: 1
-name: fuzz/scan
+
+name: fuzz/base
 tool: fuzz
-description: General web page and active folder fuzz scanning defaults
+
+description: Deterministic baseline profile that restores Searchit's built-in fuzz defaults
+
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
+
 tags:
-  - general
-  - scan
+  - base
+  - baseline
+  - default
+
 depends: []
+
 experimental: false
+
 config:
   threads: 32
   timeout: 10
+  connect-timeout: 3
   exclude-status: "404"
+  random-agent: false

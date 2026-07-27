@@ -1,21 +1,21 @@
 schema: 1
 
-name: scan/lightspeed
-tool: scan
+name: fuzz/lightspeed
+tool: fuzz
 
-description: Maximum-performance scanning profile optimized for speed over completeness. May miss slow responses.
+description: Maximum-performance fuzzing profile optimized for speed over completeness
 
 author: searchit
 license: MIT
 homepage: https://github.com/unsubble/searchit
 
 tags:
-  - fast
-  - performance
   - lightspeed
+  - performance
+  - fast
 
 depends:
-  - scan/base
+  - fuzz/base
 
 experimental: false
 

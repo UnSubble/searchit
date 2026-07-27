@@ -1,0 +1,28 @@
+schema: 1
+
+name: fuzz-extra/post-form
+tool: fuzz
+
+description: Configure fuzzing for form-based login requests
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - login
+  - form
+  - post
+  - authentication
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  method: POST
+  strategy: bfs
+  headers:
+    - "Content-Type=application/x-www-form-urlencoded"
+  data: "username=FOO&password=BAR"

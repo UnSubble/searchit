@@ -2,6 +2,7 @@ package wordlist
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"github.com/unsubble/searchit/internal/engine"
@@ -48,50 +49,74 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 		readErr <- p.Reader.Read(ctx, words)
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			stats.GlobalInstrumentation.LogEvent("context cancellation")
-			return ctx.Err()
-		case word, ok := <-words:
-			if !ok {
-				return <-readErr
-			}
-			cleaned, ok := CleanWord(word, p.NormalizePaths, p.CollapseSlashes)
-			if !ok {
-				continue
-			}
+	var wg sync.WaitGroup
+	const numProducers = 8
+	errCh := make(chan error, numProducers)
 
-			if p.PauseBlocker != nil {
-				if err := p.PauseBlocker(ctx); err != nil {
-					return err
-				}
-			}
-
-			variants := extensions.GenerateVariants(cleaned, p.Extensions)
-			for _, variant := range variants {
-				url, err := Join(p.BaseURL, variant)
-				if err != nil {
-					atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
-					if p.Collector != nil {
-						p.Collector.RecordInvalidWord()
-					}
-					continue
-				}
-
-				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-				if p.Collector != nil {
-					p.Collector.RecordJobProduced()
-				}
-
+	for i := 0; i < numProducers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
 				select {
 				case <-ctx.Done():
 					stats.GlobalInstrumentation.LogEvent("context cancellation")
-					return ctx.Err()
-				case jobs <- engine.Job{URL: url}:
-					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+					errCh <- ctx.Err()
+					return
+				case word, ok := <-words:
+					if !ok {
+						return
+					}
+					cleaned, ok := CleanWord(word, p.NormalizePaths, p.CollapseSlashes)
+					if !ok {
+						continue
+					}
+
+					if p.PauseBlocker != nil {
+						if err := p.PauseBlocker(ctx); err != nil {
+							errCh <- err
+							return
+						}
+					}
+
+					variants := extensions.GenerateVariants(cleaned, p.Extensions)
+					for _, variant := range variants {
+						url, err := Join(p.BaseURL, variant)
+						if err != nil {
+							atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
+							if p.Collector != nil {
+								p.Collector.RecordInvalidWord()
+							}
+							continue
+						}
+
+						atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+						if p.Collector != nil {
+							p.Collector.RecordJobProduced()
+						}
+
+						select {
+						case <-ctx.Done():
+							stats.GlobalInstrumentation.LogEvent("context cancellation")
+							errCh <- ctx.Err()
+							return
+						case jobs <- engine.Job{URL: url}:
+							atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+						}
+					}
 				}
 			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return err
 		}
 	}
+
+	return <-readErr
 }

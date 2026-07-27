@@ -1,0 +1,25 @@
+schema: 1
+
+name: fuzz-extra/auth
+tool: fuzz
+
+description: Configure fuzzing for the Authorization request header
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - auth
+  - authorization
+  - bearer
+  - header
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  headers:
+    - "Authorization=Bearer FUZZ"

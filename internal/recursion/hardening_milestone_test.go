@@ -629,7 +629,7 @@ func TestHardening_Profiles(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	profileNames := []string{"scan/base", "scan/maniac", "scan-extra/laravel", "scan-extra/wordpress"}
+	profileNames := []string{"scan/base", "scan/maniac", "scan/quick", "scan/lightspeed"}
 	store := profile.NewStore()
 
 	reader := testHardeningStaticReader{
