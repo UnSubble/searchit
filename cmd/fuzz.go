@@ -142,7 +142,10 @@ var fuzzCmd = &cobra.Command{
 	Use:   "fuzz",
 	Short: "Fuzz parameters, paths, subdomains and bodies",
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		if flagFuzzURL == "" && flagFuzzRequestFile == "" {
+		hasURL := flagFuzzURL != "" || flagFuzzRequestFile != ""
+		hasProfiles := len(flagFuzzProfiles) > 0
+
+		if !hasURL && !hasProfiles {
 			return fuzzZeroTargetError()
 		}
 		if flagFuzzURL != "" && flagFuzzRequestFile != "" {
@@ -155,19 +158,21 @@ var fuzzCmd = &cobra.Command{
 			return fmt.Errorf("threads must be at least 1")
 		}
 
-		var errParse error
-		resolvedFuzzTargets, errParse = targets.Parse(targets.ParseOptions{
-			URL:         flagFuzzURL,
-			URLFile:     flagFuzzURLFile,
-			RequestFile: flagFuzzRequestFile,
-		})
-		if errParse != nil {
-			return fuzzTargetError()
+		if hasURL {
+			var errParse error
+			resolvedFuzzTargets, errParse = targets.Parse(targets.ParseOptions{
+				URL:         flagFuzzURL,
+				URLFile:     flagFuzzURLFile,
+				RequestFile: flagFuzzRequestFile,
+			})
+			if errParse != nil {
+				return fuzzTargetError()
+			}
+			if len(resolvedFuzzTargets) != 1 {
+				return fuzzTargetError()
+			}
 		}
-
-		if len(resolvedFuzzTargets) != 1 {
-			return fuzzTargetError()
-		}
+		// else: profiles provided with no URL — defer target validation to RunE.
 
 		if flagFuzzExcludeStat != "" {
 			if _, err := status.Parse(flagFuzzExcludeStat); err != nil {
@@ -382,6 +387,14 @@ var fuzzCmd = &cobra.Command{
 
 		// Apply CLI overrides to ensure they take precedence
 		applyFuzzCLIOverrides(cmd, &cfg)
+
+		// If no CLI URL was given but a profile set one, propagate it now.
+		if flagFuzzURL == "" && len(cfg.URLs) > 0 {
+			flagFuzzURL = cfg.URLs[0]
+		}
+		if flagFuzzURL == "" && flagFuzzRequestFile == "" {
+			return fuzzZeroTargetError()
+		}
 
 		if testHookConfigApplied != nil {
 			testHookConfigApplied(cfg)
@@ -614,7 +627,7 @@ var fuzzCmd = &cobra.Command{
 				}
 				totalCandidates := tmpRunner.EstimateCandidates(baseCount)
 
-				if flagFuzzLogCount > 0 {
+				if cfg.LogCount > 0 {
 					info := telemetry.ConfigInfo{
 						Target:          targetURL,
 						Method:          cfg.Method,
@@ -653,7 +666,7 @@ var fuzzCmd = &cobra.Command{
 			var progCmdChan chan console.Command
 			var consoleCtrl *console.Controller
 
-			enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress || flagFuzzLogCount == 0)
+			enableProgress := shouldEnableProgress(cfg, flagFuzzNoProgress || cfg.LogCount == 0)
 			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
 			var progDone chan struct{}
@@ -665,7 +678,7 @@ var fuzzCmd = &cobra.Command{
 
 			if enableProgress {
 				modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
-				renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr, flagFuzzLogCount)
+				renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr, cfg.LogCount)
 				renderer.IsPaused = func() bool {
 					return stateMgr != nil && stateMgr.Current() == state.PhasePaused
 				}
@@ -1103,6 +1116,9 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = flagFuzzRandomAgent
+	}
+	if cmd.Flags().Changed("log-count") {
+		cfg.LogCount = flagFuzzLogCount
 	}
 }
 

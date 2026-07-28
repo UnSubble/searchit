@@ -195,7 +195,7 @@ func TestQuietMode_FatalErrors(t *testing.T) {
 		t.Errorf("expected stdout to be empty on fatal error, got %q", stdout)
 	}
 
-	if !strings.Contains(strings.ToLower(stderr), "target is required") {
+	if !strings.Contains(strings.ToLower(stderr), "no target url") {
 		t.Errorf("expected fatal error about missing target on stderr, got: %q", stderr)
 	}
 }

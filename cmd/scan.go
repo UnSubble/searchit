@@ -278,15 +278,25 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
-		var errParse error
-		resolvedTargets, errParse = targets.Parse(targets.ParseOptions{
-			URL:         flagURL,
-			URLFile:     flagURLFile,
-			RequestFile: flagRequestFile,
-		})
-		if errParse != nil {
-			return errParse
+		// Parse target URLs when they are provided via CLI flags.
+		// When no URL flag is present but profiles are specified, defer target
+		// resolution to RunE where profiles will have been applied and may
+		// supply a url or url-file value.
+		hasURL := flagURL != "" || flagURLFile != "" || flagRequestFile != ""
+		if hasURL {
+			var errParse error
+			resolvedTargets, errParse = targets.Parse(targets.ParseOptions{
+				URL:         flagURL,
+				URLFile:     flagURLFile,
+				RequestFile: flagRequestFile,
+			})
+			if errParse != nil {
+				return errParse
+			}
+		} else if len(flagProfiles) == 0 {
+			return fmt.Errorf("no target URL specified; use -u/--url, --url-file, or --profile with url/url-file config")
 		}
+		// else: profiles provided, no URL flag — defer to RunE.
 
 		if flagTech != "" {
 			if _, ok := lookupTech(flagTech); !ok {
@@ -366,6 +376,25 @@ var scanCmd = &cobra.Command{
 		}
 
 		applyCLIOverrides(cmd, &cfg)
+
+		// If no targets were resolved from CLI flags, attempt to populate them
+		// from values supplied via profile (url: or url-file:).
+		if len(resolvedTargets) == 0 {
+			if len(cfg.URLs) > 0 {
+				for _, u := range cfg.URLs {
+					resolvedTargets = append(resolvedTargets, targets.Target{URL: u})
+				}
+			} else if cfg.URLFile != "" {
+				parsed, err := targets.Parse(targets.ParseOptions{URLFile: cfg.URLFile})
+				if err != nil {
+					return fmt.Errorf("profile url-file: %w", err)
+				}
+				resolvedTargets = parsed
+			}
+		}
+		if len(resolvedTargets) == 0 {
+			return fmt.Errorf("no target URL specified; use -u/--url, --url-file, or set url/url-file in the profile")
+		}
 
 		if cfg.RequestFile != "" && len(resolvedTargets) > 0 {
 			t := resolvedTargets[0]
@@ -571,7 +600,7 @@ var scanCmd = &cobra.Command{
 					excludeStatusStr = "none"
 				}
 
-				if flagLogCount > 0 {
+				if cfg.LogCount > 0 {
 					info := telemetry.ConfigInfo{
 						Target:          targetURL,
 						Method:          cfg.Method,
@@ -611,7 +640,7 @@ var scanCmd = &cobra.Command{
 			var termCtx context.Context
 			var cancelTerm context.CancelFunc
 
-			enableProgress := shouldEnableProgress(cfg, flagNoProgress || flagLogCount == 0)
+			enableProgress := shouldEnableProgress(cfg, flagNoProgress || cfg.LogCount == 0)
 			// Interactive keyboard controls require stdin to also be a terminal.
 			interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
@@ -627,7 +656,7 @@ var scanCmd = &cobra.Command{
 					modeStr = fmt.Sprintf("Recursive (%s)", strings.ToUpper(cfg.Strategy.String()))
 				}
 
-				renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr, flagLogCount)
+				renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr, cfg.LogCount)
 				renderer.IsPaused = func() bool {
 					return stateMgr != nil && stateMgr.Current() == state.PhasePaused
 				}
@@ -1096,6 +1125,9 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = flagScanRandomAgent
+	}
+	if cmd.Flags().Changed("log-count") {
+		cfg.LogCount = flagLogCount
 	}
 }
 
