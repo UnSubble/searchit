@@ -87,6 +87,15 @@ type Config struct {
 	// Resolution order is enforced by internal/useragent.Resolve.
 	UserAgent   string
 	RandomAgent bool
+
+	// LogCount controls how many discovery lines are shown in the interactive region.
+	// 0 disables the interactive section; positive values set the line count.
+	LogCount int
+
+	// URLFile is the path to a file containing one target URL per line.
+	// When set via a profile it is expanded in the command's RunE after all
+	// overlays and CLI overrides have been applied.
+	URLFile string
 }
 
 type HeaderFilter struct {
