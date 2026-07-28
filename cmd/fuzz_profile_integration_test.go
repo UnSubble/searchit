@@ -286,3 +286,136 @@ config: {}
 		t.Errorf("expected success for placeholder from inherited profile, got %v", err)
 	}
 }
+
+// TestFuzzProfile_CLIOverridesPrecedence is the fuzz-side companion to
+// TestScanProfile_CLIOverridesPrecedence. It verifies that every explicit CLI
+// flag wins over a conflicting profile value in the fuzz pipeline.
+//
+// Pipeline under test:
+//
+//	config.Default() → profile load → profile apply → applyFuzzCLIOverrides → runner
+//
+// fuzz/paranoid is used as the conflict profile because it sets:
+// threads=1, timeout=20s, delay=1000ms, rate=1, random-agent=true.
+func TestFuzzProfile_CLIOverridesPrecedence(t *testing.T) {
+	type testCase struct {
+		name  string
+		args  []string
+		check func(t *testing.T, cfg config.Config)
+	}
+
+	tests := []testCase{
+		{
+			// fuzz/paranoid sets threads: 1 — CLI -t 6 must win.
+			name: "threads",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6 (profile sets 1, CLI must win)", cfg.Threads)
+				}
+			},
+		},
+		{
+			// fuzz/paranoid sets timeout: 20 — CLI --timeout 5 must win.
+			name: "timeout",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "--timeout", "5"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Timeout != 5*time.Second {
+					t.Errorf("cfg.Timeout = %v; want 5s (profile sets 20s, CLI must win)", cfg.Timeout)
+				}
+			},
+		},
+		{
+			// fuzz/paranoid sets delay: 1000ms — CLI --delay 500ms must win.
+			name: "delay",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "--delay", "500ms"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Delay != 500*time.Millisecond {
+					t.Errorf("cfg.Delay = %v; want 500ms (profile sets 1000ms, CLI must win)", cfg.Delay)
+				}
+			},
+		},
+		{
+			// fuzz/paranoid sets rate: 1 — CLI --rate 10 must win.
+			name: "rate",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "--rate", "10"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Rate != 10 {
+					t.Errorf("cfg.Rate = %v; want 10 (profile sets 1, CLI must win)", cfg.Rate)
+				}
+			},
+		},
+		{
+			// fuzz/base does not set adaptive — CLI --adaptive must set it to true.
+			name: "adaptive",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/base", "--adaptive"},
+			check: func(t *testing.T, cfg config.Config) {
+				if !cfg.Adaptive {
+					t.Errorf("cfg.Adaptive = false; want true (CLI --adaptive must apply)")
+				}
+			},
+		},
+		{
+			// fuzz/paranoid sets random-agent: true — CLI --random-agent=false must win.
+			name: "random-agent false overrides profile true",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "--random-agent=false"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.RandomAgent {
+					t.Errorf("cfg.RandomAgent = true; want false (profile sets true, CLI must override)")
+				}
+			},
+		},
+		{
+			// No profile sets user-agent — CLI --user-agent must be applied.
+			name: "user-agent",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "--user-agent", "TestBot/1.0"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.UserAgent != "TestBot/1.0" {
+					t.Errorf("cfg.UserAgent = %q; want %q (CLI must apply)", cfg.UserAgent, "TestBot/1.0")
+				}
+			},
+		},
+		// Verify all three invocation forms produce the same effective thread count.
+		{
+			name: "parity: no profile -t 6",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6", cfg.Threads)
+				}
+			},
+		},
+		{
+			name: "parity: fuzz/default -t 6",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/default", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6 with fuzz/default", cfg.Threads)
+				}
+			},
+		},
+		{
+			name: "parity: fuzz/paranoid -t 6",
+			args: []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--profile", "fuzz/paranoid", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6 (profile sets 1, CLI must win)", cfg.Threads)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured config.Config
+			err := runFuzzProfileTest(tt.args, func(cfg config.Config) {
+				captured = cfg
+				panic("STOP_EXECUTION")
+			})
+			if err != nil {
+				t.Fatalf("fuzz command failed: %v", err)
+			}
+			tt.check(t, captured)
+		})
+	}
+}

@@ -512,3 +512,146 @@ func TestScanProfile_Newv050Profiles(t *testing.T) {
 		}
 	})
 }
+
+// TestScanProfile_CLIOverridesPrecedence is a comprehensive regression test
+// ensuring that an explicit CLI flag always wins over a conflicting value set
+// by a loaded profile. It covers every flag listed in the bug report.
+//
+// Pipeline under test (must be respected in this exact order):
+//
+//	config.Default() → profile load → profile apply → applyCLIOverrides → engine
+//
+// scan/paranoid is used as the conflict profile because it sets the most
+// fields: threads=1, timeout=20s, delay=1000ms, rate=1.0, random-agent=true.
+func TestScanProfile_CLIOverridesPrecedence(t *testing.T) {
+	type testCase struct {
+		name  string
+		args  []string
+		check func(t *testing.T, cfg config.Config)
+	}
+
+	tests := []testCase{
+		{
+			// scan/paranoid sets threads: 1 — CLI -t 6 must win.
+			name: "threads",
+			args: []string{"scan", "--profile", "scan/paranoid", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6 (profile sets 1, CLI must win)", cfg.Threads)
+				}
+			},
+		},
+		{
+			// scan/paranoid sets timeout: 20 — CLI --timeout 5 must win.
+			name: "timeout",
+			args: []string{"scan", "--profile", "scan/paranoid", "--timeout", "5"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Timeout != 5*time.Second {
+					t.Errorf("cfg.Timeout = %v; want 5s (profile sets 20s, CLI must win)", cfg.Timeout)
+				}
+			},
+		},
+		{
+			// scan/paranoid sets delay: 1000ms — CLI --delay 500ms must win.
+			name: "delay",
+			args: []string{"scan", "--profile", "scan/paranoid", "--delay", "500ms"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Delay != 500*time.Millisecond {
+					t.Errorf("cfg.Delay = %v; want 500ms (profile sets 1000ms, CLI must win)", cfg.Delay)
+				}
+			},
+		},
+		{
+			// scan/paranoid sets rate: 1.0 — CLI --rate 10 must win.
+			name: "rate",
+			args: []string{"scan", "--profile", "scan/paranoid", "--rate", "10"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Rate != 10 {
+					t.Errorf("cfg.Rate = %v; want 10 (profile sets 1.0, CLI must win)", cfg.Rate)
+				}
+			},
+		},
+		{
+			// scan/base does not set recursive — CLI --recursive must set it to true.
+			name: "recursive",
+			args: []string{"scan", "--profile", "scan/base", "--recursive"},
+			check: func(t *testing.T, cfg config.Config) {
+				if !cfg.Recursive {
+					t.Errorf("cfg.Recursive = false; want true (CLI --recursive must apply)")
+				}
+			},
+		},
+		{
+			// scan/base does not set adaptive — CLI --adaptive must set it to true.
+			name: "adaptive",
+			args: []string{"scan", "--profile", "scan/base", "--adaptive"},
+			check: func(t *testing.T, cfg config.Config) {
+				if !cfg.Adaptive {
+					t.Errorf("cfg.Adaptive = false; want true (CLI --adaptive must apply)")
+				}
+			},
+		},
+		{
+			// scan/paranoid sets random-agent: true — CLI --random-agent=false must win.
+			name: "random-agent false overrides profile true",
+			args: []string{"scan", "--profile", "scan/paranoid", "--random-agent=false"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.RandomAgent {
+					t.Errorf("cfg.RandomAgent = true; want false (profile sets true, CLI must override to false)")
+				}
+			},
+		},
+		{
+			// No profile sets user-agent — CLI --user-agent must be applied.
+			name: "user-agent",
+			args: []string{"scan", "--profile", "scan/paranoid", "--user-agent", "TestBot/1.0"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.UserAgent != "TestBot/1.0" {
+					t.Errorf("cfg.UserAgent = %q; want %q (CLI must apply)", cfg.UserAgent, "TestBot/1.0")
+				}
+			},
+		},
+		// Verify all three invocation forms produce the same effective thread count.
+		// This is the exact scenario from the bug report.
+		{
+			name: "parity: no profile -t 6",
+			args: []string{"scan", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6", cfg.Threads)
+				}
+			},
+		},
+		{
+			name: "parity: scan/default -t 6",
+			args: []string{"scan", "--profile", "scan/default", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6 with scan/default", cfg.Threads)
+				}
+			},
+		},
+		{
+			name: "parity: scan/paranoid -t 6",
+			args: []string{"scan", "--profile", "scan/paranoid", "-t", "6"},
+			check: func(t *testing.T, cfg config.Config) {
+				if cfg.Threads != 6 {
+					t.Errorf("cfg.Threads = %d; want 6 (profile sets 1, CLI must win)", cfg.Threads)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured config.Config
+			err := runScanProfileTest(tt.args, func(cfg config.Config) {
+				captured = cfg
+			})
+			if err != nil {
+				t.Fatalf("scan command failed: %v", err)
+			}
+			tt.check(t, captured)
+		})
+	}
+}

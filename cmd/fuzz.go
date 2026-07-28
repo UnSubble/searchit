@@ -409,15 +409,11 @@ var fuzzCmd = &cobra.Command{
 		var delay time.Duration
 		if cfg.Delay > 0 {
 			delay = cfg.Delay
-		} else if flagFuzzDelay != "" {
-			delay, _ = time.ParseDuration(flagFuzzDelay)
 		}
 
 		var limiter *rate.Limiter
 		if cfg.Rate > 0 {
 			limiter = rate.NewLimiter(rate.Limit(cfg.Rate), 1)
-		} else if flagFuzzRate > 0 {
-			limiter = rate.NewLimiter(rate.Limit(flagFuzzRate), 1)
 		}
 
 		// Load auxiliary wordlists
