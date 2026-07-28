@@ -165,10 +165,12 @@ func RelativeURL(targetURL, reqURL string) string {
 	return reqURL
 }
 
-// Redirect formats a redirect.
+// Redirect formats a redirect showing source → destination.
+// Both source and destination are made relative to targetURL when same-host.
 func Redirect(targetURL, source, dest string) string {
 	srcFmt := RelativeURL(targetURL, source)
-	return fmt.Sprintf("%s \u2192 %s", srcFmt, dest)
+	destFmt := RelativeURL(targetURL, dest)
+	return fmt.Sprintf("%s \u2192 %s", srcFmt, destFmt)
 }
 
 // Token compacts long strings like JWTs, Headers, or Cookies.

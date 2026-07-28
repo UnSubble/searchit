@@ -111,7 +111,9 @@ func TestRedirect(t *testing.T) {
 		dest   string
 		want   string
 	}{
-		{"internal to internal", "http://example.com/login", "http://example.com/auth", "/login \u2192 http://example.com/auth"},
+		// Same-host: both source and dest become relative paths.
+		{"internal to internal", "http://example.com/login", "http://example.com/auth", "/login \u2192 /auth"},
+		// Cross-host: source is relative, dest remains absolute.
 		{"internal to external", "http://example.com/sso", "https://okta.com/auth", "/sso \u2192 https://okta.com/auth"},
 	}
 

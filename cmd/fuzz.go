@@ -822,14 +822,15 @@ var fuzzCmd = &cobra.Command{
 			runErr := runner.Run(fuzzCtx, drainCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
 				if r.Accepted {
 					engRes := engine.Result{
-						URL:        r.URL,
-						StatusCode: r.StatusCode,
-						Length:     r.Length,
-						Accepted:   r.Accepted,
-						Err:        r.Err,
-						Origin:     "fuzz",
-						Title:      r.Title,
-						Headers:    r.Headers,
+						URL:         r.URL,
+						RedirectURL: r.RedirectURL,
+						StatusCode:  r.StatusCode,
+						Length:      r.Length,
+						Accepted:    r.Accepted,
+						Err:         r.Err,
+						Origin:      "fuzz",
+						Title:       r.Title,
+						Headers:     r.Headers,
 					}
 					if progMgr != nil {
 						progMgr.HandleResult(engRes)

@@ -5,6 +5,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -299,6 +300,20 @@ func process(
 		title = extractHTMLTitle(bodyBytes)
 	}
 
+	// Capture redirect destination for display (same-host only, like scan engine).
+	var redirectURL string
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		loc := resp.Header.Get("Location")
+		if loc != "" {
+			if u, err := url.Parse(loc); err == nil && resp.Request != nil && resp.Request.URL != nil {
+				resolved := resp.Request.URL.ResolveReference(u)
+				if resolved.Host == resp.Request.URL.Host {
+					redirectURL = resolved.String()
+				}
+			}
+		}
+	}
+
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, length)
 		collector.RecordRequestSucceeded()
@@ -306,13 +321,14 @@ func process(
 	}
 
 	sendResult(results, item, Result{
-		URL:        item.Req.URL,
-		StatusCode: resp.StatusCode,
-		Length:     length,
-		Accepted:   true,
-		Title:      title,
-		Headers:    resHeaders,
-		UserData:   item.Req.UserData,
+		URL:         item.Req.URL,
+		RedirectURL: redirectURL,
+		StatusCode:  resp.StatusCode,
+		Length:      length,
+		Accepted:    true,
+		Title:       title,
+		Headers:     resHeaders,
+		UserData:    item.Req.UserData,
 	})
 }
 

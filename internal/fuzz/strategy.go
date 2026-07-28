@@ -400,15 +400,14 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	}()
 
 	for resCh := range jobChan {
-		select {
-		case <-ctx.Done():
-			// DO NOT break, we must drain the remaining jobChan to allow background workers to send and finish
-		case res := <-resCh:
-			// Yield results OR errors, preserving determinism for chaotic networks
-			if ctx.Err() == nil {
-				if res.Accepted || res.Err != nil {
-					yield(res)
-				}
+		// Always drain resCh, regardless of ctx state.
+		// If we skip the receive after selecting ctx.Done(), the background goroutine
+		// that owns resCh blocks trying to send, which fills jobChan and deadlocks
+		// the producer goroutine — causing workers to appear stuck.
+		res := <-resCh
+		if ctx.Err() == nil {
+			if res.Accepted || res.Err != nil {
+				yield(res)
 			}
 		}
 	}
