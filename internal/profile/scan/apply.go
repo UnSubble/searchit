@@ -98,6 +98,9 @@ func Apply(cfg *config.Config, o Overlay) {
 	if o.Request != nil {
 		cfg.RequestFile = *o.Request
 	}
+	if o.RandomAgent != nil {
+		cfg.RandomAgent = *o.RandomAgent
+	}
 }
 
 func parseHeaderFlags(flags []string) []config.HeaderFilter {

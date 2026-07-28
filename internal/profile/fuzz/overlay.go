@@ -33,6 +33,8 @@ type Overlay struct {
 	Headers *[]string `yaml:"headers"`
 	Cookies *string   `yaml:"cookies"`
 	Request *string   `yaml:"request"`
+
+	RandomAgent *bool `yaml:"random-agent"`
 }
 
 // UnmarshalYAML implements custom unmarshaling to handle durations gracefully.
@@ -62,6 +64,8 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 		Headers *[]string `yaml:"headers"`
 		Cookies *string   `yaml:"cookies"`
 		Request *string   `yaml:"request"`
+
+		RandomAgent *bool `yaml:"random-agent"`
 	}
 
 	var raw rawOverlay
@@ -90,6 +94,7 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	o.Headers = raw.Headers
 	o.Cookies = raw.Cookies
 	o.Request = raw.Request
+	o.RandomAgent = raw.RandomAgent
 
 	if raw.IncludeHeaders != nil {
 		o.IncludeHeaders = raw.IncludeHeaders

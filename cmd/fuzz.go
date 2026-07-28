@@ -38,6 +38,7 @@ import (
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/targets"
+	"github.com/unsubble/searchit/internal/useragent"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
 )
@@ -84,6 +85,8 @@ var (
 	flagFuzzProfiles        []string
 	flagFuzzFollowRedirects bool
 	flagFuzzMaxRedirects    int
+	flagFuzzUserAgent       string
+	flagFuzzRandomAgent     bool
 
 	resolvedFuzzTargets []targets.Target
 )
@@ -452,6 +455,19 @@ var fuzzCmd = &cobra.Command{
 				return err
 			}
 			headers = cliHeaders
+		}
+
+		// Resolve and inject User-Agent once, before the runner is created.
+		// Resolution order: -H "User-Agent=..." > --user-agent > profile/--random-agent.
+		var randomUA string
+		if cfg.RandomAgent {
+			randomUA = useragent.Random()
+		}
+		if ua := useragent.Resolve(headers.Get("User-Agent"), cfg.UserAgent, randomUA); ua != "" {
+			if headers == nil {
+				headers = make(http.Header)
+			}
+			headers.Set("User-Agent", ua)
 		}
 
 		reqTmpl := fuzz.RequestTemplate{
@@ -1082,6 +1098,12 @@ func applyFuzzCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("adaptive") {
 		cfg.Adaptive = flagFuzzAdaptive
 	}
+	if cmd.Flags().Changed("user-agent") {
+		cfg.UserAgent = flagFuzzUserAgent
+	}
+	if cmd.Flags().Changed("random-agent") {
+		cfg.RandomAgent = flagFuzzRandomAgent
+	}
 }
 
 func init() {
@@ -1128,6 +1150,8 @@ func init() {
 	fuzzCmd.Flags().IntVar(&flagFuzzMaxRedirects, "max-redirects", 10, "maximum redirect limit")
 	fuzzCmd.Flags().StringVarP(&flagFuzzStrategy, "strategy", "s", "eager", "Traversal strategy (eager, bfs, dfs)")
 	fuzzCmd.Flags().BoolVar(&flagFuzzAdaptive, "adaptive", false, "enable adaptive fuzzing (prioritization, framework detection, robots.txt, sitemaps)")
+	fuzzCmd.Flags().StringVar(&flagFuzzUserAgent, "user-agent", "", "set a custom User-Agent for every request")
+	fuzzCmd.Flags().BoolVar(&flagFuzzRandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
 }
 
 func countFileLines(path string) int {

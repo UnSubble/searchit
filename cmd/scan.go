@@ -36,6 +36,7 @@ import (
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/targets"
+	"github.com/unsubble/searchit/internal/useragent"
 	"github.com/unsubble/searchit/internal/wordlist"
 	"golang.org/x/time/rate"
 )
@@ -74,11 +75,13 @@ var (
 	flagMaxRedirects    int
 	flagAdaptive        bool
 
-	flagScanMethod  string
-	flagScanData    string
-	flagScanHeaders []string
-	flagScanCookie  string
-	flagScanProxy   string
+	flagScanMethod      string
+	flagScanData        string
+	flagScanHeaders     []string
+	flagScanCookie      string
+	flagScanProxy       string
+	flagScanUserAgent   string
+	flagScanRandomAgent bool
 
 	flagMatchStatus   string
 	flagFilterStatus  string
@@ -482,6 +485,16 @@ var scanCmd = &cobra.Command{
 		customHeaders, err := parseFuzzHeaderFlags(cfg.Headers)
 		if err != nil {
 			return err
+		}
+
+		// Resolve and inject User-Agent once before any request is made.
+		// Resolution order: -H "User-Agent=..." > --user-agent > profile/--random-agent.
+		var randomUA string
+		if cfg.RandomAgent {
+			randomUA = useragent.Random()
+		}
+		if ua := useragent.Resolve(customHeaders.Get("User-Agent"), cfg.UserAgent, randomUA); ua != "" {
+			customHeaders.Set("User-Agent", ua)
 		}
 
 		fs, err := filter.NewFilterSuite(
@@ -1078,6 +1091,12 @@ func applyCLIOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if cmd.Flags().Changed("request") {
 		cfg.RequestFile = flagRequestFile
 	}
+	if cmd.Flags().Changed("user-agent") {
+		cfg.UserAgent = flagScanUserAgent
+	}
+	if cmd.Flags().Changed("random-agent") {
+		cfg.RandomAgent = flagScanRandomAgent
+	}
 }
 
 func init() {
@@ -1321,6 +1340,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&flagShowHeaders, "show-headers", false, "show response headers in output")
 	scanCmd.Flags().BoolVar(&flagShowTitle, "show-title", false, "show HTML titles in output")
 	scanCmd.Flags().StringVar(&flagRequestFile, "request", "", "load raw HTTP request template from file")
+	scanCmd.Flags().StringVar(&flagScanUserAgent, "user-agent", "", "set a custom User-Agent for every request")
+	scanCmd.Flags().BoolVar(&flagScanRandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
 }
 
 func validateHeaderFlag(val string) error {

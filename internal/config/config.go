@@ -80,6 +80,13 @@ type Config struct {
 
 	// FuzzStrategy determines the hierarchical traversal strategy for fuzzing
 	FuzzStrategy string
+
+	// User-Agent management.
+	// UserAgent is the value supplied via --user-agent.
+	// RandomAgent is true when --random-agent is passed or a profile sets random-agent: true.
+	// Resolution order is enforced by internal/useragent.Resolve.
+	UserAgent   string
+	RandomAgent bool
 }
 
 type HeaderFilter struct {

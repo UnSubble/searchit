@@ -94,6 +94,11 @@ func resetFlagsForTest() {
 	flagFuzzFollowRedirects = false
 	flagFuzzMaxRedirects = 10
 	flagFuzzStrategy = "eager"
+	flagFuzzUserAgent = ""
+	flagFuzzRandomAgent = false
+
+	flagScanUserAgent = ""
+	flagScanRandomAgent = false
 
 	// Reset silence flags that may have been set by profile-loading failures
 	// in prior tests, which would suppress PreRunE errors in subsequent tests.
