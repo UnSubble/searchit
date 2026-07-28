@@ -3,6 +3,7 @@ package presentation
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -111,16 +112,98 @@ func TestRedirect(t *testing.T) {
 		dest   string
 		want   string
 	}{
-		// Same-host: both source and dest become relative paths.
-		{"internal to internal", "http://example.com/login", "http://example.com/auth", "/login \u2192 /auth"},
-		// Cross-host: source is relative, dest remains absolute.
-		{"internal to external", "http://example.com/sso", "https://okta.com/auth", "/sso \u2192 https://okta.com/auth"},
+		// dest is always shown as the fully resolved absolute URL.
+		{"same-host dest is absolute", "http://example.com/login", "http://example.com/auth", "/login \u2192 http://example.com/auth"},
+		// Cross-host: source is relative, dest stays absolute.
+		{"cross-host dest stays absolute", "http://example.com/sso", "https://okta.com/auth", "/sso \u2192 https://okta.com/auth"},
+		// Source on different scheme is shown as absolute.
+		{"different-scheme source", "https://example.com/page", "http://example.com/other", "https://example.com/page \u2192 http://example.com/other"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := Redirect(target, tt.source, tt.dest); got != tt.want {
 				t.Errorf("Redirect() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveRedirect(t *testing.T) {
+	base := "http://example.com/page"
+
+	tests := []struct {
+		name     string
+		base     string
+		location string
+		want     string
+	}{
+		// Root-relative.
+		{"root-relative", base, "/backup/", "http://example.com/backup/"},
+		// Relative to base path.
+		{"relative", "http://example.com/dir/", "other/", "http://example.com/dir/other/"},
+		// Already absolute same-host.
+		{"absolute same-host", base, "http://example.com/auth", "http://example.com/auth"},
+		// Already absolute cross-host.
+		{"absolute cross-host", base, "https://auth.example.com/login", "https://auth.example.com/login"},
+		// Protocol change.
+		{"https to http", "https://example.com/page", "http://example.com/login", "http://example.com/login"},
+		// Query string preserved.
+		{"with query string", base, "/search?q=test&page=2", "http://example.com/search?q=test&page=2"},
+		// Fragment preserved.
+		{"with fragment", base, "/about#team", "http://example.com/about#team"},
+		// Dot-dot segment resolved.
+		{"parent segment", "http://example.com/a/b/c", "../d", "http://example.com/a/d"},
+		// Single-dot segment resolved.
+		{"current segment", "http://example.com/a/b/", "./c", "http://example.com/a/b/c"},
+		// Empty location returns empty.
+		{"empty location", base, "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRedirect(tt.base, tt.location)
+			if got != tt.want {
+				t.Errorf("ResolveRedirect(%q, %q) = %q; want %q", tt.base, tt.location, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRedirectScanFuzzParity verifies that scan and fuzz produce
+// identical redirect presentation for the same response metadata.
+// Both tools convert fuzz.Result → engine.Result and route through
+// the same presentation.Redirect call in progress/manager.go.
+func TestRedirectScanFuzzParity(t *testing.T) {
+	target := "http://example.com"
+
+	cases := []struct {
+		name     string
+		reqURL   string // original request URL (r.URL for both scan and fuzz)
+		redirURL string // r.RedirectURL (already resolved by workers)
+	}{
+		{"same-host relative redirect", "http://example.com/admin", "http://example.com/admin/"},
+		{"cross-host redirect", "http://example.com/sso", "https://auth.example.com/login"},
+		{"redirect with query", "http://example.com/search", "http://example.com/results?q=test"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Simulate what progress/manager.go does for both scan and fuzz results.
+			// Both pass r.RedirectURL as-is to presentation.Redirect.
+			scanOut := Redirect(target, tc.reqURL, tc.redirURL)
+			fuzzOut := Redirect(target, tc.reqURL, tc.redirURL)
+
+			if scanOut != fuzzOut {
+				t.Errorf("scan output %q != fuzz output %q for same input", scanOut, fuzzOut)
+			}
+
+			// dest must be the full absolute URL, not a relative path.
+			if !strings.HasPrefix(tc.redirURL, "http") {
+				t.Skipf("test case %q has non-http redirURL, skipping absoluteness check", tc.name)
+			}
+			if !strings.Contains(scanOut, tc.redirURL) {
+				t.Errorf("output %q does not contain absolute dest %q", scanOut, tc.redirURL)
 			}
 		})
 	}

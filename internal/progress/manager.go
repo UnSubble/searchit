@@ -170,7 +170,9 @@ func (m *Manager) restoreDashboard() {
 
 			loc := r.RedirectURL
 			if loc == "" && r.Headers != nil {
-				loc = r.Headers.Get("Location")
+				if rawLoc := r.Headers.Get("Location"); rawLoc != "" {
+					loc = presentation.ResolveRedirect(r.URL, rawLoc)
+				}
 			}
 
 			var formatted string
@@ -224,7 +226,9 @@ func (m *Manager) HandleResult(r engine.Result) {
 
 	loc := r.RedirectURL
 	if loc == "" && r.Headers != nil {
-		loc = r.Headers.Get("Location")
+		if rawLoc := r.Headers.Get("Location"); rawLoc != "" {
+			loc = presentation.ResolveRedirect(r.URL, rawLoc)
+		}
 	}
 
 	var formatted string

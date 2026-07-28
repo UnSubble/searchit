@@ -165,12 +165,35 @@ func RelativeURL(targetURL, reqURL string) string {
 	return reqURL
 }
 
+// ResolveRedirect resolves a Location header value against the original
+// request URL to produce a fully resolved absolute URL suitable for display.
+// If location is already absolute it is returned unchanged.
+// Malformed input falls back to returning location unchanged.
+func ResolveRedirect(requestURL, location string) string {
+	if location == "" {
+		return location
+	}
+	loc, err := url.Parse(location)
+	if err != nil {
+		return location
+	}
+	if loc.IsAbs() {
+		return location
+	}
+	base, err := url.Parse(requestURL)
+	if err != nil {
+		return location
+	}
+	return base.ResolveReference(loc).String()
+}
+
 // Redirect formats a redirect showing source → destination.
-// Both source and destination are made relative to targetURL when same-host.
+// source is made relative to targetURL when same-host.
+// dest must be a fully resolved absolute URL; it is always shown verbatim
+// so the user can click or copy the full destination regardless of host.
 func Redirect(targetURL, source, dest string) string {
 	srcFmt := RelativeURL(targetURL, source)
-	destFmt := RelativeURL(targetURL, dest)
-	return fmt.Sprintf("%s \u2192 %s", srcFmt, destFmt)
+	return fmt.Sprintf("%s \u2192 %s", srcFmt, dest)
 }
 
 // Token compacts long strings like JWTs, Headers, or Cookies.
