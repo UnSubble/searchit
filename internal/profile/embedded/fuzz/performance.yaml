@@ -1,0 +1,32 @@
+schema: 1
+
+name: fuzz/performance
+tool: fuzz
+
+description: >
+  Maximum throughput profile for high-speed fuzzing.
+  Uses high thread count, minimal timeouts, and quiet output with no
+  interactive display. Ideal for broad wordlist fuzzing where raw speed
+  matters more than visibility.
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - performance
+  - speed
+  - throughput
+
+depends:
+  - fuzz/base
+
+experimental: false
+
+config:
+  threads: 256
+  timeout: 3
+  connect-timeout: 1
+  quiet: true
+  log-count: 0
+  random-agent: true

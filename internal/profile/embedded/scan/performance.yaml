@@ -1,0 +1,31 @@
+schema: 1
+
+name: scan/performance
+tool: scan
+
+description: >
+  Maximum throughput profile for high-speed scanning.
+  Uses high thread count, minimal timeouts, and quiet output with no
+  interactive display. Combine with a wordlist for maximum velocity.
+
+author: searchit
+license: MIT
+homepage: https://github.com/unsubble/searchit
+
+tags:
+  - performance
+  - speed
+  - throughput
+
+depends:
+  - scan/base
+
+experimental: false
+
+config:
+  threads: 256
+  timeout: 3
+  connect-timeout: 1
+  quiet: true
+  log-count: 0
+  random-agent: true
