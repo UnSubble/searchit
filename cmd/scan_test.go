@@ -99,6 +99,8 @@ func resetFlagsForTest() {
 
 	flagScanUserAgent = ""
 	flagScanRandomAgent = false
+	flagLogCount = 10
+	flagFuzzLogCount = 10
 
 	// Reset silence flags that may have been set by profile-loading failures
 	// in prior tests, which would suppress PreRunE errors in subsequent tests.
