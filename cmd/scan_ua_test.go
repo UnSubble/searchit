@@ -8,53 +8,50 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/useragent"
 )
 
-// runScanConfigHook runs the scan command to the testHookConfigApplied point
+// runScanConfigHook runs the scan command to the opts.testHookConfigApplied point
 // and returns the captured config. It does not make real network requests.
 func runScanConfigHook(t *testing.T, args []string) config.Config {
-	t.Helper()
-	resetFlagsForTest()
-	rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.SilenceErrors = false
-	scanCmd.SilenceUsage = false
+	cmd, opts := NewScanCmd()
+	_ = cmd
+	_ = opts
+	cmd.SilenceErrors = false
+	cmd.SilenceUsage = false
 
 	var captured config.Config
-	testHookConfigApplied = func(c config.Config) { captured = c }
-	defer func() { testHookConfigApplied = nil }()
+	opts.testHookConfigApplied = func(c config.Config) { captured = c }
 
-	rootCmd.SetArgs(args)
+	cmd.SetArgs(args)
 	ctx := context.Background()
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
+	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatalf("scan command failed: %v", err)
 	}
 	return captured
 }
 
 // --------------------------------------------------------------------------
-// Config-level tests (verify cfg fields via testHookConfigApplied)
+// Config-level tests (verify cfg fields via opts.testHookConfigApplied)
 // --------------------------------------------------------------------------
 
 func TestScanUA_ExplicitFlag(t *testing.T) {
-	cfg := runScanConfigHook(t, []string{"scan", "-u", "http://localhost", "--user-agent", "MyAgent/1.0"})
+	cfg := runScanConfigHook(t, []string{"-u", "http://localhost", "--user-agent", "MyAgent/1.0"})
 	if cfg.UserAgent != "MyAgent/1.0" {
 		t.Errorf("cfg.UserAgent = %q, want %q", cfg.UserAgent, "MyAgent/1.0")
 	}
 }
 
 func TestScanUA_RandomAgentFlag(t *testing.T) {
-	cfg := runScanConfigHook(t, []string{"scan", "-u", "http://localhost", "--random-agent"})
+	cfg := runScanConfigHook(t, []string{"-u", "http://localhost", "--random-agent"})
 	if !cfg.RandomAgent {
 		t.Error("cfg.RandomAgent should be true after --random-agent")
 	}
 }
 
 func TestScanUA_NoFlagsDefaultsToFalse(t *testing.T) {
-	cfg := runScanConfigHook(t, []string{"scan", "-u", "http://localhost"})
+	cfg := runScanConfigHook(t, []string{"-u", "http://localhost"})
 	if cfg.UserAgent != "" {
 		t.Errorf("cfg.UserAgent = %q, want empty", cfg.UserAgent)
 	}
@@ -83,16 +80,15 @@ func collectScanUAs(t *testing.T, args []string) []string {
 	}))
 	t.Cleanup(srv.Close)
 
-	resetFlagsForTest()
-	rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.SilenceErrors = false
-	scanCmd.SilenceUsage = false
+	cmd, opts := NewScanCmd()
+	_ = opts
+	cmd.SilenceErrors = false
+	cmd.SilenceUsage = false
 
 	// Use a single-line wordlist (scan.go itself) so the scan terminates quickly.
-	fullArgs := append([]string{"scan", "-u", srv.URL, "-w", "scan.go", "-t", "1"}, args...)
-	rootCmd.SetArgs(fullArgs)
-	_ = rootCmd.ExecuteContext(context.Background())
+	fullArgs := append([]string{"-u", srv.URL, "-w", "scan.go", "-t", "1"}, args...)
+	cmd.SetArgs(fullArgs)
+	_ = cmd.ExecuteContext(context.Background())
 
 	mu.Lock()
 	defer mu.Unlock()

@@ -8,40 +8,38 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/useragent"
 )
 
-// runFuzzConfigHook runs the fuzz command to the testHookConfigApplied point
+// runFuzzConfigHook runs the fuzz command to the opts.testHookConfigApplied point
 // and returns the captured config. It does not make real network requests.
 func runFuzzConfigHook(t *testing.T, args []string) config.Config {
 	t.Helper()
-	flagFuzzURL = "http://localhost/FUZZ"
-	flagFuzzWordlist = ""
-	flagFuzzMethod = "GET"
-	flagFuzzHeaders = nil
-	flagFuzzThreads = 32
-	flagFuzzTimeout = 10
-	flagFuzzExcludeStat = "404"
-	flagFuzzQuiet = false
-	flagFuzzProfiles = nil
-	flagFuzzStrategy = "eager"
-	flagFuzzUserAgent = ""
-	flagFuzzRandomAgent = false
-	fuzzCmd.SilenceErrors = false
-	fuzzCmd.SilenceUsage = false
-
-	rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	fuzzCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	cmd, opts := NewFuzzCmd()
+	_ = opts
+	_ = cmd
+	opts.URL = "http://localhost/FUZZ"
+	opts.Wordlist = ""
+	opts.Method = "GET"
+	opts.Headers = nil
+	opts.Threads = 32
+	opts.Timeout = 10
+	opts.ExcludeStatus = "404"
+	opts.Quiet = false
+	opts.Profiles = nil
+	opts.Strategy = "eager"
+	opts.UserAgent = ""
+	opts.RandomAgent = false
+	cmd.SilenceErrors = false
+	cmd.SilenceUsage = false
 
 	var captured config.Config
-	testHookConfigApplied = func(c config.Config) { captured = c }
-	defer func() { testHookConfigApplied = nil }()
+	opts.testHookConfigApplied = func(c config.Config) { captured = c }
 
-	rootCmd.SetArgs(args)
+	cmd.SetArgs(args)
 	ctx := context.Background()
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
+	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatalf("fuzz command failed: %v", err)
 	}
 	return captured
@@ -52,21 +50,21 @@ func runFuzzConfigHook(t *testing.T, args []string) config.Config {
 // --------------------------------------------------------------------------
 
 func TestFuzzUA_ExplicitFlag(t *testing.T) {
-	cfg := runFuzzConfigHook(t, []string{"fuzz", "-w", "fuzz.go", "--user-agent", "FuzzAgent/3.0"})
+	cfg := runFuzzConfigHook(t, []string{"-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--user-agent", "FuzzAgent/3.0"})
 	if cfg.UserAgent != "FuzzAgent/3.0" {
 		t.Errorf("cfg.UserAgent = %q, want %q", cfg.UserAgent, "FuzzAgent/3.0")
 	}
 }
 
 func TestFuzzUA_RandomAgentFlag(t *testing.T) {
-	cfg := runFuzzConfigHook(t, []string{"fuzz", "-w", "fuzz.go", "--random-agent"})
+	cfg := runFuzzConfigHook(t, []string{"-u", "http://localhost/FUZZ", "-w", "fuzz.go", "--random-agent"})
 	if !cfg.RandomAgent {
 		t.Error("cfg.RandomAgent should be true after --random-agent")
 	}
 }
 
 func TestFuzzUA_NoFlagsDefaultsToFalse(t *testing.T) {
-	cfg := runFuzzConfigHook(t, []string{"fuzz", "-w", "fuzz.go"})
+	cfg := runFuzzConfigHook(t, []string{"-u", "http://localhost/FUZZ", "-w", "fuzz.go"})
 	if cfg.UserAgent != "" {
 		t.Errorf("cfg.UserAgent = %q, want empty", cfg.UserAgent)
 	}
@@ -95,28 +93,29 @@ func collectFuzzUAs(t *testing.T, extraArgs []string) []string {
 	}))
 	t.Cleanup(srv.Close)
 
-	flagFuzzURL = ""
-	flagFuzzWordlist = ""
-	flagFuzzMethod = "GET"
-	flagFuzzHeaders = nil
-	flagFuzzThreads = 1
-	flagFuzzTimeout = 10
-	flagFuzzExcludeStat = "404"
-	flagFuzzQuiet = true
-	flagFuzzProfiles = nil
-	flagFuzzStrategy = "eager"
-	flagFuzzUserAgent = ""
-	flagFuzzRandomAgent = false
-	fuzzCmd.SilenceErrors = true
-	fuzzCmd.SilenceUsage = true
+	cmd, opts := NewFuzzCmd()
+	_ = cmd
+	_ = opts
 
-	rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	fuzzCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	opts.URL = ""
+	opts.Wordlist = ""
+	opts.Method = "GET"
+	opts.Headers = nil
+	opts.Threads = 1
+	opts.Timeout = 10
+	opts.ExcludeStatus = "404"
+	opts.Quiet = true
+	opts.Profiles = nil
+	opts.Strategy = "eager"
+	opts.UserAgent = ""
+	opts.RandomAgent = false
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
 
 	// Use fuzz.go as a tiny wordlist so the run completes quickly.
-	fullArgs := append([]string{"fuzz", "-u", srv.URL + "/FUZZ", "-w", "fuzz.go", "-t", "1", "--quiet"}, extraArgs...)
-	rootCmd.SetArgs(fullArgs)
-	_ = rootCmd.ExecuteContext(context.Background())
+	fullArgs := append([]string{"-u", srv.URL + "/FUZZ", "-w", "fuzz.go", "-t", "1", "--quiet"}, extraArgs...)
+	cmd.SetArgs(fullArgs)
+	_ = cmd.ExecuteContext(context.Background())
 
 	mu.Lock()
 	defer mu.Unlock()

@@ -10,27 +10,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/targets"
 )
 
 func runScanProfileTest(args []string, hook func(config.Config)) error {
-	resetFlagsForTest()
-	flagURL = "http://localhost" // Default target URL to satisfy validation
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
+	opts.URL = "http://localhost" // Default target URL to satisfy validation
 
 	// Reset silence flags that prior failing tests may have set.
-	scanCmd.SilenceErrors = false
-	scanCmd.SilenceUsage = false
+	cmd.SilenceErrors = false
+	cmd.SilenceUsage = false
 
 	// Set test hook
-	testHookConfigApplied = hook
-	defer func() { testHookConfigApplied = nil }()
+	opts.testHookConfigApplied = hook
+	defer func() { opts.testHookConfigApplied = nil }()
 
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs(args)
 
 	return cmd.ExecuteContext(context.Background())
@@ -267,7 +265,9 @@ func TestScanProfile_DuplicateProfileLoading(t *testing.T) {
 }
 
 func TestScanProfile_OutputText(t *testing.T) {
-	resetFlagsForTest()
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -276,34 +276,30 @@ func TestScanProfile_OutputText(t *testing.T) {
 		os.Stdout = oldStdout
 	}()
 
-	flagURL = "http://localhost"
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagNormalizePaths = false
-	flagCollapseSlashes = false
-	flagOutput = ""
-	flagFormat = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
-	flagProfiles = []string{"scan/quick"}
-	resolvedTargets = []targets.Target{{URL: "http://localhost"}}
-
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	opts.URL = "http://localhost"
+	opts.URLFile = ""
+	opts.Wordlist = ""
+	opts.Threads = 32
+	opts.Timeout = 10
+	opts.Recursive = false
+	opts.MaxDepth = 3
+	opts.Strategy = "bfs"
+	opts.ExcludeStatus = "404"
+	opts.RecurseOn = "200,301,302,403"
+	opts.NormalizePaths = false
+	opts.CollapseSlashes = false
+	opts.Output = ""
+	opts.Format = "text"
+	opts.Quiet = false
+	opts.IncludeSize = ""
+	opts.ExcludeSize = ""
+	opts.IncludeHeaders = nil
+	opts.ExcludeHeaders = nil
+	opts.Delay = ""
+	opts.Rate = 0
+	opts.ConnectTimeout = "3s"
+	opts.Profiles = []string{"scan/quick"}
+	opts.resolvedTargets = []targets.Target{{URL: "http://localhost"}}
 
 	cmd.SetArgs([]string{"scan", "--profile", "scan/quick", "-u", "http://localhost"})
 
@@ -325,7 +321,9 @@ func TestScanProfile_OutputText(t *testing.T) {
 }
 
 func TestScanProfile_OutputJSON(t *testing.T) {
-	resetFlagsForTest()
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -334,34 +332,30 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 		os.Stdout = oldStdout
 	}()
 
-	flagURL = "http://localhost"
-	flagURLFile = ""
-	flagWordlist = ""
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagNormalizePaths = false
-	flagCollapseSlashes = false
-	flagOutput = ""
-	flagFormat = "json"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
-	flagProfiles = []string{"scan/quick"}
-	resolvedTargets = []targets.Target{{URL: "http://localhost"}}
-
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	opts.URL = "http://localhost"
+	opts.URLFile = ""
+	opts.Wordlist = ""
+	opts.Threads = 32
+	opts.Timeout = 10
+	opts.Recursive = false
+	opts.MaxDepth = 3
+	opts.Strategy = "bfs"
+	opts.ExcludeStatus = "404"
+	opts.RecurseOn = "200,301,302,403"
+	opts.NormalizePaths = false
+	opts.CollapseSlashes = false
+	opts.Output = ""
+	opts.Format = "json"
+	opts.Quiet = false
+	opts.IncludeSize = ""
+	opts.ExcludeSize = ""
+	opts.IncludeHeaders = nil
+	opts.ExcludeHeaders = nil
+	opts.Delay = ""
+	opts.Rate = 0
+	opts.ConnectTimeout = "3s"
+	opts.Profiles = []string{"scan/quick"}
+	opts.resolvedTargets = []targets.Target{{URL: "http://localhost"}}
 
 	cmd.SetArgs([]string{"scan", "--profile", "scan/quick", "-u", "http://localhost", "--format", "json"})
 

@@ -16,121 +16,10 @@ import (
 	"github.com/unsubble/searchit/internal/targets"
 )
 
-func resetFlagsForTest() {
-	flagURL = ""
-	flagURLFile = ""
-	flagWordlist = ""
-	flagScanExt = nil
-	flagThreads = 32
-	flagTimeout = 10
-	flagRecursive = false
-	flagMaxDepth = 3
-	flagStrategy = "bfs"
-	flagExcludeStatus = "404"
-	flagRecurseOn = "200,301,302,403"
-	flagNormalizePaths = false
-	flagCollapseSlashes = false
-	flagOutput = ""
-	flagFormat = "text"
-	flagQuiet = false
-	flagIncludeSize = ""
-	flagExcludeSize = ""
-	flagIncludeHeaders = nil
-	flagExcludeHeaders = nil
-	flagDelay = ""
-	flagRate = 0
-	flagConnectTimeout = "3s"
-	flagProfiles = nil
-	flagNoProgress = false
-	flagTech = ""
-	flagShowHeaders = false
-	flagRequestFile = ""
-	flagMatchStatus = ""
-	flagFilterStatus = ""
-	flagMatchSize = ""
-	flagFilterSize = ""
-	flagMatchRegex = nil
-	flagFilterRegex = nil
-	flagMatchContent = nil
-	flagFilterContent = nil
-	flagFollowRedirects = false
-	flagMaxRedirects = 10
-	resolvedTargets = nil
-
-	// Reset fuzz flag variables
-	flagFuzzURL = ""
-	flagFuzzWordlist = ""
-	flagFuzzExt = nil
-	flagFuzzFoo = ""
-	flagFuzzBar = ""
-	flagFuzzBuzz = ""
-	flagFuzzMethod = "GET"
-	flagFuzzData = ""
-	flagFuzzHeaders = nil
-	flagFuzzThreads = 32
-	flagFuzzTimeout = 10
-	flagFuzzExcludeStat = "404"
-	flagFuzzIncSize = ""
-	flagFuzzExcSize = ""
-	flagFuzzOutput = ""
-	flagFuzzFormat = "text"
-	flagFuzzQuiet = false
-	flagFuzzDelay = ""
-	flagFuzzRate = 0
-	flagFuzzCookie = ""
-	flagFuzzProxy = ""
-	flagFuzzMatchStatus = ""
-	flagFuzzFilterStatus = ""
-	flagFuzzMatchSize = ""
-	flagFuzzFilterSize = ""
-	flagFuzzMatchRegex = nil
-	flagFuzzFilterRegex = nil
-	flagFuzzMatchContent = nil
-	flagFuzzFilterContent = nil
-	flagFuzzShowHeaders = false
-	flagFuzzShowTitle = false
-	flagFuzzRequestFile = ""
-	flagFuzzProfiles = nil
-	flagFuzzFollowRedirects = false
-	flagFuzzMaxRedirects = 10
-	flagFuzzStrategy = "eager"
-	flagFuzzUserAgent = ""
-	flagFuzzRandomAgent = false
-
-	flagScanUserAgent = ""
-	flagScanRandomAgent = false
-	flagLogCount = 10
-	flagFuzzLogCount = 10
-
-	// Reset silence flags that may have been set by profile-loading failures
-	// in prior tests, which would suppress PreRunE errors in subsequent tests.
-	scanCmd.SilenceErrors = false
-	scanCmd.SilenceUsage = false
-	fuzzCmd.SilenceErrors = false
-	fuzzCmd.SilenceUsage = false
-
-	// Reset Changed state on all flags of both commands, and explicitly reset help flags.
-	rootCmd.Flags().VisitAll(func(f *pflag.Flag) {
-		f.Changed = false
-		if f.Name == "help" {
-			_ = f.Value.Set("false")
-		}
-	})
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) {
-		f.Changed = false
-		if f.Name == "help" {
-			_ = f.Value.Set("false")
-		}
-	})
-	fuzzCmd.Flags().VisitAll(func(f *pflag.Flag) {
-		f.Changed = false
-		if f.Name == "help" {
-			_ = f.Value.Set("false")
-		}
-	})
-}
-
 func TestCLI_Validation(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	tests := []struct {
 		name    string
 		args    []string
@@ -143,127 +32,127 @@ func TestCLI_Validation(t *testing.T) {
 		},
 		{
 			name:    "valid basic url",
-			args:    []string{"scan", "-u", "http://localhost"},
+			args:    []string{"-u", "http://localhost"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid threads",
-			args:    []string{"scan", "-u", "http://localhost", "-t", "0"},
+			args:    []string{"-u", "http://localhost", "-t", "0"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid strategy",
-			args:    []string{"scan", "-u", "http://localhost", "--strategy", "invalid"},
+			args:    []string{"-u", "http://localhost", "--strategy", "invalid"},
 			wantErr: true,
 		},
 		{
 			name:    "max-depth without recursive",
-			args:    []string{"scan", "-u", "http://localhost", "--max-depth", "5"},
+			args:    []string{"-u", "http://localhost", "--max-depth", "5"},
 			wantErr: true,
 		},
 		{
 			name:    "max-depth with recursive",
-			args:    []string{"scan", "-u", "http://localhost", "-r", "--max-depth", "5"},
+			args:    []string{"-u", "http://localhost", "-r", "--max-depth", "5"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid max-depth with recursive",
-			args:    []string{"scan", "-u", "http://localhost", "-r", "--max-depth", "0"},
+			args:    []string{"-u", "http://localhost", "-r", "--max-depth", "0"},
 			wantErr: true,
 		},
 		{
 			name:    "recurse-on without recursive",
-			args:    []string{"scan", "-u", "http://localhost", "--recurse-on", "200"},
+			args:    []string{"-u", "http://localhost", "--recurse-on", "200"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid recurse-on format",
-			args:    []string{"scan", "-u", "http://localhost", "-r", "--recurse-on", "abc"},
+			args:    []string{"-u", "http://localhost", "-r", "--recurse-on", "abc"},
 			wantErr: true,
 		},
 		{
 			name:    "valid recurse-on wildcard",
-			args:    []string{"scan", "-u", "http://localhost", "-r", "--recurse-on", "2xx"},
+			args:    []string{"-u", "http://localhost", "-r", "--recurse-on", "2xx"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid format name",
-			args:    []string{"scan", "-u", "http://localhost", "--format", "invalid"},
+			args:    []string{"-u", "http://localhost", "--format", "invalid"},
 			wantErr: true,
 		},
 		{
 			name:    "explicit text format",
-			args:    []string{"scan", "-u", "http://localhost", "--format", "text"},
+			args:    []string{"-u", "http://localhost", "--format", "text"},
 			wantErr: false,
 		},
 		{
 			name:    "explicit json format",
-			args:    []string{"scan", "-u", "http://localhost", "--format", "json"},
+			args:    []string{"-u", "http://localhost", "--format", "json"},
 			wantErr: false,
 		},
 		{
 			name:    "explicit ndjson format",
-			args:    []string{"scan", "-u", "http://localhost", "--format", "ndjson"},
+			args:    []string{"-u", "http://localhost", "--format", "ndjson"},
 			wantErr: false,
 		},
 		{
 			name:    "explicit csv format",
-			args:    []string{"scan", "-u", "http://localhost", "--format", "csv"},
+			args:    []string{"-u", "http://localhost", "--format", "csv"},
 			wantErr: false,
 		},
 		{
 			name:    "explicit markdown format",
-			args:    []string{"scan", "-u", "http://localhost", "--format", "markdown"},
+			args:    []string{"-u", "http://localhost", "--format", "markdown"},
 			wantErr: false,
 		},
 		{
 			name:    "output file path is valid",
-			args:    []string{"scan", "-u", "http://localhost", "-o", filepath.Join(t.TempDir(), "searchit_test_output.json")},
+			args:    []string{"-u", "http://localhost", "-o", filepath.Join(t.TempDir(), "searchit_test_output.json")},
 			wantErr: false,
 		},
 		{
 			name:    "output is a directory returns error",
-			args:    []string{"scan", "-u", "http://localhost", "-o", t.TempDir()},
+			args:    []string{"-u", "http://localhost", "-o", t.TempDir()},
 			wantErr: true,
 		},
 		{
 			name:    "invalid include-size format",
-			args:    []string{"scan", "-u", "http://localhost", "--include-size", "abc"},
+			args:    []string{"-u", "http://localhost", "--include-size", "abc"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid exclude-size range bounds",
-			args:    []string{"scan", "-u", "http://localhost", "--exclude-size", "200-100"},
+			args:    []string{"-u", "http://localhost", "--exclude-size", "200-100"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid include-header missing equal",
-			args:    []string{"scan", "-u", "http://localhost", "--include-header", "Server"},
+			args:    []string{"-u", "http://localhost", "--include-header", "Server"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid exclude-header empty value",
-			args:    []string{"scan", "-u", "http://localhost", "--exclude-header", "Server="},
+			args:    []string{"-u", "http://localhost", "--exclude-header", "Server="},
 			wantErr: true,
 		},
 		{
 			name:    "invalid include-header empty name",
-			args:    []string{"scan", "-u", "http://localhost", "--include-header", "=nginx"},
+			args:    []string{"-u", "http://localhost", "--include-header", "=nginx"},
 			wantErr: true,
 		},
 		{
 			name:    "valid include-header and exclude-size",
-			args:    []string{"scan", "-u", "http://localhost", "--include-header", "Server=nginx", "--exclude-size", "0,123"},
+			args:    []string{"-u", "http://localhost", "--include-header", "Server=nginx", "--exclude-size", "0,123"},
 			wantErr: false,
 		},
 		{
 			name:    "valid quiet mode option long-form",
-			args:    []string{"scan", "-u", "http://localhost", "--quiet"},
+			args:    []string{"-u", "http://localhost", "--quiet"},
 			wantErr: false,
 		},
 		{
 			name:    "valid quiet mode option shorthand",
-			args:    []string{"scan", "-u", "http://localhost", "-q"},
+			args:    []string{"-u", "http://localhost", "-q"},
 			wantErr: false,
 		},
 		{
@@ -273,83 +162,81 @@ func TestCLI_Validation(t *testing.T) {
 		},
 		{
 			name:    "missing URL file",
-			args:    []string{"scan", "--url-file", "nonexistent.txt"},
+			args:    []string{"--url-file", "nonexistent.txt"},
 			wantErr: true,
 		},
 		{
 			name:    "multiple target URLs via comma-separated list",
-			args:    []string{"scan", "-u", "http://a.com,http://b.com"},
+			args:    []string{"-u", "http://a.com,http://b.com"},
 			wantErr: false,
 		},
 		{
 			name:    "valid delay 100ms",
-			args:    []string{"scan", "-u", "http://localhost", "--delay", "100ms"},
+			args:    []string{"-u", "http://localhost", "--delay", "100ms"},
 			wantErr: false,
 		},
 		{
 			name:    "valid delay 1s",
-			args:    []string{"scan", "-u", "http://localhost", "--delay", "1s"},
+			args:    []string{"-u", "http://localhost", "--delay", "1s"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid delay format",
-			args:    []string{"scan", "-u", "http://localhost", "--delay", "abc"},
+			args:    []string{"-u", "http://localhost", "--delay", "abc"},
 			wantErr: true,
 		},
 		{
 			name:    "valid rate float",
-			args:    []string{"scan", "-u", "http://localhost", "--rate", "25.5"},
+			args:    []string{"-u", "http://localhost", "--rate", "25.5"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid rate float format",
-			args:    []string{"scan", "-u", "http://localhost", "--rate", "abc"},
+			args:    []string{"-u", "http://localhost", "--rate", "abc"},
 			wantErr: true,
 		},
 		{
 			name:    "negative rate float",
-			args:    []string{"scan", "-u", "http://localhost", "--rate", "-5.5"},
+			args:    []string{"-u", "http://localhost", "--rate", "-5.5"},
 			wantErr: true,
 		},
 		{
 			name:    "zero rate float explicitly passed",
-			args:    []string{"scan", "-u", "http://localhost", "--rate", "0"},
+			args:    []string{"-u", "http://localhost", "--rate", "0"},
 			wantErr: true,
 		},
 		{
 			name:    "valid connect-timeout",
-			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "500ms"},
+			args:    []string{"-u", "http://localhost", "--connect-timeout", "500ms"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid connect-timeout format",
-			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "abc"},
+			args:    []string{"-u", "http://localhost", "--connect-timeout", "abc"},
 			wantErr: true,
 		},
 		{
 			name:    "negative connect-timeout",
-			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "-5s"},
+			args:    []string{"-u", "http://localhost", "--connect-timeout", "-5s"},
 			wantErr: true,
 		},
 		{
 			name:    "zero connect-timeout",
-			args:    []string{"scan", "-u", "http://localhost", "--connect-timeout", "0"},
+			args:    []string{"-u", "http://localhost", "--connect-timeout", "0"},
 			wantErr: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			cmd, opts := NewScanCmd()
+			_ = opts
+			_ = cmd
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			rootCmd.SetContext(ctx)
-			scanCmd.SetContext(ctx)
-			resetFlagsForTest()
+			cmd.SetContext(ctx)
 
-			cmd := rootCmd
-			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-			scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 			cmd.SetArgs(tc.args)
 
 			buf := new(bytes.Buffer)
@@ -372,6 +259,9 @@ func TestEmbeddedWordlistFallback(t *testing.T) {
 }
 
 func TestCLI_StartupInformation(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	tests := []struct {
 		name       string
 		args       []string
@@ -380,7 +270,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 	}{
 		{
 			name: "default recurse-on (excludes 404)",
-			args: []string{"scan", "-u", "http://localhost", "-r"},
+			args: []string{"-u", "http://localhost", "-r"},
 			wantPrints: []string{
 				"Target                       http://localhost",
 				"Mode                         Recursive",
@@ -390,7 +280,7 @@ func TestCLI_StartupInformation(t *testing.T) {
 		},
 		{
 			name: "quiet mode with recurse-on prints startup messages",
-			args: []string{"scan", "-u", "http://localhost", "-r", "--quiet"},
+			args: []string{"-u", "http://localhost", "-r", "--quiet"},
 			omitPrints: []string{
 				"Target                       http://localhost",
 				"Mode                         Recursive",
@@ -402,17 +292,15 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			cmd, opts := NewScanCmd()
+			_ = opts
+			_ = cmd
 			// Provide enough time for startup info to print, but don't hang if there's no server
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
 
-			rootCmd.SetContext(ctx)
-			scanCmd.SetContext(ctx)
-			resetFlagsForTest()
+			cmd.SetContext(ctx)
 
-			cmd := rootCmd
-			cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-			scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 			cmd.SetArgs(tc.args)
 
 			buf := new(bytes.Buffer)
@@ -453,17 +341,15 @@ func TestCLI_StartupInformation(t *testing.T) {
 }
 
 func TestCLI_PathFlags(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	rootCmd.SetContext(ctx)
-	scanCmd.SetContext(ctx)
-	resetFlagsForTest()
+	cmd.SetContext(ctx)
 
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	cmd.SetArgs([]string{"scan", "-u", "http://localhost", "--normalize-paths", "--collapse-slashes"})
+	cmd.SetArgs([]string{"-u", "http://localhost", "--normalize-paths", "--collapse-slashes"})
 
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
@@ -471,25 +357,23 @@ func TestCLI_PathFlags(t *testing.T) {
 
 	_ = cmd.ExecuteContext(ctx)
 
-	if !flagNormalizePaths {
-		t.Error("expected flagNormalizePaths to be true when --normalize-paths is supplied")
+	if !opts.NormalizePaths {
+		t.Error("expected opts.NormalizePaths to be true when --normalize-paths is supplied")
 	}
-	if !flagCollapseSlashes {
-		t.Error("expected flagCollapseSlashes to be true when --collapse-slashes is supplied")
+	if !opts.CollapseSlashes {
+		t.Error("expected opts.CollapseSlashes to be true when --collapse-slashes is supplied")
 	}
 }
 
 func TestCLI_ShorthandsValueBinding(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	rootCmd.SetContext(ctx)
-	scanCmd.SetContext(ctx)
-	resetFlagsForTest()
+	cmd.SetContext(ctx)
 
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs([]string{
 		"scan",
 		"-u", "http://localhost",
@@ -510,47 +394,45 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 
 	_ = cmd.ExecuteContext(ctx)
 
-	if flagURL != "http://localhost" {
-		t.Errorf("expected flagURL='http://localhost', got %q", flagURL)
+	if opts.URL != "http://localhost" {
+		t.Errorf("expected opts.URL='http://localhost', got %q", opts.URL)
 	}
-	if flagWordlist != "my-wordlist.txt" {
-		t.Errorf("expected flagWordlist='my-wordlist.txt', got %q", flagWordlist)
+	if opts.Wordlist != "my-wordlist.txt" {
+		t.Errorf("expected opts.Wordlist='my-wordlist.txt', got %q", opts.Wordlist)
 	}
-	if flagThreads != 64 {
-		t.Errorf("expected flagThreads=64, got %d", flagThreads)
+	if opts.Threads != 64 {
+		t.Errorf("expected opts.Threads=64, got %d", opts.Threads)
 	}
-	if !flagRecursive {
-		t.Error("expected flagRecursive to be true")
+	if !opts.Recursive {
+		t.Error("expected opts.Recursive to be true")
 	}
-	if flagMaxDepth != 5 {
-		t.Errorf("expected flagMaxDepth=5, got %d", flagMaxDepth)
+	if opts.MaxDepth != 5 {
+		t.Errorf("expected opts.MaxDepth=5, got %d", opts.MaxDepth)
 	}
-	if flagStrategy != "dfs" {
-		t.Errorf("expected flagStrategy='dfs', got %q", flagStrategy)
+	if opts.Strategy != "dfs" {
+		t.Errorf("expected opts.Strategy='dfs', got %q", opts.Strategy)
 	}
-	if flagExcludeStatus != "404,500" {
-		t.Errorf("expected flagExcludeStatus='404,500', got %q", flagExcludeStatus)
+	if opts.ExcludeStatus != "404,500" {
+		t.Errorf("expected opts.ExcludeStatus='404,500', got %q", opts.ExcludeStatus)
 	}
-	if flagFormat != "ndjson" {
-		t.Errorf("expected flagFormat='ndjson', got %q", flagFormat)
+	if opts.Format != "ndjson" {
+		t.Errorf("expected opts.Format='ndjson', got %q", opts.Format)
 	}
-	if len(flagIncludeHeaders) != 2 || flagIncludeHeaders[0] != "Server=nginx" || flagIncludeHeaders[1] != "X-Header=val" {
-		t.Errorf("expected flagIncludeHeaders=[Server=nginx, X-Header=val], got %v", flagIncludeHeaders)
+	if len(opts.IncludeHeaders) != 2 || opts.IncludeHeaders[0] != "Server=nginx" || opts.IncludeHeaders[1] != "X-Header=val" {
+		t.Errorf("expected opts.IncludeHeaders=[Server=nginx, X-Header=val], got %v", opts.IncludeHeaders)
 	}
 }
 
 func TestCLI_QuietMode_StartupPrints(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	rootCmd.SetContext(ctx)
-	scanCmd.SetContext(ctx)
-	resetFlagsForTest()
+	cmd.SetContext(ctx)
 
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	cmd.SetArgs([]string{"scan", "-u", "http://localhost", "-r", "--quiet"})
+	cmd.SetArgs([]string{"-u", "http://localhost", "-r", "--quiet"})
 
 	// Capture stdout
 	r, w, err := os.Pipe()
@@ -577,6 +459,9 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 }
 
 func TestCLI_MultipleTargetsAndFile(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "targets.txt")
 	content := "http://b.com\nhttp://c.com\n"
@@ -587,14 +472,9 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	rootCmd.SetContext(ctx)
-	scanCmd.SetContext(ctx)
-	resetFlagsForTest()
+	cmd.SetContext(ctx)
 
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	cmd.SetArgs([]string{"scan", "-u", "http://a.com", "--url-file", filePath})
+	cmd.SetArgs([]string{"-u", "http://a.com", "--url-file", filePath})
 
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
@@ -607,24 +487,22 @@ func TestCLI_MultipleTargetsAndFile(t *testing.T) {
 		{URL: "http://b.com", ID: 2},
 		{URL: "http://c.com", ID: 3},
 	}
-	if !reflect.DeepEqual(resolvedTargets, wantTargets) {
-		t.Errorf("resolvedTargets = %v, want %v", resolvedTargets, wantTargets)
+	if !reflect.DeepEqual(opts.resolvedTargets, wantTargets) {
+		t.Errorf("opts.resolvedTargets = %v, want %v", opts.resolvedTargets, wantTargets)
 	}
 }
 
 func TestCLI_ProgressFlags(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	rootCmd.SetContext(context.Background())
-	scanCmd.SetContext(context.Background())
-	resetFlagsForTest()
-
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	cmd.SetContext(context.Background())
 
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
-	cmd.SetArgs([]string{"scan", "--help"})
+	cmd.SetArgs([]string{"--help"})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -726,6 +604,9 @@ func shouldEnableProgressWith(cfg config.Config, noProgress bool, isTerminal boo
 }
 
 func TestCLI_TechFlag(t *testing.T) {
+	cmd, opts := NewScanCmd()
+	_ = opts
+	_ = cmd
 	tests := []struct {
 		name    string
 		args    []string
@@ -733,60 +614,61 @@ func TestCLI_TechFlag(t *testing.T) {
 	}{
 		{
 			name:    "valid tech laravel",
-			args:    []string{"scan", "-u", "http://localhost", "--tech", "laravel"},
+			args:    []string{"-u", "http://localhost", "--tech", "laravel"},
 			wantErr: false,
 		},
 		{
 			name:    "valid tech spring",
-			args:    []string{"scan", "-u", "http://localhost", "--tech", "spring"},
+			args:    []string{"-u", "http://localhost", "--tech", "spring"},
 			wantErr: false,
 		},
 		{
 			name:    "valid tech uppercase",
-			args:    []string{"scan", "-u", "http://localhost", "--tech", "LARAVEL"},
+			args:    []string{"-u", "http://localhost", "--tech", "LARAVEL"},
 			wantErr: false,
 		},
 		{
 			name:    "valid tech mixed case",
-			args:    []string{"scan", "-u", "http://localhost", "--tech", "WordPress"},
+			args:    []string{"-u", "http://localhost", "--tech", "WordPress"},
 			wantErr: false,
 		},
 		{
 			name:    "unknown tech rejected",
-			args:    []string{"scan", "-u", "http://localhost", "--tech", "rails"},
+			args:    []string{"-u", "http://localhost", "--tech", "rails"},
 			wantErr: true,
 		},
 		{
 			name:    "empty tech treated as no tech specified",
-			args:    []string{"scan", "-u", "http://localhost", "--tech", ""},
+			args:    []string{"-u", "http://localhost", "--tech", ""},
 			wantErr: false,
 		},
 		{
 			name:    "no tech flag is valid",
-			args:    []string{"scan", "-u", "http://localhost"},
+			args:    []string{"-u", "http://localhost"},
 			wantErr: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			cmd, opts := NewScanCmd()
+			_ = opts
+			_ = cmd
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			rootCmd.SetContext(ctx)
-			scanCmd.SetContext(ctx)
-			resetFlagsForTest()
+			cmd.SetContext(ctx)
 			rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-			scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-			rootCmd.SetArgs(tc.args)
+
+			cmd.SetArgs(tc.args)
 
 			buf := new(bytes.Buffer)
-			rootCmd.SetOut(buf)
-			rootCmd.SetErr(buf)
-			testHookConfigApplied = func(config.Config) {}
-			defer func() { testHookConfigApplied = nil }()
+			cmd.SetOut(buf)
+			cmd.SetErr(buf)
+			opts.testHookConfigApplied = func(config.Config) {}
+			defer func() { opts.testHookConfigApplied = nil }()
 
-			err := rootCmd.ExecuteContext(ctx)
+			err := cmd.ExecuteContext(ctx)
 			if tc.wantErr && err == nil {
 				t.Error("expected error, got nil")
 			}
@@ -799,31 +681,31 @@ func TestCLI_TechFlag(t *testing.T) {
 
 func TestApplyCLIOverrides_TechProfile(t *testing.T) {
 	runWithTech := func(t *testing.T, techArg string) config.Config {
+		cmd, opts := NewScanCmd()
+		_ = opts
+		_ = cmd
 		t.Helper()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		rootCmd.SetContext(ctx)
-		scanCmd.SetContext(ctx)
-		resetFlagsForTest()
+		cmd.SetContext(ctx)
 		rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-		scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 
-		args := []string{"scan", "-u", "http://localhost"}
+		args := []string{"-u", "http://localhost"}
 		if techArg != "" {
 			args = append(args, "--tech", techArg)
 		}
-		rootCmd.SetArgs(args)
+		cmd.SetArgs(args)
 
 		buf := new(bytes.Buffer)
-		rootCmd.SetOut(buf)
-		rootCmd.SetErr(buf)
+		cmd.SetOut(buf)
+		cmd.SetErr(buf)
 
 		var got config.Config
-		testHookConfigApplied = func(c config.Config) { got = c }
-		defer func() { testHookConfigApplied = nil }()
+		opts.testHookConfigApplied = func(c config.Config) { got = c }
+		defer func() { opts.testHookConfigApplied = nil }()
 
-		if err := rootCmd.ExecuteContext(ctx); err != nil {
+		if err := cmd.ExecuteContext(ctx); err != nil {
 			t.Fatalf("Execute() error: %v", err)
 		}
 		return got

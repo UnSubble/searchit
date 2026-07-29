@@ -6,56 +6,53 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
 )
 
 func runFuzzProfileTest(args []string, hook func(config.Config)) error {
-	// Reset all fuzz flag variables
-	flagFuzzURL = "http://localhost/FUZZ"
-	flagFuzzWordlist = ""
-	flagFuzzFoo = ""
-	flagFuzzBar = ""
-	flagFuzzBuzz = ""
-	flagFuzzMethod = "GET"
-	flagFuzzData = ""
-	flagFuzzHeaders = nil
-	flagFuzzThreads = 32
-	flagFuzzTimeout = 10
-	flagFuzzExcludeStat = "404"
-	flagFuzzIncSize = ""
-	flagFuzzExcSize = ""
-	flagFuzzOutput = ""
-	flagFuzzFormat = "text"
-	flagFuzzQuiet = false
-	flagFuzzDelay = ""
-	flagFuzzRate = 0
-	flagFuzzCookie = ""
-	flagFuzzProxy = ""
-	flagFuzzMatchStatus = ""
-	flagFuzzFilterStatus = ""
-	flagFuzzMatchSize = ""
-	flagFuzzFilterSize = ""
-	flagFuzzMatchRegex = nil
-	flagFuzzFilterRegex = nil
-	flagFuzzMatchContent = nil
-	flagFuzzFilterContent = nil
-	flagFuzzShowHeaders = false
-	flagFuzzShowTitle = false
-	flagFuzzRequestFile = ""
-	flagFuzzProfiles = nil
-	flagFuzzStrategy = ""
-	flagFuzzAdaptive = false
+	cmd, opts := NewFuzzCmd()
+	_ = cmd
+	_ = opts
+	opts.URL = "http://localhost/FUZZ"
+	opts.Wordlist = ""
+	opts.Foo = ""
+	opts.Bar = ""
+	opts.Buzz = ""
+	opts.Method = "GET"
+	opts.Data = ""
+	opts.Headers = nil
+	opts.Threads = 32
+	opts.Timeout = 10
+	opts.ExcludeStatus = "404"
+	opts.IncludeSize = ""
+	opts.ExcludeSize = ""
+	opts.Output = ""
+	opts.Format = "text"
+	opts.Quiet = false
+	opts.Delay = ""
+	opts.Rate = 0
+	opts.Cookie = ""
+	opts.Proxy = ""
+	opts.MatchStatus = ""
+	opts.FilterStatus = ""
+	opts.MatchSize = ""
+	opts.FilterSize = ""
+	opts.MatchRegex = nil
+	opts.FilterRegex = nil
+	opts.MatchContent = nil
+	opts.FilterContent = nil
+	opts.ShowHeaders = false
+	opts.ShowTitle = false
+	opts.Request = ""
+	opts.Profiles = nil
+	opts.Strategy = ""
+	opts.Adaptive = false
 
-	fuzzCmd.SilenceErrors = false
-	fuzzCmd.SilenceUsage = false
+	cmd.SilenceErrors = false
+	cmd.SilenceUsage = false
 
-	testHookConfigApplied = hook
-	defer func() { testHookConfigApplied = nil }()
+	opts.testHookConfigApplied = hook
 
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	fuzzCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	cmd.SetArgs(args)
 
 	defer func() {

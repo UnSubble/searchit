@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/pflag"
+	"github.com/spf13/cobra"
 )
 
 func TestQuietMode_Text(t *testing.T) {
@@ -149,13 +149,17 @@ func TestQuietMode_SuppressesProfilesAndRecursionAndAdaptive(t *testing.T) {
 }
 
 func runIntegrationCommandWithStderr(args []string) (string, string, error) {
-	rootCmd.SetContext(context.Background())
-	scanCmd.SetContext(context.Background())
-	resetFlagsForTest()
-
-	cmd := rootCmd
-	cmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-	scanCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	var cmd *cobra.Command
+	if len(args) > 0 && args[0] == "scan" {
+		cmd, _ = NewScanCmd()
+		args = args[1:]
+	} else if len(args) > 0 && args[0] == "fuzz" {
+		cmd, _ = NewFuzzCmd()
+		args = args[1:]
+	} else {
+		cmd = rootCmd
+	}
+	cmd.SetContext(context.Background())
 	cmd.SetArgs(args)
 
 	// Capture stdout using pipe
