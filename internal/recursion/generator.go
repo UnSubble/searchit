@@ -2,7 +2,6 @@ package recursion
 
 import (
 	"context"
-	"sync/atomic"
 
 	"github.com/unsubble/searchit/internal/adaptive/prioritizer"
 	"github.com/unsubble/searchit/internal/engine"
@@ -126,9 +125,6 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 	for word := range g.words {
 		cleaned, ok := wordlist.CleanWord(word, g.normalizePaths, g.collapseSlashes)
 		if !ok {
-			if g.statsCollector != nil {
-				g.statsCollector.AddTotalCandidates(-int64(1 + len(g.extensions)))
-			}
 			continue
 		}
 
@@ -136,16 +132,10 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 		for _, variant := range variants {
 			childURL, err := wordlist.Join(g.parentURL, variant)
 			if err != nil {
-				if g.statsCollector != nil {
-					g.statsCollector.AddTotalCandidates(-1)
-				}
 				continue
 			}
 			key := normalizeURL(childURL)
 			if _, seen := g.visited[key]; seen {
-				if g.statsCollector != nil {
-					g.statsCollector.AddTotalCandidates(-1)
-				}
 				continue
 			}
 
@@ -168,8 +158,6 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 			}
 
 			g.visited[key] = struct{}{}
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 
 			if isAdaptive && score > 50 {
 				if g.highPriorityCounter != nil {

@@ -642,9 +642,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}
 
 				collector := stats.NewCollector()
-				if totalWords > 0 {
-					collector.SetTotalCandidates(int64(totalWords))
-				}
 				var progMgr *progress.Manager
 				var renderer *progress.ANSIRenderer
 				var progCmdChan chan console.Command

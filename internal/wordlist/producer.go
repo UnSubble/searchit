@@ -90,11 +90,6 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 							continue
 						}
 
-						atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-						if p.Collector != nil {
-							p.Collector.RecordJobProduced()
-						}
-
 						select {
 						case <-ctx.Done():
 							stats.GlobalInstrumentation.LogEvent("context cancellation")
@@ -102,6 +97,10 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 							return
 						case jobs <- engine.Job{URL: url}:
 							atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+							if p.Collector != nil {
+								p.Collector.RecordJobProduced()
+								p.Collector.AddTotalCandidates(1)
+							}
 						}
 					}
 				}

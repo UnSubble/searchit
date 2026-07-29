@@ -170,12 +170,7 @@ func (m *Manager) Run(
 			key := normalizeURL(u)
 			if _, seen := visited[key]; !seen {
 				visited[key] = struct{}{}
-				atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-				atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 				m.MediumPriorityCount++
-				if m.stats != nil {
-					m.stats.AddTotalCandidates(1)
-				}
 				frontier.Push(NewSliceGenerator([]engine.Job{{URL: u, Depth: 0, Origin: engine.OriginProfile}}))
 			}
 		}
@@ -236,9 +231,6 @@ func (m *Manager) Run(
 					stats.GlobalInstrumentation.LogEvent("jobs channel close")
 					close(jobs)
 					for result := range results {
-						if m.stats != nil {
-							m.stats.RecordSearchSpaceProgress(1)
-						}
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 						if result.Accepted {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
@@ -249,6 +241,10 @@ func (m *Manager) Run(
 					return
 
 				case jobs <- nextJob:
+					if m.stats != nil {
+						m.stats.RecordJobProduced()
+						m.stats.AddTotalCandidates(1)
+					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsDispatched, 1)
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 					pending++
@@ -272,9 +268,6 @@ func (m *Manager) Run(
 					stats.GlobalInstrumentation.LogEvent("jobs channel close")
 					close(jobs)
 					for result := range results {
-						if m.stats != nil {
-							m.stats.RecordSearchSpaceProgress(1)
-						}
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 						if result.Accepted {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
@@ -319,9 +312,6 @@ func (m *Manager) handleResult(
 	injectedExpress map[string]bool,
 	onResult func(engine.Result),
 ) {
-	if m.stats != nil {
-		m.stats.RecordSearchSpaceProgress(1)
-	}
 
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
@@ -368,11 +358,6 @@ func (m *Manager) handleResult(
 		key := normalizeURL(result.RedirectURL)
 		if _, seen := visited[key]; !seen {
 			visited[key] = struct{}{}
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-			if m.stats != nil {
-				m.stats.AddTotalCandidates(1)
-			}
 			frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
 		}
 		return
@@ -435,8 +420,6 @@ func (m *Manager) handleResult(
 							key := normalizeURL(childURL)
 							if _, seen := visited[key]; !seen {
 								visited[key] = struct{}{}
-								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 								m.HighPriorityCount++
 								jobs = append(jobs, engine.Job{
 									URL:    childURL,
@@ -447,9 +430,6 @@ func (m *Manager) handleResult(
 						}
 					}
 					if len(jobs) > 0 {
-						if m.stats != nil {
-							m.stats.AddTotalCandidates(int64(len(jobs)))
-						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
@@ -465,8 +445,6 @@ func (m *Manager) handleResult(
 							key := normalizeURL(childURL)
 							if _, seen := visited[key]; !seen {
 								visited[key] = struct{}{}
-								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 								m.HighPriorityCount++
 								jobs = append(jobs, engine.Job{
 									URL:    childURL,
@@ -477,9 +455,6 @@ func (m *Manager) handleResult(
 						}
 					}
 					if len(jobs) > 0 {
-						if m.stats != nil {
-							m.stats.AddTotalCandidates(int64(len(jobs)))
-						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
@@ -495,8 +470,6 @@ func (m *Manager) handleResult(
 							key := normalizeURL(childURL)
 							if _, seen := visited[key]; !seen {
 								visited[key] = struct{}{}
-								atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-								atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 								m.HighPriorityCount++
 								jobs = append(jobs, engine.Job{
 									URL:    childURL,
@@ -507,9 +480,6 @@ func (m *Manager) handleResult(
 						}
 					}
 					if len(jobs) > 0 {
-						if m.stats != nil {
-							m.stats.AddTotalCandidates(int64(len(jobs)))
-						}
 						frontier.PushFront(NewSliceGenerator(jobs))
 					}
 				}
@@ -543,8 +513,6 @@ func (m *Manager) handleResult(
 					key := normalizeURL(resolvedStr)
 					if _, seen := visited[key]; !seen {
 						visited[key] = struct{}{}
-						atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-						atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 						m.HighPriorityCount++
 						jobs = append(jobs, engine.Job{
 							URL:    resolvedStr,
@@ -555,9 +523,6 @@ func (m *Manager) handleResult(
 				}
 			}
 			if len(jobs) > 0 {
-				if m.stats != nil {
-					m.stats.AddTotalCandidates(int64(len(jobs)))
-				}
 				frontier.PushFront(NewSliceGenerator(jobs))
 			}
 		}
@@ -613,10 +578,6 @@ func (m *Manager) handleResult(
 				}
 			}
 		}
-	}
-
-	if m.stats != nil {
-		m.stats.AddTotalCandidates(int64(m.baseWordlistSize))
 	}
 
 	gen := NewDirectoryGenerator(
@@ -754,12 +715,7 @@ func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier
 			continue
 		}
 		visited[key] = struct{}{}
-		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		m.MediumPriorityCount++
-		if m.stats != nil {
-			m.stats.AddTotalCandidates(1)
-		}
 		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: engine.OriginRobots}}))
 	}
 
@@ -813,12 +769,7 @@ func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robots
 			return
 		}
 		visited[key] = struct{}{}
-		atomic.AddInt64(&stats.GlobalInstrumentation.JobsAccepted, 1)
-		atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 		m.MediumPriorityCount++
-		if m.stats != nil {
-			m.stats.AddTotalCandidates(1)
-		}
 		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: origin}}))
 	})
 }
