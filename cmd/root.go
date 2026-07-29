@@ -38,12 +38,17 @@ func Execute() {
 
 	rootCmd.SetVersionTemplate(version.String() + "\n")
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
 func init() {
+	scanCmd, _ := NewScanCmd()
+	rootCmd.AddCommand(scanCmd)
+
+	fuzzCmd, _ := NewFuzzCmd()
+	rootCmd.AddCommand(fuzzCmd)
+
 	rootCmd.PersistentFlags().StringVarP(
 		&cfgFile,
 		"config",
