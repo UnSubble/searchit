@@ -38,20 +38,19 @@ func ExtractLinks(body []byte) []string {
 
 			for {
 				kBytes, vBytes, more := tokenizer.TagAttr()
-				k := string(kBytes)
-				v := strings.TrimSpace(string(vBytes))
 
-				if v != "" {
-					isTargetAttr := false
-					if (isA || isLink) && strings.EqualFold(k, "href") {
-						isTargetAttr = true
-					} else if (isScript || isImg) && strings.EqualFold(k, "src") {
-						isTargetAttr = true
-					} else if isForm && strings.EqualFold(k, "action") {
-						isTargetAttr = true
-					}
+				isTargetAttr := false
+				if (isA || isLink) && bytes.EqualFold(kBytes, []byte("href")) {
+					isTargetAttr = true
+				} else if (isScript || isImg) && bytes.EqualFold(kBytes, []byte("src")) {
+					isTargetAttr = true
+				} else if isForm && bytes.EqualFold(kBytes, []byte("action")) {
+					isTargetAttr = true
+				}
 
-					if isTargetAttr {
+				if isTargetAttr {
+					v := strings.TrimSpace(string(vBytes))
+					if v != "" {
 						// Skip fragments, javascript:, mailto:, tel:, etc.
 						vLower := strings.ToLower(v)
 						if !strings.HasPrefix(vLower, "javascript:") &&

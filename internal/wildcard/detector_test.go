@@ -60,3 +60,12 @@ func TestWildcardDetector(t *testing.T) {
 		t.Errorf("expected IsWildcard to return false for non-wildcard signature")
 	}
 }
+
+func BenchmarkDetector_Add(b *testing.B) {
+	d := wildcard.NewDetector()
+	sig := wildcard.Signature{StatusCode: 200, BodyHash: 12345, BodySize: 1024}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		d.Add("example.com", 1, sig)
+	}
+}

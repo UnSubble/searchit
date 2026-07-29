@@ -1,7 +1,6 @@
 package wildcard
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -12,11 +11,17 @@ type Signature struct {
 	BodySize   int64
 }
 
+// Key represents a unique host and recursion depth combination.
+type Key struct {
+	Host  string
+	Depth uint16
+}
+
 // Detector tracks response signatures to automatically detect wildcard behaviors.
 type Detector struct {
 	mu         sync.Mutex
-	history    map[string][]Signature // key: "host:depth"
-	wildcards  map[string]Signature   // key: "host:depth"
+	history    map[Key][]Signature
+	wildcards  map[Key]Signature
 	minSamples int
 	threshold  float64
 }
@@ -24,15 +29,11 @@ type Detector struct {
 // NewDetector creates a new wildcard Detector.
 func NewDetector() *Detector {
 	return &Detector{
-		history:    make(map[string][]Signature),
-		wildcards:  make(map[string]Signature),
+		history:    make(map[Key][]Signature),
+		wildcards:  make(map[Key]Signature),
 		minSamples: 20,
 		threshold:  0.8,
 	}
-}
-
-func makeKey(host string, depth uint16) string {
-	return fmt.Sprintf("%s:%d", host, depth)
 }
 
 // Add records a response signature at a given depth and returns the detected
@@ -41,7 +42,7 @@ func (d *Detector) Add(host string, depth uint16, sig Signature) (Signature, boo
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	key := makeKey(host, depth)
+	key := Key{Host: host, Depth: depth}
 	if wildcardSig, found := d.wildcards[key]; found {
 		return wildcardSig, sig == wildcardSig
 	}
@@ -79,7 +80,7 @@ func (d *Detector) IsWildcard(host string, depth uint16, sig Signature) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	key := makeKey(host, depth)
+	key := Key{Host: host, Depth: depth}
 	if wildcardSig, found := d.wildcards[key]; found {
 		return sig == wildcardSig
 	}
