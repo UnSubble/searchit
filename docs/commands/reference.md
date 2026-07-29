@@ -73,7 +73,7 @@ The `scan` command is used for directory and file enumeration.
 * `--no-progress`: Disable progress bar.
 
 ### Profile Options
-* `--profile`: Load options from a profile.
+* `--profile`: Apply one or more profiles (comma-separated).
 * `--proxy`: Use a proxy for requests.
 
 ## `searchit fuzz`
@@ -132,7 +132,7 @@ The `fuzz` command is used for advanced fuzzing, replacing placeholders in reque
 * `--no-progress`: Disable progress bar.
 
 ### Profile Options
-* `--profile`: Load options from a profile.
+* `--profile`: Apply one or more profiles (comma-separated).
 * `--proxy`: Use a proxy for requests.
 
 ## `searchit profile`

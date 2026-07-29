@@ -76,7 +76,7 @@ func TestScanProfile_MultipleProfiles(t *testing.T) {
 	var captured config.Config
 	// scan/quick sets threads: 64, timeout: 5
 	// scan/deep sets threads: 16, timeout: 30, recursive: true, max-depth: 5
-	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick", "--profile", "scan/deep"}, func(cfg config.Config) {
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick,scan/deep"}, func(cfg config.Config) {
 		captured = cfg
 	})
 	if err != nil {
@@ -98,7 +98,7 @@ func TestScanProfile_MultipleProfiles(t *testing.T) {
 func TestScanProfile_OverlayOrdering(t *testing.T) {
 	var captured config.Config
 	// Use paranoid and lightspeed
-	err := runScanProfileTest([]string{"scan", "--profile", "scan/paranoid", "--profile", "scan/lightspeed"}, func(cfg config.Config) {
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/paranoid,scan/lightspeed"}, func(cfg config.Config) {
 		captured = cfg
 	})
 	if err != nil {
@@ -253,7 +253,7 @@ config:
 
 func TestScanProfile_DuplicateProfileLoading(t *testing.T) {
 	var captured config.Config
-	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick", "--profile", "scan/quick"}, func(cfg config.Config) {
+	err := runScanProfileTest([]string{"scan", "--profile", "scan/quick,scan/quick"}, func(cfg config.Config) {
 		captured = cfg
 	})
 	if err != nil {

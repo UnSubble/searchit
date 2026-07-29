@@ -67,6 +67,7 @@ type ScanOptions struct {
 	Rate            float64
 	ConnectTimeout  string
 	Profiles        []string
+	RawProfile      string
 	NoProgress      bool
 	Tech            string
 	FollowRedirects bool
@@ -142,6 +143,15 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		Use:   "scan",
 		Short: "Scan a target URL",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if opts.RawProfile != "" {
+				for _, p := range strings.Split(opts.RawProfile, ",") {
+					p = strings.TrimSpace(p)
+					if p != "" {
+						opts.Profiles = append(opts.Profiles, p)
+					}
+				}
+			}
+
 			if opts.Threads < 1 {
 				return fmt.Errorf("threads must be at least 1")
 			}
@@ -330,47 +340,50 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			var appliedProfiles []string
 			if len(opts.Profiles) > 0 {
 				store := profile.NewStore()
-				res := resolver.New(store)
-				resolved, err := res.Resolve(opts.Profiles)
-				if err != nil {
-					cmd.SilenceErrors = true
-					cmd.SilenceUsage = true
-					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
-					return fmt.Errorf("load failed")
-				}
 
-				for _, p := range resolved {
-					appliedProfiles = append(appliedProfiles, p.Name)
-
-					// Validate (generic)
-					if err := profile.Validate(p); err != nil {
+				for _, profileName := range opts.Profiles {
+					res := resolver.New(store)
+					resolved, err := res.Resolve([]string{profileName})
+					if err != nil {
 						cmd.SilenceErrors = true
 						cmd.SilenceUsage = true
 						fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
-						return fmt.Errorf("validation failed")
+						return fmt.Errorf("load failed")
 					}
 
-					// Validate (tool-specific)
-					if v := profile.GetValidator(p.Tool); v != nil {
-						if err := v.Validate(p); err != nil {
+					for _, p := range resolved {
+						appliedProfiles = append(appliedProfiles, p.Name)
+
+						// Validate (generic)
+						if err := profile.Validate(p); err != nil {
 							cmd.SilenceErrors = true
 							cmd.SilenceUsage = true
 							fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
 							return fmt.Errorf("validation failed")
 						}
-					}
 
-					// Decode into scan.Overlay
-					var overlay scanProfile.Overlay
-					if err := p.Decode(&overlay); err != nil {
-						cmd.SilenceErrors = true
-						cmd.SilenceUsage = true
-						fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
-						return fmt.Errorf("decode failed")
-					}
+						// Validate (tool-specific)
+						if v := profile.GetValidator(p.Tool); v != nil {
+							if err := v.Validate(p); err != nil {
+								cmd.SilenceErrors = true
+								cmd.SilenceUsage = true
+								fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+								return fmt.Errorf("validation failed")
+							}
+						}
 
-					// Apply
-					scanProfile.Apply(&cfg, overlay)
+						// Decode into scan.Overlay
+						var overlay scanProfile.Overlay
+						if err := p.Decode(&overlay); err != nil {
+							cmd.SilenceErrors = true
+							cmd.SilenceUsage = true
+							fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+							return fmt.Errorf("decode failed")
+						}
+
+						// Apply
+						scanProfile.Apply(&cfg, overlay)
+					}
 				}
 			}
 
@@ -1132,12 +1145,12 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"timeout for establishing new TCP connections",
 	)
 
-	cmd.Flags().StringSliceVarP(
-		&opts.Profiles,
+	cmd.Flags().StringVarP(
+		&opts.RawProfile,
 		"profile",
 		"p",
-		nil,
-		"profile(s) to apply (e.g. scan/quick); may be specified multiple times",
+		"",
+		"apply one or more profiles (comma-separated)",
 	)
 
 	cmd.Flags().BoolVar(

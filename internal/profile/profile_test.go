@@ -184,6 +184,9 @@ func TestListProfiles(t *testing.T) {
 }
 
 func TestListProfiles_AllBuiltin(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 	store := profile.NewStore()
 	profiles, err := store.List()
 	if err != nil {
@@ -441,6 +444,9 @@ func TestEmbeddedProfiles_ToolField(t *testing.T) {
 }
 
 func TestEmbeddedProfiles_DescriptionField(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 	store := profile.NewStore()
 	profiles, err := store.List()
 	if err != nil {

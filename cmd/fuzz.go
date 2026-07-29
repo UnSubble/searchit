@@ -59,6 +59,8 @@ type FuzzOptions struct {
 	Output          string
 	Format          string
 	LogCount        int
+	Profiles        []string
+	RawProfile      string
 	Quiet           bool
 	FollowRedirects bool
 	MaxRedirects    int
@@ -86,7 +88,6 @@ type FuzzOptions struct {
 	ShowHeaders     bool
 	ShowTitle       bool
 	RandomAgent     bool
-	Profiles        []string
 	NoProgress      bool
 
 	resolvedFuzzTargets   []targets.Target
@@ -146,6 +147,15 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 		Use:   "fuzz",
 		Short: "Fuzz parameters, paths, subdomains and bodies",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if opts.RawProfile != "" {
+				for _, p := range strings.Split(opts.RawProfile, ",") {
+					p = strings.TrimSpace(p)
+					if p != "" {
+						opts.Profiles = append(opts.Profiles, p)
+					}
+				}
+			}
+
 			hasURL := opts.URL != "" || opts.Request != ""
 			hasProfiles := len(opts.Profiles) > 0
 
@@ -350,42 +360,45 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			// Apply profiles if specified
 			if len(opts.Profiles) > 0 {
 				store := profile.NewStore()
-				resolved, err := resolver.New(store).Resolve(opts.Profiles)
-				if err != nil {
-					cmd.SilenceErrors = true
-					cmd.SilenceUsage = true
-					fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profiles: %v\n", err)
-					return fmt.Errorf("load failed")
-				}
 
-				for _, p := range resolved {
-					// Validate (generic)
-					if err := profile.Validate(p); err != nil {
+				for _, profileName := range opts.Profiles {
+					resolved, err := resolver.New(store).Resolve([]string{profileName})
+					if err != nil {
 						cmd.SilenceErrors = true
 						cmd.SilenceUsage = true
 						fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
-						return fmt.Errorf("validation failed")
+						return fmt.Errorf("load failed")
 					}
 
-					// Validate (tool-specific)
-					if v := profile.GetValidator(p.Tool); v != nil {
-						if err := v.Validate(p); err != nil {
+					for _, p := range resolved {
+						// Validate (generic)
+						if err := profile.Validate(p); err != nil {
 							cmd.SilenceErrors = true
 							cmd.SilenceUsage = true
 							fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
 							return fmt.Errorf("validation failed")
 						}
-					}
 
-					// Decode and Apply
-					var overlay fuzzProfile.Overlay
-					if err := p.Decode(&overlay); err != nil {
-						cmd.SilenceErrors = true
-						cmd.SilenceUsage = true
-						fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
-						return fmt.Errorf("decode failed")
+						// Validate (tool-specific)
+						if v := profile.GetValidator(p.Tool); v != nil {
+							if err := v.Validate(p); err != nil {
+								cmd.SilenceErrors = true
+								cmd.SilenceUsage = true
+								fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+								return fmt.Errorf("validation failed")
+							}
+						}
+
+						// Decode and Apply
+						var overlay fuzzProfile.Overlay
+						if err := p.Decode(&overlay); err != nil {
+							cmd.SilenceErrors = true
+							cmd.SilenceUsage = true
+							fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
+							return fmt.Errorf("decode failed")
+						}
+						fuzzProfile.Apply(&cfg, overlay)
 					}
-					fuzzProfile.Apply(&cfg, overlay)
 				}
 			}
 
@@ -1006,7 +1019,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().BoolVar(&opts.ShowHeaders, "show-headers", false, "show response headers in output")
 	cmd.Flags().BoolVar(&opts.ShowTitle, "show-title", false, "show HTML titles in output")
 	cmd.Flags().StringVar(&opts.Request, "request", "", "load raw HTTP request template from file")
-	cmd.Flags().StringSliceVarP(&opts.Profiles, "profile", "p", nil, "load one or more predefined fuzz profiles")
+	cmd.Flags().StringVarP(&opts.RawProfile, "profile", "p", "", "apply one or more profiles (comma-separated)")
 	cmd.Flags().BoolVar(&opts.FollowRedirects, "follow-redirects", false, "follow HTTP redirects")
 	cmd.Flags().IntVar(&opts.MaxRedirects, "max-redirects", 10, "maximum redirect limit")
 	cmd.Flags().StringVarP(&opts.Strategy, "strategy", "s", "eager", "Traversal strategy (eager, bfs, dfs)")
