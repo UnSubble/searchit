@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync/atomic"
 
 	"github.com/unsubble/searchit/internal/stats"
@@ -12,11 +11,11 @@ import (
 
 // Generator produces RequestDTO instances by replacing placeholders in templates.
 type Generator struct {
-	urlTemplate     string
+	urlTemplate     GenCompiledTemplate
 	method          string
-	bodyTemplate    string
-	headerTemplates http.Header
-	cookieTemplate  string
+	bodyTemplate    GenCompiledTemplate
+	headerTemplates []GenCompiledHeader
+	cookieTemplate  GenCompiledTemplate
 
 	fooWords  []string
 	barWords  []string
@@ -37,12 +36,24 @@ func NewGenerator(
 	if method == "" {
 		method = http.MethodGet
 	}
+
+	var compiledHeaders []GenCompiledHeader
+	for k, values := range headerTemplates {
+		ch := GenCompiledHeader{
+			Key: CompileGenTemplate(k),
+		}
+		for _, v := range values {
+			ch.Values = append(ch.Values, CompileGenTemplate(v))
+		}
+		compiledHeaders = append(compiledHeaders, ch)
+	}
+
 	return &Generator{
-		urlTemplate:     urlTemplate,
+		urlTemplate:     CompileGenTemplate(urlTemplate),
 		method:          method,
-		bodyTemplate:    bodyTemplate,
-		headerTemplates: headerTemplates,
-		cookieTemplate:  cookieTemplate,
+		bodyTemplate:    CompileGenTemplate(bodyTemplate),
+		headerTemplates: compiledHeaders,
+		cookieTemplate:  CompileGenTemplate(cookieTemplate),
 		fooWords:        fooWords,
 		barWords:        barWords,
 		buzzWords:       buzzWords,
@@ -96,30 +107,32 @@ func (g *Generator) generatePermutations(
 				default:
 				}
 
-				urlStr := g.replacePlaceholders(g.urlTemplate, fuzzVal, fooVal, barVal, buzzVal)
+				values := [4]string{fuzzVal, fooVal, barVal, buzzVal}
+
+				urlStr := g.urlTemplate.Render(values)
 				if _, err := url.Parse(urlStr); err != nil {
 					atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
 					continue
 				}
 
 				var bodyStr string
-				if g.bodyTemplate != "" {
-					bodyStr = g.replacePlaceholders(g.bodyTemplate, fuzzVal, fooVal, barVal, buzzVal)
+				if len(g.bodyTemplate.Segments) > 0 {
+					bodyStr = g.bodyTemplate.Render(values)
 				}
 
 				headers := make(http.Header)
-				for k, values := range g.headerTemplates {
-					newK := g.replacePlaceholders(k, fuzzVal, fooVal, barVal, buzzVal)
+				for _, ch := range g.headerTemplates {
+					newK := ch.Key.Render(values)
 					var newValues []string
-					for _, val := range values {
-						newValues = append(newValues, g.replacePlaceholders(val, fuzzVal, fooVal, barVal, buzzVal))
+					for _, val := range ch.Values {
+						newValues = append(newValues, val.Render(values))
 					}
 					headers[newK] = newValues
 				}
 
 				var cookieStr string
-				if g.cookieTemplate != "" {
-					cookieStr = g.replacePlaceholders(g.cookieTemplate, fuzzVal, fooVal, barVal, buzzVal)
+				if len(g.cookieTemplate.Segments) > 0 {
+					cookieStr = g.cookieTemplate.Render(values)
 				}
 
 				select {
@@ -136,13 +149,4 @@ func (g *Generator) generatePermutations(
 			}
 		}
 	}
-}
-
-func (g *Generator) replacePlaceholders(template, fuzzVal, fooVal, barVal, buzzVal string) string {
-	res := template
-	res = strings.ReplaceAll(res, "FUZZ", fuzzVal)
-	res = strings.ReplaceAll(res, "FOO", fooVal)
-	res = strings.ReplaceAll(res, "BAR", barVal)
-	res = strings.ReplaceAll(res, "BUZZ", buzzVal)
-	return res
 }
