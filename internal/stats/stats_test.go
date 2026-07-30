@@ -349,3 +349,30 @@ func TestCollector_PeakReqPerSec_NeverDecreases(t *testing.T) {
 		t.Errorf("expected peak req/s > 0 after sending requests, got %.2f", lastPeak)
 	}
 }
+
+func TestCollector_BytesReceivedNegativeProtection(t *testing.T) {
+	c := stats.NewCollector()
+
+	// Passing negative byte counts (e.g. -1 for unknown ContentLength) must NEVER accumulate negative values
+	c.RecordResponseReceived(404, -1)
+	c.RecordResponseReceived(500, -1)
+	c.RecordResponseReceived(200, -1)
+
+	snap := c.Snapshot()
+	if snap.ResponsesReceived != 3 {
+		t.Errorf("expected 3 responses received, got %d", snap.ResponsesReceived)
+	}
+	if snap.BytesReceived < 0 {
+		t.Errorf("BytesReceived MUST NOT be negative, got %d", snap.BytesReceived)
+	}
+	if snap.BytesReceived != 0 {
+		t.Errorf("expected 0 bytes received when all lengths are -1, got %d", snap.BytesReceived)
+	}
+
+	// Adding valid positive bytes should accumulate properly
+	c.RecordResponseReceived(200, 500)
+	snap2 := c.Snapshot()
+	if snap2.BytesReceived != 500 {
+		t.Errorf("expected 500 bytes received, got %d", snap2.BytesReceived)
+	}
+}

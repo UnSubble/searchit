@@ -101,7 +101,9 @@ func (c *Collector) RecordSkipped(n int64) {
 // RecordResponseReceived increments total responses, updates status code counters and byte counts.
 func (c *Collector) RecordResponseReceived(statusCode int, bytes int64) {
 	atomic.AddInt64(&c.responsesReceived, 1)
-	atomic.AddInt64(&c.bytesReceived, bytes)
+	if bytes > 0 {
+		atomic.AddInt64(&c.bytesReceived, bytes)
+	}
 	if statusCode >= 0 && statusCode < 1000 {
 		atomic.AddInt64(&c.statusCodes[statusCode], 1)
 	}

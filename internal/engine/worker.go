@@ -33,14 +33,15 @@ func sendResult(results chan<- Result, res Result) {
 	results <- res
 }
 
-func drainAndClose(body io.ReadCloser) {
+func drainAndClose(body io.ReadCloser) int64 {
 	if body == nil {
-		return
+		return 0
 	}
 	// Limit read to 2048 bytes to discard small/typical bodies (like 404 responses),
 	// allowing persistent TCP connection reuse without unbounded memory overhead.
-	_, _ = io.Copy(io.Discard, io.LimitReader(body, 2048))
+	n, _ := io.Copy(io.Discard, io.LimitReader(body, 2048))
 	body.Close()
+	return n
 }
 
 // Worker executes the response pipeline for incoming jobs.
@@ -206,9 +207,13 @@ func process(
 
 	// Stage 1: Match Headers (Status, Content-Type, Size)
 	if !fs.MatchHeaders(resp.StatusCode, length, contentType) {
-		drainAndClose(resp.Body)
+		drained := drainAndClose(resp.Body)
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, length)
+			recLen := length
+			if recLen < 0 {
+				recLen = drained
+			}
+			collector.RecordResponseReceived(resp.StatusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
@@ -224,9 +229,13 @@ func process(
 
 	// Stage 2: Headers (General Response HeaderFilter)
 	if !AcceptHeaders(resp, incHeaders, excHeaders) {
-		drainAndClose(resp.Body)
+		drained := drainAndClose(resp.Body)
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, length)
+			recLen := length
+			if recLen < 0 {
+				recLen = drained
+			}
+			collector.RecordResponseReceived(resp.StatusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
@@ -259,9 +268,14 @@ func process(
 	}
 
 	// Late Size Filter Evaluation
+	recLen := length
+	if recLen < 0 {
+		recLen = int64(len(bodyBytes)) + extra
+	}
+
 	if length != -1 && ((len(fs.MatchSize) > 0 && !fs.MatchSize.Match(length)) || (len(fs.FilterSize) > 0 && fs.FilterSize.Match(length))) {
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordResponseReceived(resp.StatusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
@@ -278,7 +292,7 @@ func process(
 
 	if readErr != nil || !fs.MatchBody(bodyBytes) {
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, length)
+			collector.RecordResponseReceived(resp.StatusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
@@ -304,7 +318,7 @@ func process(
 	}
 
 	if collector != nil {
-		collector.RecordResponseReceived(resp.StatusCode, length)
+		collector.RecordResponseReceived(resp.StatusCode, recLen)
 		collector.RecordRequestSucceeded()
 		collector.RecordDiscovered()
 	}
