@@ -92,6 +92,7 @@ func TestChaos_WorkerEdgeCases(t *testing.T) {
 				0,
 				nil,
 				nil,
+				3,
 			)
 			m.SetDisableWildcard(true)
 
@@ -155,6 +156,7 @@ func TestChaos_HighScaleStarvationAndGrowth(t *testing.T) {
 		0,
 		nil,
 		nil,
+		int64(len(words)),
 	)
 	m.SetDisableWildcard(true)
 
@@ -215,6 +217,7 @@ func TestChaos_DeterministicWorkerMatrix(t *testing.T) {
 				0,
 				nil,
 				a.FingerprintCache,
+				1,
 			)
 			m.SetDisableWildcard(true)
 

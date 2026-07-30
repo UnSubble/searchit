@@ -62,6 +62,7 @@ func TestAdaptive_DisabledByDefault(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -111,6 +112,7 @@ func TestAdaptive_EnabledExplicitly(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -166,6 +168,7 @@ func TestAdaptive_LaravelNotDetected(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -215,6 +218,7 @@ func TestAdaptive_DeduplicationAndDuplicateDiscoveries(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -270,6 +274,7 @@ func TestAdaptive_MultiTargetIsolation(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results1 []engine.Result
@@ -342,6 +347,7 @@ func TestAdaptive_WorkerCountsDeterminism(t *testing.T) {
 				0,
 				nil,
 				a.FingerprintCache,
+				100,
 			)
 
 			var results []engine.Result
@@ -392,6 +398,7 @@ func TestAdaptive_Redirects(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -445,6 +452,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 			0,
 			nil,
 			a.FingerprintCache,
+			100,
 		)
 
 		var results []engine.Result
@@ -482,6 +490,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 			0,
 			nil,
 			a.FingerprintCache,
+			100,
 		)
 
 		var results []engine.Result
@@ -519,6 +528,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 			0,
 			nil,
 			a.FingerprintCache,
+			100,
 		)
 
 		var results []engine.Result
@@ -566,6 +576,7 @@ func TestAdaptive_BFS_DFS(t *testing.T) {
 			0,
 			nil,
 			a.FingerprintCache,
+			100,
 		)
 
 		var results []engine.Result
@@ -615,6 +626,7 @@ func TestAdaptive_Cancellation(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	// Trigger cancellation immediately after reading first result
@@ -662,6 +674,7 @@ func TestAdaptive_EmptyWordlist(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -710,6 +723,7 @@ func TestAdaptive_RobotsSitemapFailures(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -751,6 +765,7 @@ func TestAdaptive_SchedulerStarvation(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	// Run with 128 workers on empty wordlist. Verify it completes instantly and does not hang.
@@ -822,6 +837,7 @@ func BenchmarkAdaptive_SchedulerOverhead(b *testing.B) {
 			0,
 			nil,
 			a.FingerprintCache,
+			100,
 		)
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 	}
@@ -894,6 +910,7 @@ func runStrategyBenchmark(b *testing.B, strategy recursion.Strategy, adaptive bo
 			0,
 			nil,
 			a.FingerprintCache,
+			100,
 		)
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 	}

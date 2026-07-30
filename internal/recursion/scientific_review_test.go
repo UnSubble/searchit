@@ -62,6 +62,7 @@ func TestScientific_HTMLStarvation(t *testing.T) {
 				0,
 				nil,
 				nil,
+				100,
 			)
 			m.SetDisableWildcard(true)
 
@@ -121,6 +122,7 @@ func TestScientific_WildcardBoundary(t *testing.T) {
 			0,
 			nil,
 			nil,
+			100,
 		)
 
 		var results []engine.Result
@@ -183,6 +185,7 @@ func TestScientific_WildcardBoundary(t *testing.T) {
 			0,
 			nil,
 			nil,
+			100,
 		)
 
 		var results []engine.Result
@@ -253,6 +256,7 @@ func TestScientific_SuppressionMixed(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -322,6 +326,7 @@ func TestScientific_PrioritizationRatio(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
@@ -370,6 +375,7 @@ func TestScientific_Metrics(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var count int

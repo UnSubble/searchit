@@ -68,6 +68,7 @@ func TestHarden_ZeroTargets(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	done := make(chan struct{})
@@ -115,6 +116,7 @@ func TestHarden_OneTarget(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var results []engine.Result
@@ -159,6 +161,7 @@ func TestHarden_OneHundredTargets(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var targets []string
@@ -208,6 +211,7 @@ func TestHarden_EmptyWordlists(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var results []engine.Result
@@ -252,6 +256,7 @@ func TestHarden_DuplicatedWordlists(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var results []engine.Result
@@ -300,6 +305,7 @@ func TestHarden_MaxDepthBoundary(t *testing.T) {
 				0,
 				nil,
 				nil,
+				100,
 			)
 
 			var results []engine.Result
@@ -356,6 +362,7 @@ func TestHarden_WorkerCounts(t *testing.T) {
 				0,
 				nil,
 				nil,
+				100,
 			)
 
 			var results []engine.Result
@@ -408,6 +415,7 @@ func TestHarden_AdaptiveToggle(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results1 []engine.Result
@@ -440,6 +448,7 @@ func TestHarden_AdaptiveToggle(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var results2 []engine.Result
@@ -507,6 +516,7 @@ func TestHarden_Redirects(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	// Inject custom roundtripper directly inside manager client
@@ -560,6 +570,7 @@ func TestHarden_Cancellation(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -613,6 +624,7 @@ func TestHarden_RobotsSitemapFailures(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var results []engine.Result
@@ -660,6 +672,7 @@ func TestHarden_RecursionFailures(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	var results []engine.Result
@@ -704,6 +717,7 @@ func TestHarden_MalformedURLs(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	// Scan with a malformed URL alongside normal URL
@@ -749,6 +763,7 @@ func TestHarden_DuplicateDiscoveries(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	// Double seed url list. Verify deduplication.
@@ -809,6 +824,7 @@ func TestHarden_RecursivePathInjections(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		100,
 	)
 
 	var results []engine.Result
@@ -871,6 +887,7 @@ func TestHarden_SchedulerStarvation(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	done := make(chan struct{})

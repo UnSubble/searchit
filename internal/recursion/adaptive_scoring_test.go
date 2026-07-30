@@ -44,6 +44,7 @@ func TestAdaptive_WordPressDetectionAndPathInjection(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		0,
 	)
 
 	var results []engine.Result
@@ -102,6 +103,7 @@ func TestAdaptive_ExpressDetectionAndPathInjection(t *testing.T) {
 		0,
 		nil,
 		a.FingerprintCache,
+		0,
 	)
 
 	var results []engine.Result
@@ -163,6 +165,7 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 			0,
 			nil,
 			a.FingerprintCache,
+			0,
 		)
 
 		var results []engine.Result
@@ -225,6 +228,7 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 			0,
 			nil,
 			a.FingerprintCache,
+			0,
 		)
 
 		var results []engine.Result
