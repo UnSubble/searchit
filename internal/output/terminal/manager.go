@@ -162,11 +162,11 @@ type Manager struct {
 	owner Owner
 }
 
-// New creates a Manager writing to w. Pass os.Stdout for production.
+// New creates a Manager writing to w. Pass os.Stderr for production.
 // In tests, pass a *bytes.Buffer or similar for isolation.
 func New(w io.Writer) *Manager {
 	if w == nil {
-		w = os.Stdout
+		w = os.Stderr
 	}
 	return &Manager{out: w}
 }

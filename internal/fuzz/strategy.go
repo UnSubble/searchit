@@ -874,9 +874,9 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 			return scoredItems[i].score > scoredItems[j].score
 		})
 		for _, item := range scoredItems {
-			fmt.Fprintf(os.Stdout, "    %-15s %s\n", item.word, presentation.Number(int64(item.score)))
+			fmt.Fprintf(os.Stderr, "    %-15s %s\n", item.word, presentation.Number(int64(item.score)))
 		}
-		fmt.Fprint(os.Stdout, "\nTraversal decisions:\n\n")
+		fmt.Fprint(os.Stderr, "\nTraversal decisions:\n\n")
 	}
 
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
@@ -949,7 +949,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, yield ResultCallb
 
 			if !r.Quiet {
 				val := fmt.Sprintf("%s (rule: %s)", dec.Policy, dec.Rule)
-				fmt.Fprintf(os.Stdout, "    %-12s %s\n", "/"+fooVal, val)
+				fmt.Fprintf(os.Stderr, "    %-12s %s\n", "/"+fooVal, val)
 			}
 
 			decisions = append(decisions, branchDecision{
