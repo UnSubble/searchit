@@ -118,6 +118,7 @@ func NewManager(
 		limiter:          limiter,
 		fingerprintCache: fingerprintCache,
 		wildcardDetector: wildcard.NewDetector(),
+		disableWildcard:  true,
 	}
 }
 
@@ -232,11 +233,7 @@ func (m *Manager) Run(
 					close(jobs)
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						if result.Accepted {
-							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
-						} else {
-							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
-						}
+						m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 					}
 					return
 
@@ -269,11 +266,7 @@ func (m *Manager) Run(
 					close(jobs)
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						if result.Accepted {
-							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
-						} else {
-							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
-						}
+						m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 					}
 					return
 				case result, ok := <-results:
@@ -337,11 +330,17 @@ func (m *Manager) handleResult(
 			}
 			atomic.AddInt64(&stats.GlobalInstrumentation.RequestsFiltered, 1)
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
+			if m.stats != nil {
+				m.stats.RecordWildcardFiltered()
+			}
 			return
 		}
 	}
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
+
+	// Always deliver accepted result to the output callback.
+	onResult(result)
 
 	// If it's a redirect response (3xx), enqueue the destination URL to be scanned and return
 	if result.RedirectURL != "" && result.StatusCode >= 300 && result.StatusCode < 400 {
@@ -349,7 +348,6 @@ func (m *Manager) handleResult(
 			stats.GlobalInstrumentation.LogEvent("context cancellation")
 			return
 		}
-		onResult(result)
 
 		if result.Depth >= m.maxDepth {
 			return
@@ -367,7 +365,6 @@ func (m *Manager) handleResult(
 		stats.GlobalInstrumentation.LogEvent("context cancellation")
 		return
 	}
-	onResult(result)
 
 	if result.Depth >= m.maxDepth {
 		return

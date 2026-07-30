@@ -106,6 +106,12 @@ func (c *Collector) RecordDiscovered() {
 	atomic.AddInt64(&c.discovered, 1)
 }
 
+// RecordWildcardFiltered adjusts counters when a response is identified as a wildcard.
+func (c *Collector) RecordWildcardFiltered() {
+	atomic.AddInt64(&c.discovered, -1)
+	atomic.AddInt64(&c.requestsFiltered, 1)
+}
+
 // RecordInvalidWord increments the invalid words counter.
 func (c *Collector) RecordInvalidWord() {
 	atomic.AddInt64(&c.invalidWords, 1)
