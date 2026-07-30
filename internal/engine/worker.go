@@ -46,7 +46,8 @@ func drainAndClose(body io.ReadCloser) {
 // Worker executes the response pipeline for incoming jobs.
 // Pipeline: Status -> Headers -> Content-Length -> Body
 func Worker(
-	ctx context.Context,
+	targetCtx context.Context,
+	execCtx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
 	incHeaders, excHeaders []HeaderFilter,
@@ -61,6 +62,9 @@ func Worker(
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
 ) {
+	if execCtx == nil {
+		execCtx = targetCtx
+	}
 	atomic.AddInt64(&stats.GlobalInstrumentation.WorkersStarted, 1)
 	defer func() {
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersExited, 1)
@@ -72,9 +76,13 @@ func Worker(
 		defer collector.DecrementActiveWorkers()
 	}
 	for job := range jobs {
+		if targetCtx != nil && targetCtx.Err() != nil {
+			return
+		}
+
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, 1)
 		if pauseBlocker != nil {
-			if err := pauseBlocker(ctx); err != nil {
+			if err := pauseBlocker(targetCtx); err != nil {
 				atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
 				return
 			}
@@ -82,24 +90,21 @@ func Worker(
 
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
 		if limiter != nil {
-			err := limiter.Wait(ctx)
+			err := limiter.Wait(targetCtx)
 			if err != nil {
 				atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRej, 1)
 				atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
-				continue
+				return
 			}
 		}
 
-		process(ctx, client, fs, incHeaders, excHeaders, method, body, headers, cookieStr, job, results, collector)
+		process(targetCtx, execCtx, client, fs, incHeaders, excHeaders, method, body, headers, cookieStr, job, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
-		if collector != nil {
-			collector.RecordSearchSpaceProgress(1)
-		}
 
 		if delay > 0 {
 			select {
-			case <-ctx.Done():
+			case <-targetCtx.Done():
 				stats.GlobalInstrumentation.LogEvent("context cancellation")
 				return
 			case <-time.After(delay):
@@ -109,7 +114,8 @@ func Worker(
 }
 
 func process(
-	ctx context.Context,
+	targetCtx context.Context,
+	execCtx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
 	incHeaders, excHeaders []HeaderFilter,
@@ -121,8 +127,8 @@ func process(
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
-	if collector != nil {
-		collector.RecordRequestSent()
+	if targetCtx != nil && targetCtx.Err() != nil {
+		return
 	}
 
 	if method == "" {
@@ -133,10 +139,16 @@ func process(
 		bodyReader = bytes.NewReader(body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, job.URL, bodyReader)
+	reqCtx := execCtx
+	if reqCtx == nil {
+		reqCtx = targetCtx
+	}
+
+	req, err := http.NewRequestWithContext(reqCtx, method, job.URL, bodyReader)
 	if err != nil {
 		if collector != nil {
 			collector.RecordRequestFailed()
+			collector.RecordSkipped(1)
 		}
 		sendResult(results, Result{
 			URL:      job.URL,
@@ -165,6 +177,10 @@ func process(
 
 	startTime := time.Now()
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsSent, 1)
+	if collector != nil {
+		collector.RecordRequestSent()
+		collector.RecordTried()
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector != nil {

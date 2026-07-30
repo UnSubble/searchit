@@ -15,7 +15,8 @@ import (
 // closed once every worker exits. The caller must close jobs to signal
 // completion and must drain results to avoid blocking workers.
 func Start(
-	ctx context.Context,
+	targetCtx context.Context,
+	execCtx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
 	incHeaders, excHeaders []HeaderFilter,
@@ -38,7 +39,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(ctx, client, fs, incHeaders, excHeaders, delay, limiter, method, body, headers, cookieStr, jobs, results, collector, pauseBlocker)
+			Worker(targetCtx, execCtx, client, fs, incHeaders, excHeaders, delay, limiter, method, body, headers, cookieStr, jobs, results, collector, pauseBlocker)
 		}()
 	}
 

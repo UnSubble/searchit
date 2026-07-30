@@ -42,6 +42,7 @@ func TestWorker_ProgressAccounting_DecrementsQueuedJobs(t *testing.T) {
 	// Start worker
 	go Worker(
 		ctx,
+		ctx,
 		client,
 		fs,
 		incHeaders,
