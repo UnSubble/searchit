@@ -180,73 +180,74 @@ func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 }
 
 func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
-	// 5-line compact progress
-	// Line 1: Target: <url>
-	// Line 2: Progress: [██████████░░░░░░░░░░] 50.0%
-	// Line 3: Jobs: X Remaining / Y Candidates (Z Workers)
-	// Line 4: Metrics: X Req/s • Y Elapsed • Z ETA
-	// Line 5: Results: X Findings • Y Errors • Z Retries
-
-	var p float64
-	totalJobs := snap.TotalCandidates
-	if totalJobs == 0 {
-		totalJobs = snap.RequestsSent // fallback for undefined search space
-	}
-	remainingJobs := totalJobs - snap.SearchSpaceProgress
-	if remainingJobs < 0 {
-		remainingJobs = 0
-	}
-
-	if totalJobs > 0 {
-		if snap.SearchSpaceProgress >= totalJobs {
-			p = 100.0
-		} else {
-			p = float64(snap.SearchSpaceProgress) / float64(totalJobs) * 100.0
-		}
-	}
-	if p < 0.0 {
-		p = 0.0
-	}
-	if p > 100.0 {
-		p = 100.0
-	}
-	bar := progressBar(p, 20)
 	elapsed := presentation.Duration(time.Since(snap.StartTime))
-
-	eta := "-"
 	elapsedSec := time.Since(snap.StartTime).Seconds()
-	if elapsedSec > 2.0 && snap.SearchSpaceProgress > 0 && remainingJobs > 0 {
-		candidatesPerSec := float64(snap.SearchSpaceProgress) / elapsedSec
-		etaSecs := float64(remainingJobs) / candidatesPerSec
-		if etaSecs < 1.0 {
-			etaSecs = 1.0
-		}
-		eta = presentation.Duration(time.Duration(math.Ceil(etaSecs)) * time.Second)
-	}
-
 	completedRequests := snap.ResponsesReceived + snap.RequestsFailed
-	isWarmingUp := false
-	if snap.ActiveWorkers > 0 || remainingJobs > 0 {
-		if completedRequests < (snap.ActiveWorkers*3) || completedRequests == 0 {
-			isWarmingUp = true
-		}
-	}
-
-	var metrics string
-	if isWarmingUp {
-		metrics = fmt.Sprintf("Metrics: Warming up... • %s Elapsed", elapsed)
-	} else {
-		metrics = fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta)
-	}
+	isWarmingUp := elapsedSec < 2.0 && completedRequests == 0
 
 	controls := "[p] Pause │ [q] Stop │ [a] Abort │ [s] Stats"
 	if tr.IsPaused != nil && tr.IsPaused() {
 		controls = "[p] Resume │ [q] Stop │ [a] Abort │ [s] Stats"
 	}
 
+	if snap.IsFinite {
+		totalWork := snap.TotalWork
+		completed := snap.Tried + snap.Skipped
+		var p float64
+		if totalWork > 0 {
+			p = float64(completed) / float64(totalWork) * 100.0
+			if p > 100.0 {
+				p = 100.0
+			}
+		}
+		if p < 0.0 {
+			p = 0.0
+		}
+
+		remainingWork := totalWork - completed
+		if remainingWork < 0 {
+			remainingWork = 0
+		}
+
+		bar := progressBar(p, 20)
+
+		eta := "-"
+		if elapsedSec > 2.0 && completed > 0 && remainingWork > 0 {
+			completedPerSec := float64(completed) / elapsedSec
+			etaSecs := float64(remainingWork) / completedPerSec
+			if etaSecs < 1.0 {
+				etaSecs = 1.0
+			}
+			eta = presentation.Duration(time.Duration(math.Ceil(etaSecs)) * time.Second)
+		}
+
+		var metrics string
+		if isWarmingUp {
+			metrics = fmt.Sprintf("Metrics: Warming up... • %s Elapsed", elapsed)
+		} else {
+			metrics = fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed • %s ETA", snap.CurrentRequestsPerSecond, elapsed, eta)
+		}
+
+		return []string{
+			fmt.Sprintf("Progress: %s %d / %d (%.1f%%)", bar, completed, totalWork, p),
+			fmt.Sprintf("Jobs: %s Requests Sent (%d Workers)", presentation.Number(snap.RequestsSent), snap.ActiveWorkers),
+			metrics,
+			fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
+			controls,
+		}
+	}
+
+	// Open-ended / Recursive scan rendering
+	var metrics string
+	if isWarmingUp {
+		metrics = fmt.Sprintf("Metrics: Warming up... • %s Elapsed", elapsed)
+	} else {
+		metrics = fmt.Sprintf("Metrics: %.0f Req/s • %s Elapsed", snap.CurrentRequestsPerSecond, elapsed)
+	}
+
 	return []string{
-		fmt.Sprintf("Progress: [%s] %.1f%% (Search Space)", bar, p),
-		fmt.Sprintf("Jobs: %s Generated (%d Workers)", presentation.Number(snap.JobsProduced), snap.ActiveWorkers),
+		fmt.Sprintf("Requests Sent: %s (%d Workers)", presentation.Number(snap.RequestsSent), snap.ActiveWorkers),
+		fmt.Sprintf("Directories: Discovered: %s │ Queued: %s", presentation.Number(snap.DirectoriesDiscovered), presentation.Number(snap.DirectoriesQueued)),
 		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,

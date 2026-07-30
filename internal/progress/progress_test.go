@@ -81,6 +81,7 @@ func TestANSIRenderer_ANSIEscapeMovement(t *testing.T) {
 	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target")
 
 	c := stats.NewCollector()
+	c.SetIsFinite(true)
 	err := r.Render(c.Snapshot())
 	if err != nil {
 		t.Fatalf("unexpected rendering error: %v", err)
@@ -286,4 +287,60 @@ func TestANSIRenderer_ResetLineCount(t *testing.T) {
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
 	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
 	r.ResetLineCount()
+}
+
+func TestANSIRenderer_FiniteVsOpenEndedProgress(t *testing.T) {
+	t.Run("Finite Scan Output", func(t *testing.T) {
+		var buf bytes.Buffer
+		tm := terminal.New(&buf)
+		_ = tm.AcquireOwner(terminal.OwnerProgress)
+		r := progress.NewANSIRenderer(tm, "http://localhost", nil, "Single target")
+
+		c := stats.NewCollector()
+		c.SetIsFinite(true)
+		c.SetTotalWork(4000)
+		c.RecordTried()
+		c.RecordTried()
+		c.RecordResponseReceived(200, 100)
+
+		snap := c.Snapshot()
+		err := r.Render(snap)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		out := buf.String()
+		if !strings.Contains(out, "Progress:") || !strings.Contains(out, "/ 4000") {
+			t.Errorf("expected finite progress output with exact ratio, got:\n%s", out)
+		}
+	})
+
+	t.Run("Open-Ended Recursive Scan Output", func(t *testing.T) {
+		var buf bytes.Buffer
+		tm := terminal.New(&buf)
+		_ = tm.AcquireOwner(terminal.OwnerProgress)
+		r := progress.NewANSIRenderer(tm, "http://localhost", nil, "Recursive (BFS)")
+
+		c := stats.NewCollector()
+		c.SetIsFinite(false)
+		c.RecordDirectoryDiscovered()
+		c.SetDirectories(184, 12)
+
+		snap := c.Snapshot()
+		err := r.Render(snap)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		out := buf.String()
+		if strings.Contains(out, "Progress:") || strings.Contains(out, "ETA") {
+			t.Errorf("expected NO progress bar or ETA in open-ended scan output, got:\n%s", out)
+		}
+		if !strings.Contains(out, "Requests Sent:") {
+			t.Errorf("expected 'Requests Sent:' header in open-ended scan output, got:\n%s", out)
+		}
+		if !strings.Contains(out, "Directories: Discovered: 184 │ Queued: 12") {
+			t.Errorf("expected exact directory activity metrics in output, got:\n%s", out)
+		}
+	})
 }
