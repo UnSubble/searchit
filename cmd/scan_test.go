@@ -505,7 +505,7 @@ func TestCLI_ProgressFlags(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
-	cmd.SetArgs([]string{"--help"})
+	cmd.SetArgs([]string{"--help-all"})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -514,7 +514,7 @@ func TestCLI_ProgressFlags(t *testing.T) {
 
 	helpOut := buf.String()
 	if !strings.Contains(helpOut, "--no-progress") {
-		t.Errorf("expected help output to contain --no-progress flag, but got:\n%s", helpOut)
+		t.Errorf("expected help-all output to contain --no-progress flag, but got:\n%s", helpOut)
 	}
 	if strings.Contains(helpOut, "--progress") && !strings.Contains(helpOut, "--no-progress") {
 		t.Errorf("expected --progress to be removed from help output; got:\n%s", helpOut)

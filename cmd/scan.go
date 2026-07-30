@@ -92,6 +92,7 @@ type ScanOptions struct {
 	ShowHeaders   bool
 	ShowTitle     bool
 	Request       string
+	HelpAll       bool
 
 	resolvedTargets       []targets.Target
 	testHookConfigApplied func(config.Config)
@@ -142,6 +143,9 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		Use:   "scan",
 		Short: "Scan a target URL",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if opts.HelpAll {
+				return nil
+			}
 			if opts.RawProfile != "" {
 				for _, p := range strings.Split(opts.RawProfile, ",") {
 					p = strings.TrimSpace(p)
@@ -318,6 +322,9 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.HelpAll {
+				return cmd.Help()
+			}
 			stats.GlobalInstrumentation.Reset()
 			atomic.StoreInt32(&stats.GlobalInstrumentation.Enabled, 1)
 			if os.Getenv("SEARCHIT_TRACE") == "1" {
@@ -1217,7 +1224,44 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	cmd.Flags().StringVar(&opts.Request, "request", "", "load raw HTTP request template from file")
 	cmd.Flags().StringVar(&opts.UserAgent, "user-agent", "", "set a custom User-Agent for every request")
 	cmd.Flags().BoolVar(&opts.RandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
+	cmd.Flags().BoolVar(&opts.HelpAll, "help-all", false, "show all available options")
+
+	setupCmdHelp(cmd, func() bool { return opts.HelpAll }, scanHelpConfig)
 	return cmd, opts
+}
+
+var scanHelpConfig = HelpConfig{
+	Examples: `  searchit scan -u example.com -w raft-small.txt
+  searchit scan -u example.com -w raft-small.txt -r
+  searchit scan -u example.com --adaptive
+  searchit scan -u example.com -o results.json`,
+	Groups: []FlagGroup{
+		{
+			Title: "General",
+			Names: []string{"url", "url-file", "wordlist"},
+		},
+		{
+			Title: "Discovery",
+			Names: []string{"recursive", "strategy", "adaptive", "ext", "profile"},
+		},
+		{
+			Title: "HTTP",
+			Names: []string{"method", "cookie", "data", "header"},
+		},
+		{
+			Title: "Matching / Filtering",
+			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr"},
+		},
+		{
+			Title: "Performance",
+			Names: []string{"threads", "delay"},
+		},
+		{
+			Title: "Output",
+			Names: []string{"output", "quiet", "random-agent"},
+		},
+	},
+	HelpAllCmd: "searchit scan --help-all",
 }
 
 // applyCLIOverrides applies CLI flag values to cfg, but only for flags

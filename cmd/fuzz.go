@@ -88,6 +88,7 @@ type FuzzOptions struct {
 	ShowTitle       bool
 	RandomAgent     bool
 	NoProgress      bool
+	HelpAll         bool
 
 	resolvedFuzzTargets   []targets.Target
 	testHookConfigApplied func(config.Config)
@@ -146,6 +147,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 		Use:   "fuzz",
 		Short: "Fuzz parameters, paths, subdomains and bodies",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if opts.HelpAll {
+				return nil
+			}
 			if opts.RawProfile != "" {
 				for _, p := range strings.Split(opts.RawProfile, ",") {
 					p = strings.TrimSpace(p)
@@ -283,6 +287,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.HelpAll {
+				return cmd.Help()
+			}
 			stats.GlobalInstrumentation.Reset()
 			atomic.StoreInt32(&stats.GlobalInstrumentation.Enabled, 1)
 
@@ -1041,7 +1048,46 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().BoolVar(&opts.Adaptive, "adaptive", false, "enable adaptive fuzzing (prioritization, framework detection, robots.txt, sitemaps)")
 	cmd.Flags().StringVar(&opts.UserAgent, "user-agent", "", "set a custom User-Agent for every request")
 	cmd.Flags().BoolVar(&opts.RandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
+	cmd.Flags().BoolVar(&opts.HelpAll, "help-all", false, "show all available options")
+
+	setupCmdHelp(cmd, func() bool { return opts.HelpAll }, fuzzHelpConfig)
 	return cmd, opts
+}
+
+var fuzzHelpConfig = HelpConfig{
+	Examples: `  searchit fuzz -u https://example.com/FUZZ -w words.txt
+  searchit fuzz -u https://example.com/FOO/BAR \
+    --foo users.txt \
+    --bar passwords.txt
+  searchit fuzz --request request.txt \
+    --foo users.txt`,
+	Groups: []FlagGroup{
+		{
+			Title: "General",
+			Names: []string{"url", "wordlist", "foo", "bar", "buzz"},
+		},
+		{
+			Title: "HTTP",
+			Names: []string{"method", "cookie", "data", "header"},
+		},
+		{
+			Title: "Discovery",
+			Names: []string{"adaptive", "ext", "profile", "strategy"},
+		},
+		{
+			Title: "Matching / Filtering",
+			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr"},
+		},
+		{
+			Title: "Output",
+			Names: []string{"output", "quiet"},
+		},
+		{
+			Title: "Performance",
+			Names: []string{"threads", "random-agent"},
+		},
+	},
+	HelpAllCmd: "searchit fuzz --help-all",
 }
 
 func loadLines(path string) ([]string, error) {
