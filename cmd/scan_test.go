@@ -307,18 +307,21 @@ func TestCLI_StartupInformation(t *testing.T) {
 			cmd.SetOut(buf)
 			cmd.SetErr(buf)
 
-			// Capture stdout using pipe
+			// Capture stdout and stderr using pipe
 			r, w, err := os.Pipe()
 			if err != nil {
 				t.Fatalf("os.Pipe: %v", err)
 			}
 			oldStdout := os.Stdout
+			oldStderr := os.Stderr
 			os.Stdout = w
+			os.Stderr = w
 
 			_ = cmd.ExecuteContext(ctx)
 
 			w.Close()
 			os.Stdout = oldStdout
+			os.Stderr = oldStderr
 
 			var stdoutBuf bytes.Buffer
 			if _, err := io.Copy(&stdoutBuf, r); err != nil {
@@ -545,17 +548,17 @@ func TestCLI_ProgressActivation(t *testing.T) {
 			want: false,
 		},
 		{
-			name:       "json format disables progress",
+			name:       "json format enables progress in terminal",
 			noProgress: false, quiet: false, outputFormat: "json", isTerminal: true,
-			want: false,
+			want: true,
 		},
 		{
-			name:       "ndjson format disables progress",
+			name:       "ndjson format enables progress in terminal",
 			noProgress: false, quiet: false, outputFormat: "ndjson", isTerminal: true,
-			want: false,
+			want: true,
 		},
 		{
-			name:       "non-TTY stdout (piped/redirected) disables progress",
+			name:       "non-TTY stderr (piped/redirected) disables progress",
 			noProgress: false, quiet: false, outputFormat: "text", isTerminal: false,
 			want: false,
 		},
@@ -572,8 +575,8 @@ func TestCLI_ProgressActivation(t *testing.T) {
 				Quiet:        tc.quiet,
 				OutputFormat: tc.outputFormat,
 			}
-			// shouldEnableProgress calls console.IsTerminal(os.Stdout.Fd()).
-			// In tests, stdout is a pipe (not a TTY), so isTerminal will always
+			// shouldEnableProgress calls console.IsTerminal(os.Stderr.Fd()).
+			// In tests, stderr is a pipe (not a TTY), so isTerminal will always
 			// be false unless we explicitly test the non-TTY path.
 			// We test the helper with a thin wrapper that accepts isTerminal.
 			got := shouldEnableProgressWith(cfg, tc.noProgress, tc.isTerminal)
@@ -592,9 +595,6 @@ func shouldEnableProgressWith(cfg config.Config, noProgress bool, isTerminal boo
 		return false
 	}
 	if cfg.Quiet {
-		return false
-	}
-	if cfg.OutputFormat == "json" || cfg.OutputFormat == "ndjson" {
 		return false
 	}
 	if !isTerminal {

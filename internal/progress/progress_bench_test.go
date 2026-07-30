@@ -22,11 +22,7 @@ func BenchmarkANSIRenderer_Render(b *testing.B) {
 	snap := c.Snapshot()
 	tm := terminal.New(io.Discard)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target", 10)
-	// Pre-populate some discoveries
-	for i := 0; i < 10; i++ {
-		r.AddResult(200, "https://target.local/path", "200 | https://target.local/path")
-	}
+	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -38,7 +34,7 @@ func BenchmarkManager_Tick(b *testing.B) {
 	c := stats.NewCollector()
 	tm := terminal.New(io.Discard)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
-	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target", 10)
+	r := progress.NewANSIRenderer(tm, "https://target.local", nil, "Single target")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

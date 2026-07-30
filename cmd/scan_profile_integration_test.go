@@ -270,10 +270,13 @@ func TestScanProfile_OutputText(t *testing.T) {
 	_ = cmd
 
 	oldStdout := os.Stdout
+	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stdout = w
+	os.Stderr = w
 	defer func() {
 		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 	}()
 
 	opts.URL = "http://localhost"

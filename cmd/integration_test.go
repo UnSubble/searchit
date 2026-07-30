@@ -18,6 +18,16 @@ import (
 )
 
 func runIntegrationCommand(args []string) (string, error) {
+	stdout, _, err := runIntegrationCommandStreams(args)
+	return stdout, err
+}
+
+func runIntegrationCommandFull(args []string) (string, error) {
+	stdout, stderr, err := runIntegrationCommandStreams(args)
+	return stdout + stderr, err
+}
+
+func runIntegrationCommandStreams(args []string) (string, string, error) {
 	var cmd *cobra.Command
 	if len(args) > 0 && args[0] == "scan" {
 		cmd, _ = NewScanCmd()
@@ -31,30 +41,38 @@ func runIntegrationCommand(args []string) (string, error) {
 	cmd.SetContext(context.Background())
 	cmd.SetArgs(args)
 
-	// Capture stdout using pipe
-	r, w, err := os.Pipe()
+	rOut, wOut, err := os.Pipe()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	oldStdout := os.Stdout
-	os.Stdout = w
+	rErr, wErr, err := os.Pipe()
+	if err != nil {
+		rOut.Close()
+		wOut.Close()
+		return "", "", err
+	}
 
-	// Set buffers for cobra command
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	os.Stdout = wOut
+	os.Stderr = wErr
+
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
 
-	// Run command
 	execErr := cmd.ExecuteContext(context.Background())
 
-	w.Close()
+	wOut.Close()
+	wErr.Close()
 	os.Stdout = oldStdout
+	os.Stderr = oldStderr
 
-	var stdoutBuf bytes.Buffer
-	if _, err := io.Copy(&stdoutBuf, r); err != nil {
-		return "", err
-	}
-	return stdoutBuf.String(), execErr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	_, _ = io.Copy(&stdoutBuf, rOut)
+	_, _ = io.Copy(&stderrBuf, rErr)
+
+	return stdoutBuf.String(), stderrBuf.String(), execErr
 }
 
 func TestIntegration_Scans(t *testing.T) {
@@ -81,7 +99,7 @@ func TestIntegration_Scans(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	t.Cleanup(srv.Close)
+	defer srv.Close()
 
 	// Create a temporary wordlist file containing paths to test
 	tmpDir := t.TempDir()
@@ -92,7 +110,7 @@ func TestIntegration_Scans(t *testing.T) {
 	}
 
 	t.Run("basic single target text output", func(t *testing.T) {
-		out, err := runIntegrationCommand([]string{"scan", "-u", srv.URL, "-w", wordlistPath})
+		out, err := runIntegrationCommandFull([]string{"scan", "-u", srv.URL, "-w", wordlistPath})
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
@@ -116,7 +134,7 @@ func TestIntegration_Scans(t *testing.T) {
 	})
 
 	t.Run("multi-target scan text output", func(t *testing.T) {
-		out, err := runIntegrationCommand([]string{"scan", "-u", srv.URL + "," + srv.URL, "-w", wordlistPath})
+		out, err := runIntegrationCommandFull([]string{"scan", "-u", srv.URL + "," + srv.URL, "-w", wordlistPath})
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
