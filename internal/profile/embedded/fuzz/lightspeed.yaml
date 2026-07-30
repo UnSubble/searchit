@@ -26,6 +26,6 @@ config:
 
   quiet: true
   no-progress: true
-  log-count: 0
+
 
   random-agent: true

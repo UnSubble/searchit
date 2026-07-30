@@ -57,9 +57,6 @@ func Apply(cfg *config.Config, o Overlay) {
 	if o.Quiet != nil {
 		cfg.Quiet = *o.Quiet
 	}
-	if o.LogCount != nil {
-		cfg.LogCount = *o.LogCount
-	}
 
 	// Redirects
 	if o.FollowRedirects != nil {

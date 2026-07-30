@@ -28,5 +28,5 @@ config:
   timeout: 3
   connect-timeout: 1
   quiet: true
-  log-count: 0
+
   random-agent: true

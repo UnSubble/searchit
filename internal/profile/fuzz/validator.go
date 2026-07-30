@@ -46,9 +46,7 @@ func (v *FuzzValidator) Validate(p *types.Profile) error {
 	if o.MaxRedirects != nil && *o.MaxRedirects < 0 {
 		return fmt.Errorf("max-redirects cannot be negative")
 	}
-	if o.LogCount != nil && *o.LogCount < 0 {
-		return fmt.Errorf("log-count cannot be negative")
-	}
+
 	if o.MatchStatus != nil && *o.MatchStatus != "" {
 		if _, err := status.Parse(*o.MatchStatus); err != nil {
 			return fmt.Errorf("invalid match-status: %w", err)

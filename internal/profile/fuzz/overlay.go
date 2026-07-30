@@ -29,10 +29,9 @@ type Overlay struct {
 	Strategy *string `yaml:"strategy"`
 
 	// Output
-	Format   *string `yaml:"format"`
-	Output   *string `yaml:"output"`
-	Quiet    *bool   `yaml:"quiet"`
-	LogCount *int    `yaml:"log-count"`
+	Format *string `yaml:"format"`
+	Output *string `yaml:"output"`
+	Quiet  *bool   `yaml:"quiet"`
 
 	// Redirects
 	FollowRedirects *bool `yaml:"follow-redirects"`
@@ -92,10 +91,9 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 
 		Strategy *string `yaml:"strategy"`
 
-		Format   *string `yaml:"format"`
-		Output   *string `yaml:"output"`
-		Quiet    *bool   `yaml:"quiet"`
-		LogCount *int    `yaml:"log-count"`
+		Format *string `yaml:"format"`
+		Output *string `yaml:"output"`
+		Quiet  *bool   `yaml:"quiet"`
 
 		FollowRedirects *bool `yaml:"follow-redirects"`
 		MaxRedirects    *int  `yaml:"max-redirects"`
@@ -161,7 +159,6 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	}
 	o.Output = raw.Output
 	o.Quiet = raw.Quiet
-	o.LogCount = raw.LogCount
 
 	// Redirects
 	o.FollowRedirects = raw.FollowRedirects

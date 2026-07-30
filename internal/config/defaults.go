@@ -36,6 +36,5 @@ func Default() Config {
 		},
 		Adaptive:     false,
 		FuzzStrategy: "eager",
-		LogCount:     10,
 	}
 }

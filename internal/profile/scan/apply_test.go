@@ -158,9 +158,6 @@ log-count: 20
 				if o.UserAgent == nil || *o.UserAgent != "Mozilla/5.0" {
 					t.Errorf("user-agent = %v, want Mozilla/5.0", o.UserAgent)
 				}
-				if o.LogCount == nil || *o.LogCount != 20 {
-					t.Errorf("log-count = %v, want 20", o.LogCount)
-				}
 			},
 		},
 		{
@@ -209,9 +206,6 @@ delay: 500
 				}
 				if o.URL != nil {
 					t.Errorf("expected nil url, got %v", o.URL)
-				}
-				if o.LogCount != nil {
-					t.Errorf("expected nil log-count, got %v", o.LogCount)
 				}
 			},
 		},
@@ -528,18 +522,7 @@ func TestApply(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "log-count sets cfg.LogCount",
-			setup: func() scan.Overlay {
-				lc := 25
-				return scan.Overlay{LogCount: &lc}
-			},
-			verify: func(t *testing.T, cfg config.Config) {
-				if cfg.LogCount != 25 {
-					t.Errorf("LogCount = %d, want 25", cfg.LogCount)
-				}
-			},
-		},
+
 		{
 			name: "invalid strategy does not change strategy",
 			setup: func() scan.Overlay {

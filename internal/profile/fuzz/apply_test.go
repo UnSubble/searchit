@@ -155,9 +155,6 @@ log-count: 15
 				if o.UserAgent == nil || *o.UserAgent != "FuzzBot/1.0" {
 					t.Errorf("user-agent = %v", o.UserAgent)
 				}
-				if o.LogCount == nil || *o.LogCount != 15 {
-					t.Errorf("log-count = %v, want 15", o.LogCount)
-				}
 			},
 		},
 		{
@@ -404,18 +401,7 @@ func TestFuzzApply(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "log-count",
-			setup: func() fuzz.Overlay {
-				lc := 20
-				return fuzz.Overlay{LogCount: &lc}
-			},
-			verify: func(t *testing.T, cfg config.Config) {
-				if cfg.LogCount != 20 {
-					t.Errorf("LogCount = %d, want 20", cfg.LogCount)
-				}
-			},
-		},
+
 		{
 			name: "cookie alias correctly sets cfg.Cookies",
 			setup: func() fuzz.Overlay {

@@ -39,9 +39,8 @@ type Overlay struct {
 	// Output
 	Format *string `yaml:"format"`
 	// Output is a deprecated alias for Format. If Format is absent, Output is used.
-	Output   *string `yaml:"output"`
-	Quiet    *bool   `yaml:"quiet"`
-	LogCount *int    `yaml:"log-count"`
+	Output *string `yaml:"output"`
+	Quiet  *bool   `yaml:"quiet"`
 
 	// Redirects
 	FollowRedirects *bool `yaml:"follow-redirects"`
@@ -107,10 +106,9 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 		NormalizePaths  *bool `yaml:"normalize-paths"`
 		CollapseSlashes *bool `yaml:"collapse-slashes"`
 
-		Format   *string `yaml:"format"`
-		Output   *string `yaml:"output"`
-		Quiet    *bool   `yaml:"quiet"`
-		LogCount *int    `yaml:"log-count"`
+		Format *string `yaml:"format"`
+		Output *string `yaml:"output"`
+		Quiet  *bool   `yaml:"quiet"`
 
 		FollowRedirects *bool `yaml:"follow-redirects"`
 		MaxRedirects    *int  `yaml:"max-redirects"`
@@ -181,7 +179,6 @@ func (o *Overlay) UnmarshalYAML(value *yaml.Node) error {
 	}
 	o.Output = raw.Output
 	o.Quiet = raw.Quiet
-	o.LogCount = raw.LogCount
 
 	// Redirects
 	o.FollowRedirects = raw.FollowRedirects
