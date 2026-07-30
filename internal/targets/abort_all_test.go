@@ -179,6 +179,7 @@ func TestAbortDuringRecursion(t *testing.T) {
 		0,
 		nil,
 		nil,
+		0,
 	)
 	recMgr.SetFilterSuite(fs)
 
