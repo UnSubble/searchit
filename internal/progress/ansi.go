@@ -250,7 +250,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,
-		}
+	}
 }
 
 func progressBar(p float64, width int) string {
