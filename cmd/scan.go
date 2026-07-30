@@ -57,7 +57,6 @@ type ScanOptions struct {
 	CollapseSlashes bool
 	Output          string
 	Format          string
-	LogCount        int
 	Quiet           bool
 	IncludeSize     string
 	ExcludeSize     string
@@ -423,14 +422,14 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				cfg.URLs = []string{t.URL}
 			}
 
-			if cfg.OutputFormat == "text" && !cfg.Quiet && len(appliedProfiles) > 0 {
-				fmt.Println("[*] Profiles:")
+			if !cfg.Quiet && len(appliedProfiles) > 0 {
+				fmt.Fprintln(os.Stderr, "[*] Profiles:")
 				for _, name := range appliedProfiles {
-					fmt.Printf("    %s\n", name)
+					fmt.Fprintf(os.Stderr, "    %s\n", name)
 				}
 			}
-			if cfg.OutputFormat == "text" && !cfg.Quiet && cfg.TechProfile != nil {
-				fmt.Printf("[*] Tech profile: %s\n", cfg.TechProfile.ID)
+			if !cfg.Quiet && cfg.TechProfile != nil {
+				fmt.Fprintf(os.Stderr, "[*] Tech profile: %s\n", cfg.TechProfile.ID)
 			}
 
 			if opts.testHookConfigApplied != nil {
@@ -514,10 +513,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				fmt_ = output.FormatText
 			}
 
-			if cfg.OutputFormat != "text" && outWriter == os.Stdout {
-				cfg.Quiet = true
-			}
-
 			var limiter *rate.Limiter
 			if cfg.Rate > 0 {
 				limiter = rate.NewLimiter(rate.Limit(cfg.Rate), 1)
@@ -576,18 +571,16 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				// ensure cancel is invoked (though manager also cleans up)
 				defer scanCancel()
 
-				// 1. Create a fresh TerminalManager for this target's lifecycle.
-				tm := terminal.New(os.Stdout)
+				// 1. Create a fresh TerminalManager for this target's lifecycle (writing to stderr).
+				tm := terminal.New(os.Stderr)
 				if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
 					return err
 				}
 
-				// 2. Formatters & Telemetry output setup.
+				// 2. Formatter setup.
 				var fmttr output.Formatter
 				if globalFmttr != nil {
 					fmttr = globalFmttr
-				} else if outWriter == os.Stdout {
-					fmttr = output.NewWithManager(fmt_, tm, terminal.OwnerProgress, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 				} else {
 					fmttr = output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 				}
@@ -612,25 +605,23 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						excludeStatusStr = "none"
 					}
 
-					if cfg.LogCount > 0 {
-						info := telemetry.ConfigInfo{
-							Target:          targetURL,
-							Method:          cfg.Method,
-							Workers:         cfg.Threads,
-							Mode:            modeStr,
-							Traversal:       traversalStr,
-							AdaptiveEnabled: cfg.Adaptive,
-							WordlistsCount:  1,
-							PrimaryWordlist: primaryWl,
-							HTTPVersion:     "auto",
-							FollowRedirects: cfg.FollowRedirects,
-							FilterStatus:    excludeStatusStr,
-							TotalCandidates: totalWords,
-							IsFuzz:          false,
-							Extensions:      cfg.Extensions,
-						}
-						telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
+					info := telemetry.ConfigInfo{
+						Target:          targetURL,
+						Method:          cfg.Method,
+						Workers:         cfg.Threads,
+						Mode:            modeStr,
+						Traversal:       traversalStr,
+						AdaptiveEnabled: cfg.Adaptive,
+						WordlistsCount:  1,
+						PrimaryWordlist: primaryWl,
+						HTTPVersion:     "auto",
+						FollowRedirects: cfg.FollowRedirects,
+						FilterStatus:    excludeStatusStr,
+						TotalCandidates: totalWords,
+						IsFuzz:          false,
+						Extensions:      cfg.Extensions,
 					}
+					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				}
 
 				// Transition out of Starting, into Running, and hand over to Progress.
@@ -649,7 +640,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				var termCtx context.Context
 				var cancelTerm context.CancelFunc
 
-				enableProgress := shouldEnableProgress(cfg, opts.NoProgress || cfg.LogCount == 0)
+				enableProgress := shouldEnableProgress(cfg, opts.NoProgress)
 				// Interactive keyboard controls require stdin to also be a terminal.
 				interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
@@ -665,15 +656,12 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						modeStr = fmt.Sprintf("Recursive (%s)", strings.ToUpper(cfg.Strategy.String()))
 					}
 
-					renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr, cfg.LogCount)
+					renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr)
 					renderer.IsPaused = func() bool {
 						return stateMgr != nil && stateMgr.Current() == state.PhasePaused
 					}
 					progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 					progMgr.ConfiguredThreads = cfg.Threads
-					if outWriter != os.Stdout {
-						progMgr.Formatter = fmttr
-					}
 
 					if interactive {
 						consoleCtrl = console.NewController(os.Stdin)
@@ -792,8 +780,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					manager.PauseBlocker = stateMgr.WaitUntilRunning
 					manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
-							if progMgr != nil {
-								progMgr.HandleResult(r)
+							if outWriter == os.Stdout && progMgr != nil {
+								progMgr.ExecuteAbove(func() {
+									_ = fmttr.Print(r)
+								})
 							} else {
 								_ = fmttr.Print(r)
 							}
@@ -843,8 +833,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 						if r.Accepted {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
-							if progMgr != nil {
-								progMgr.HandleResult(r)
+							if outWriter == os.Stdout && progMgr != nil {
+								progMgr.ExecuteAbove(func() {
+									_ = fmttr.Print(r)
+								})
 							} else {
 								_ = fmttr.Print(r)
 							}
@@ -956,7 +948,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 
 			// Optionally print global summary if multiple targets
 			if len(opts.resolvedTargets) > 1 && !cfg.Quiet {
-				fmt.Printf("\n[*] Global Summary:\n    Targets scanned: %d/%d\n    Total Requests: %d\n    Total Discoveries: %d\n    Duration: %s\n",
+				fmt.Fprintf(os.Stderr, "\n[*] Global Summary:\n    Targets scanned: %d/%d\n    Total Requests: %d\n    Total Discoveries: %d\n    Duration: %s\n",
 					globalSummary.TargetsRun, globalSummary.TargetsTotal, globalSummary.TotalJobs, globalSummary.TotalFound, globalSummary.Duration())
 			}
 
@@ -1105,13 +1097,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"q",
 		false,
 		"print only discovered URLs in text mode",
-	)
-
-	cmd.Flags().IntVar(
-		&opts.LogCount,
-		"log-count",
-		10,
-		"number of discovery lines visible in the interactive discovery region",
 	)
 
 	cmd.Flags().StringVar(
@@ -1378,9 +1363,6 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = opts.RandomAgent
 	}
-	if cmd.Flags().Changed("log-count") {
-		cfg.LogCount = opts.LogCount
-	}
 }
 
 func validateHeaderFlag(val string) error {
@@ -1418,8 +1400,7 @@ func mapHeaders(filters []config.HeaderFilter) []engine.HeaderFilter {
 // activated automatically. Progress is suppressed when:
 //   - --no-progress was explicitly requested
 //   - --quiet mode is active
-//   - output format is json or ndjson
-//   - stdout is not a terminal (piped, redirected, or CI environment)
+//   - stderr is not a terminal (piped, redirected, or CI environment)
 func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
 	if noProgress {
 		return false
@@ -1427,12 +1408,8 @@ func shouldEnableProgress(cfg config.Config, noProgress bool) bool {
 	if cfg.Quiet {
 		return false
 	}
-	if cfg.OutputFormat == "json" || cfg.OutputFormat == "ndjson" || cfg.OutputFormat == "csv" || cfg.OutputFormat == "markdown" {
-		return false
-	}
-	if !console.IsTerminal(os.Stdout.Fd()) {
+	if !console.IsTerminal(os.Stderr.Fd()) {
 		return false
 	}
 	return true
-
 }

@@ -58,7 +58,6 @@ type FuzzOptions struct {
 	Strategy        string
 	Output          string
 	Format          string
-	LogCount        int
 	Profiles        []string
 	RawProfile      string
 	Quiet           bool
@@ -525,9 +524,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 			}
 
-			if usesFUZZ && opts.Wordlist == "" {
-				return fmt.Errorf("placeholder FUZZ is used but no primary wordlist provided (use -w or --wordlist)")
-			}
 			if usesFOO && opts.Foo == "" {
 				return fmt.Errorf("placeholder FOO is used but no --foo wordlist provided")
 			}
@@ -558,10 +554,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				outWriter = f
 			}
 
-			if outFormat != output.FormatText && outWriter == os.Stdout {
-				cfg.Quiet = true
-			}
-
 			baseCount := 4600 // Embedded list size
 			if opts.Wordlist != "" {
 				baseCount = countFileLines(opts.Wordlist)
@@ -569,6 +561,14 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			if len(cfg.Extensions) > 0 {
 				baseCount *= (1 + len(cfg.Extensions))
 			}
+			var globalFmttr output.Formatter
+			if outFormat != output.FormatText {
+				globalFmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+				if globalFmttr != nil {
+					defer globalFmttr.Close()
+				}
+			}
+
 			targetManager := targets.NewManager(opts.resolvedFuzzTargets)
 			globalSummary := targets.NewGlobalSummary(len(opts.resolvedFuzzTargets))
 
@@ -584,16 +584,16 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				stateMgr := state.NewManager()
 				stateMgr.Transition(state.PhaseStarting)
 
-				// 1. Create a fresh TerminalManager for the fuzz lifecycle.
-				tm := terminal.New(os.Stdout)
+				// 1. Create a fresh TerminalManager for the fuzz lifecycle (writing to stderr).
+				tm := terminal.New(os.Stderr)
 				if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
 					return err
 				}
 
-				// 2. Formatters & Telemetry output setup.
+				// 2. Formatter setup.
 				var fmttr output.Formatter
-				if outWriter == os.Stdout {
-					fmttr = output.NewWithManager(outFormat, tm, terminal.OwnerProgress, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+				if globalFmttr != nil {
+					fmttr = globalFmttr
 				} else {
 					fmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 				}
@@ -601,6 +601,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				if !cfg.Quiet {
 					wordlistsCount := 0
 					primaryWl := opts.Wordlist
+					if primaryWl == "" {
+						primaryWl = "embedded"
+					}
 					if usesFUZZ {
 						wordlistsCount++
 					}
@@ -640,26 +643,24 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					}
 					totalCandidates := tmpRunner.EstimateCandidates(baseCount)
 
-					if cfg.LogCount > 0 {
-						info := telemetry.ConfigInfo{
-							Target:          targetURL,
-							Method:          cfg.Method,
-							Workers:         cfg.Threads,
-							Mode:            "Fuzz",
-							Traversal:       strings.ToUpper(cfg.FuzzStrategy),
-							AdaptiveEnabled: cfg.Adaptive,
-							WordlistsCount:  wordlistsCount,
-							PrimaryWordlist: primaryWl,
-							Placeholders:    placeholdersStr,
-							HTTPVersion:     "auto",
-							FollowRedirects: cfg.FollowRedirects,
-							FilterStatus:    excludeStatusStr,
-							TotalCandidates: int(totalCandidates),
-							IsFuzz:          true,
-							Extensions:      cfg.Extensions,
-						}
-						telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
+					info := telemetry.ConfigInfo{
+						Target:          targetURL,
+						Method:          cfg.Method,
+						Workers:         cfg.Threads,
+						Mode:            "Fuzz",
+						Traversal:       strings.ToUpper(cfg.FuzzStrategy),
+						AdaptiveEnabled: cfg.Adaptive,
+						WordlistsCount:  wordlistsCount,
+						PrimaryWordlist: primaryWl,
+						Placeholders:    placeholdersStr,
+						HTTPVersion:     "auto",
+						FollowRedirects: cfg.FollowRedirects,
+						FilterStatus:    excludeStatusStr,
+						TotalCandidates: int(totalCandidates),
+						IsFuzz:          true,
+						Extensions:      cfg.Extensions,
 					}
+					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				}
 
 				// Transition out of Starting, into Running, and hand over to Progress.
@@ -679,7 +680,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				var progCmdChan chan console.Command
 				var consoleCtrl *console.Controller
 
-				enableProgress := shouldEnableProgress(cfg, opts.NoProgress || cfg.LogCount == 0)
+				enableProgress := shouldEnableProgress(cfg, opts.NoProgress)
 				interactive := enableProgress && console.IsTerminal(os.Stdin.Fd())
 
 				var progDone chan struct{}
@@ -691,15 +692,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 				if enableProgress {
 					modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
-					renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr, cfg.LogCount)
+					renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr)
 					renderer.IsPaused = func() bool {
 						return stateMgr != nil && stateMgr.Current() == state.PhasePaused
 					}
 					progMgr = progress.NewManager(tm, collector, renderer, 1*time.Second)
 					progMgr.ConfiguredThreads = cfg.Threads
-					if outWriter != os.Stdout {
-						progMgr.Formatter = fmttr
-					}
 
 					if interactive {
 						consoleCtrl = console.NewController(os.Stdin)
@@ -874,8 +872,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							Title:       r.Title,
 							Headers:     r.Headers,
 						}
-						if progMgr != nil {
-							progMgr.HandleResult(engRes)
+						if outWriter == os.Stdout && progMgr != nil {
+							progMgr.ExecuteAbove(func() {
+								_ = fmttr.Print(engRes)
+							})
 						} else {
 							_ = fmttr.Print(engRes)
 						}
@@ -889,6 +889,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					}
 				})
 				if runErr != nil {
+					if globalFmttr != nil {
+						_ = globalFmttr.Close()
+					}
 					return runErr
 				}
 
@@ -896,7 +899,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				// with actual JobsProduced in case of BFS/DFS pruning.
 				collector.SetTotalCandidates(collector.Snapshot().JobsProduced)
 
-				if fmttr != nil {
+				if fmttr != nil && globalFmttr == nil {
 					_ = fmttr.Close()
 				}
 
@@ -975,7 +978,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			}
 
 			if len(opts.resolvedFuzzTargets) > 1 && !cfg.Quiet {
-				fmt.Printf("\n[*] Global Summary:\n    Targets scanned: %d/%d\n    Total Requests: %d\n    Total Discoveries: %d\n    Duration: %s\n",
+				fmt.Fprintf(os.Stderr, "\n[*] Global Summary:\n    Targets scanned: %d/%d\n    Total Requests: %d\n    Total Discoveries: %d\n    Duration: %s\n",
 					globalSummary.TargetsRun, globalSummary.TargetsTotal, globalSummary.TotalJobs, globalSummary.TotalFound, globalSummary.Duration())
 			}
 
@@ -1001,7 +1004,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "write results to this file (default: stdout)")
 	cmd.Flags().StringVar(&opts.Format, "format", "text", "explicit output format (text, json, ndjson, csv, markdown)")
 	cmd.Flags().BoolVarP(&opts.Quiet, "quiet", "q", false, "disable status prefix printing in stdout")
-	cmd.Flags().IntVar(&opts.LogCount, "log-count", 10, "number of discovery lines visible in the interactive discovery region")
 	cmd.Flags().StringVar(&opts.Delay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	cmd.Flags().Float64Var(&opts.Rate, "rate", 0, "maximum requests per second rate limit")
 	cmd.Flags().BoolVar(&opts.NoProgress, "no-progress", false, "disable progress output")
@@ -1175,9 +1177,6 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = opts.RandomAgent
-	}
-	if cmd.Flags().Changed("log-count") {
-		cfg.LogCount = opts.LogCount
 	}
 }
 

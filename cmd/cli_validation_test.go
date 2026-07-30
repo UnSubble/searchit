@@ -70,6 +70,22 @@ func TestCLI_FuzzValidation(t *testing.T) {
 			wantErr: true,
 			errMsg:  "no placeholders",
 		},
+		{
+			name:    "FUZZ without -w uses embedded default wordlist",
+			args:    []string{"fuzz", "-u", "http://localhost/FUZZ"},
+			wantErr: false,
+		},
+		{
+			name:    "FUZZ with -w custom wordlist",
+			args:    []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "go.mod"},
+			wantErr: false,
+		},
+		{
+			name:    "FOO placeholder without --foo wordlist returns validation error",
+			args:    []string{"fuzz", "-u", "http://localhost/FOO"},
+			wantErr: true,
+			errMsg:  "placeholder foo is used but no --foo wordlist provided",
+		},
 	}
 
 	for _, tc := range tests {

@@ -38,8 +38,8 @@ func NewEngine(targetURL string, client *http.Client, cache *fingerprint.Cache, 
 // Discover executes target signal collection.
 func (e *Engine) Discover(ctx context.Context) error {
 	if !e.Quiet {
-		fmt.Fprintln(os.Stdout, "[INFO] Adaptive mode enabled.")
-		fmt.Fprintln(os.Stdout, "[INFO] Discovering target...")
+		fmt.Fprintln(os.Stderr, "[INFO] Adaptive mode enabled.")
+		fmt.Fprintln(os.Stderr, "[INFO] Discovering target...")
 	}
 
 	if err := e.Collector.Execute(ctx); err != nil {
@@ -68,19 +68,19 @@ func (e *Engine) Discover(ctx context.Context) error {
 	// Print discovery logging if !Quiet
 	if !e.Quiet {
 		if e.Collector.LaravelDetected {
-			fmt.Fprintln(os.Stdout, "[INFO] Laravel detected")
+			fmt.Fprintln(os.Stderr, "[INFO] Laravel detected")
 		}
 		if e.Collector.WPDetected {
-			fmt.Fprintln(os.Stdout, "[INFO] WordPress detected")
+			fmt.Fprintln(os.Stderr, "[INFO] WordPress detected")
 		}
 		if e.Collector.ExpressDetected {
-			fmt.Fprintln(os.Stdout, "[INFO] Express detected")
+			fmt.Fprintln(os.Stderr, "[INFO] Express detected")
 		}
 		if e.Collector.RobotsDiscovered {
-			fmt.Fprintln(os.Stdout, "[INFO] robots.txt discovered")
+			fmt.Fprintln(os.Stderr, "[INFO] robots.txt discovered")
 		}
 		if e.Collector.SitemapDiscovered {
-			fmt.Fprintln(os.Stdout, "[INFO] sitemap.xml discovered")
+			fmt.Fprintln(os.Stderr, "[INFO] sitemap.xml discovered")
 		}
 	}
 

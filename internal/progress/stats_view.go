@@ -18,7 +18,6 @@ func statsReport(
 	contentWidth int,
 	snap stats.Snapshot,
 	configuredThreads int,
-	recent []discoveryEntry,
 	target string,
 	profiles []string,
 	mode string,
@@ -111,16 +110,6 @@ func statsReport(
 		}
 	}
 
-	// ── Recent discoveries ──────────────────────────────────────────────────
-	section("Recent discoveries")
-	if len(recent) == 0 {
-		add("  No discoveries yet.")
-	} else {
-		for _, entry := range recent {
-			add(fmt.Sprintf("  %d  %s", entry.StatusCode, entry.Path))
-		}
-	}
-
 	// ── Footer ───────────────────────────────────────────────────────────────
 	blank()
 	add(thickDivider)
@@ -132,8 +121,8 @@ func statsReport(
 
 // RenderStatsView clears the terminal, prints the sequential statistics report,
 // and returns. It does not position the cursor or assume any terminal dimensions.
-func RenderStatsView(w io.Writer, snap stats.Snapshot, configuredThreads int, recent []discoveryEntry) {
-	RenderStatsViewFull(w, 80, snap, configuredThreads, recent, "", nil, "")
+func RenderStatsView(w io.Writer, snap stats.Snapshot, configuredThreads int) {
+	RenderStatsViewFull(w, 80, snap, configuredThreads, "", nil, "")
 }
 
 // RenderStatsViewFull renders the complete statistics view to w.
@@ -142,13 +131,12 @@ func RenderStatsViewFull(
 	contentWidth int,
 	snap stats.Snapshot,
 	configuredThreads int,
-	recent []discoveryEntry,
 	target string,
 	profiles []string,
 	mode string,
 ) {
 	fmt.Fprint(w, "\033[H\033[2J")
-	lines := statsReport(contentWidth, snap, configuredThreads, recent, target, profiles, mode)
+	lines := statsReport(contentWidth, snap, configuredThreads, target, profiles, mode)
 	for _, line := range lines {
 		fmt.Fprintf(w, "\r%s\r\n", line)
 	}

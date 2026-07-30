@@ -13,12 +13,6 @@ import (
 	"github.com/unsubble/searchit/internal/stats"
 )
 
-type discoveryEntry struct {
-	StatusCode int
-	Path       string
-	Formatted  string
-}
-
 const (
 	ProgressPanelHeight = 5
 )
@@ -26,8 +20,7 @@ const (
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
 //
 // All writes go through the TerminalManager (TM), which holds the single global
-// output lock. The renderer's own mu protects only the recent-discoveries slice
-// and lastLineCount, which may be accessed from multiple goroutines concurrently.
+// output lock.
 type ANSIRenderer struct {
 	TM       *terminal.Manager
 	Target   string
@@ -35,10 +28,8 @@ type ANSIRenderer struct {
 	Mode     string
 	limit    int
 	frozen   bool // true if the underlying writer is a real TTY
-	logCount int
 
-	mu            sync.Mutex // protects recent + lastLineCount + lastProgCount only
-	recent        []discoveryEntry
+	mu            sync.Mutex // protects lastLineCount + lastProgCount only
 	lastLineCount int
 	lastProgCount int
 
@@ -47,7 +38,7 @@ type ANSIRenderer struct {
 
 // NewANSIRenderer creates a new ANSIRenderer.
 // The cursor-hide escape is emitted via TM.Emit so it goes through the global lock.
-func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mode string, logCount int) *ANSIRenderer {
+func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mode string) *ANSIRenderer {
 	tr := &ANSIRenderer{
 		TM:       tm,
 		Target:   target,
@@ -55,44 +46,12 @@ func NewANSIRenderer(tm *terminal.Manager, target string, profiles []string, mod
 		Mode:     mode,
 		limit:    5,
 		frozen:   true, // assume TTY; non-TTY writes are harmless
-		logCount: logCount,
 	}
 	// Hide cursor — goes through global lock.
 	_ = tm.Emit(terminal.OwnerProgress, func(w io.Writer) {
 		fmt.Fprint(w, "\033[?25l")
 	})
 	return tr
-}
-
-// AddResultLocked records a successful discovery without locking (caller must hold TM lock).
-func (tr *ANSIRenderer) AddResultLocked(statusCode int, urlStr string, formatted string) {
-	path := extractPath(tr.Target, urlStr)
-	entry := discoveryEntry{StatusCode: statusCode, Path: path, Formatted: formatted}
-
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	if tr.logCount <= 0 {
-		return
-	}
-	if len(tr.recent) >= tr.logCount {
-		tr.recent = append(tr.recent[1:], entry)
-	} else {
-		tr.recent = append(tr.recent, entry)
-	}
-}
-
-// AddResult records a successful discovery (called from worker goroutines).
-func (tr *ANSIRenderer) AddResult(statusCode int, urlStr string, formatted string) {
-	tr.AddResultLocked(statusCode, urlStr, formatted)
-}
-
-// RecentEntries returns a copy of the recent discoveries.
-func (tr *ANSIRenderer) RecentEntries() []discoveryEntry {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	copied := make([]discoveryEntry, len(tr.recent))
-	copy(copied, tr.recent)
-	return copied
 }
 
 // ResetLineCount resets the internal line counter. Call this after an external
@@ -291,15 +250,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,
-	}
-}
-
-func extractPath(target, urlStr string) string {
-	idx := strings.Index(urlStr, target)
-	if idx != -1 {
-		return urlStr[idx+len(target):]
-	}
-	return urlStr
+		}
 }
 
 func progressBar(p float64, width int) string {
