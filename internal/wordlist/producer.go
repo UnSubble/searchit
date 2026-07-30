@@ -64,7 +64,7 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 					errCh <- ctx.Err()
 					return
 				case word, ok := <-words:
-					if !ok {
+					if !ok || ctx.Err() != nil {
 						return
 					}
 					cleaned, ok := CleanWord(word, p.NormalizePaths, p.CollapseSlashes)
