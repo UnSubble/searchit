@@ -23,19 +23,24 @@ type rateSlot struct {
 // Collector accumulates runtime execution statistics.
 // All operations are concurrency-safe and optimized using atomic operations to minimize overhead.
 type Collector struct {
-	requestsSent        int64
-	responsesReceived   int64
-	requestsFiltered    int64
-	requestsFailed      int64
-	requestsSucceeded   int64
-	bytesReceived       int64
-	activeWorkers       int64
-	totalCandidates     int64
-	discovered          int64
-	invalidWords        int64
-	jobsProduced        int64
-	searchSpaceProgress int64
-	startTime           int64 // Unix nano timestamp
+	requestsSent          int64
+	responsesReceived     int64
+	requestsFiltered      int64
+	requestsFailed        int64
+	requestsSucceeded     int64
+	bytesReceived         int64
+	activeWorkers         int64
+	totalWork             int64
+	tried                 int64
+	skipped               int64
+	totalCandidates       int64
+	discovered            int64
+	invalidWords          int64
+	jobsProduced          int64
+	isFinite              int64 // 1 if finite, 0 if infinite/open-ended
+	directoriesDiscovered int64
+	directoriesQueued     int64
+	startTime             int64 // Unix nano timestamp
 
 	// Future metrics support
 	retries                int64
@@ -75,6 +80,22 @@ func NewCollector() *Collector {
 // RecordRequestSent increments the total requests sent counter.
 func (c *Collector) RecordRequestSent() {
 	atomic.AddInt64(&c.requestsSent, 1)
+}
+
+// SetTotalWork sets the fixed total theoretical work for the scan.
+func (c *Collector) SetTotalWork(n int64) {
+	atomic.StoreInt64(&c.totalWork, n)
+	atomic.StoreInt64(&c.totalCandidates, n)
+}
+
+// RecordTried increments the tried work counter (HTTP request actually dispatched).
+func (c *Collector) RecordTried() {
+	atomic.AddInt64(&c.tried, 1)
+}
+
+// RecordSkipped increments the skipped work counter (pruned theoretical work).
+func (c *Collector) RecordSkipped(n int64) {
+	atomic.AddInt64(&c.skipped, n)
 }
 
 // RecordResponseReceived increments total responses, updates status code counters and byte counts.
@@ -122,9 +143,11 @@ func (c *Collector) RecordJobProduced() {
 	atomic.AddInt64(&c.jobsProduced, 1)
 }
 
-// RecordSearchSpaceProgress increments the number of theoretical candidate combinations processed (executed or pruned).
+// RecordSearchSpaceProgress maps to RecordSkipped for backwards compatibility.
 func (c *Collector) RecordSearchSpaceProgress(n int64) {
-	atomic.AddInt64(&c.searchSpaceProgress, n)
+	if n > 0 {
+		c.RecordSkipped(n)
+	}
 }
 
 // IncrementActiveWorkers increments the active worker count by 1.
@@ -144,12 +167,36 @@ func (c *Collector) SetActiveWorkers(workers int64) {
 
 // SetTotalCandidates sets the theoretical or dynamic search space total.
 func (c *Collector) SetTotalCandidates(candidates int64) {
-	atomic.StoreInt64(&c.totalCandidates, candidates)
+	c.SetTotalWork(candidates)
 }
 
-// AddTotalCandidates adds the specified number of candidates to the total.
+// SetIsFinite sets whether the scan search space is finite (true) or open-ended (false).
+func (c *Collector) SetIsFinite(finite bool) {
+	var val int64
+	if finite {
+		val = 1
+	}
+	atomic.StoreInt64(&c.isFinite, val)
+}
+
+// RecordDirectoryDiscovered increments the discovered directories count.
+func (c *Collector) RecordDirectoryDiscovered() {
+	atomic.AddInt64(&c.directoriesDiscovered, 1)
+}
+
+// RecordDirectoryQueued increments the queued directories count.
+func (c *Collector) RecordDirectoryQueued() {
+	atomic.AddInt64(&c.directoriesQueued, 1)
+}
+
+// SetDirectories sets discovered and queued directory counts directly.
+func (c *Collector) SetDirectories(discovered, queued int64) {
+	atomic.StoreInt64(&c.directoriesDiscovered, discovered)
+	atomic.StoreInt64(&c.directoriesQueued, queued)
+}
+
+// AddTotalCandidates is deprecated under Total Work model and is a no-op to prevent mutating TotalWork after initialization.
 func (c *Collector) AddTotalCandidates(candidates int64) {
-	atomic.AddInt64(&c.totalCandidates, candidates)
 }
 
 // RecordRetry increments the retries counter.
@@ -182,12 +229,22 @@ func (c *Collector) Snapshot() Snapshot {
 	succ := atomic.LoadInt64(&c.requestsSucceeded)
 	bytes := atomic.LoadInt64(&c.bytesReceived)
 	workers := atomic.LoadInt64(&c.activeWorkers)
-	candidates := atomic.LoadInt64(&c.totalCandidates)
+	totWork := atomic.LoadInt64(&c.totalWork)
+	tried := atomic.LoadInt64(&c.tried)
+	skipped := atomic.LoadInt64(&c.skipped)
+	completed := tried + skipped
 	disc := atomic.LoadInt64(&c.discovered)
 	invalid := atomic.LoadInt64(&c.invalidWords)
 	jobs := atomic.LoadInt64(&c.jobsProduced)
-	progress := atomic.LoadInt64(&c.searchSpaceProgress)
 	startNano := atomic.LoadInt64(&c.startTime)
+
+	var prog float64
+	if totWork > 0 {
+		prog = float64(completed) / float64(totWork) * 100.0
+		if prog > 100.0 {
+			prog = 100.0
+		}
+	}
 
 	retries := atomic.LoadInt64(&c.retries)
 	redirects := atomic.LoadInt64(&c.redirects)
@@ -259,6 +316,10 @@ func (c *Collector) Snapshot() Snapshot {
 		}
 	}
 
+	isFinite := atomic.LoadInt64(&c.isFinite) != 0
+	dirsDisc := atomic.LoadInt64(&c.directoriesDiscovered)
+	dirsQueued := atomic.LoadInt64(&c.directoriesQueued)
+
 	return Snapshot{
 		RequestsSent:             sent,
 		ResponsesReceived:        recv,
@@ -267,13 +328,21 @@ func (c *Collector) Snapshot() Snapshot {
 		RequestsSucceeded:        succ,
 		BytesReceived:            bytes,
 		ActiveWorkers:            workers,
-		TotalCandidates:          candidates,
+		TotalWork:                totWork,
+		Tried:                    tried,
+		Skipped:                  skipped,
+		Completed:                completed,
+		Progress:                 prog,
+		TotalCandidates:          totWork,
 		Discovered:               disc,
 		InvalidWords:             invalid,
 		JobsProduced:             jobs,
-		SearchSpaceProgress:      progress,
+		SearchSpaceProgress:      completed,
 		StartTime:                startTime,
 		StatusCodes:              statusCopy,
+		IsFinite:                 isFinite,
+		DirectoriesDiscovered:    dirsDisc,
+		DirectoriesQueued:        dirsQueued,
 		Retries:                  retries,
 		Redirects:                redirects,
 		BodyInspected:            inspected,
