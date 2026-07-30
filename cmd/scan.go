@@ -565,7 +565,16 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				activeTargetCtx = tCtx.Ctx
 				activeTargetMu.Unlock()
 
-				targetURL := tCtx.Target.URL
+				var infoLog io.Writer
+				if !cfg.Quiet {
+					infoLog = cmd.ErrOrStderr()
+				}
+				resolvedURL, err := targets.AutoDetectTarget(tCtx.Ctx, appState.HTTPClient, tCtx.Target.URL, infoLog)
+				if err != nil {
+					return err
+				}
+				tCtx.Target.URL = resolvedURL
+				targetURL := resolvedURL
 				scanCtx := tCtx.Ctx
 				scanCancel := tCtx.Cancel
 				// ensure cancel is invoked (though manager also cleans up)

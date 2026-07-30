@@ -569,6 +569,8 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 			}
 
+			appState := app.New(ctx, cfg)
+
 			targetManager := targets.NewManager(opts.resolvedFuzzTargets)
 			globalSummary := targets.NewGlobalSummary(len(opts.resolvedFuzzTargets))
 
@@ -577,9 +579,19 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				activeTargetCtx = tCtx.Ctx
 				activeTargetMu.Unlock()
 
+				var infoLog io.Writer
+				if !cfg.Quiet {
+					infoLog = cmd.ErrOrStderr()
+				}
+				resolvedURL, err := targets.AutoDetectTarget(tCtx.Ctx, appState.HTTPClient, tCtx.Target.URL, infoLog)
+				if err != nil {
+					return err
+				}
+				tCtx.Target.URL = resolvedURL
+
 				fuzzCtx := tCtx.Ctx
 				cancelSig := tCtx.Cancel
-				targetURL := tCtx.Target.URL
+				targetURL := resolvedURL
 
 				stateMgr := state.NewManager()
 				stateMgr.Transition(state.PhaseStarting)
@@ -818,8 +830,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						}
 					}()
 				}
-
-				appState := app.New(fuzzCtx, cfg)
 
 				fs, err := filter.NewFilterSuite(
 					cfg.Status.Include.String(),
