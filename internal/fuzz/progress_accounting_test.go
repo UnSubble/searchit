@@ -35,6 +35,7 @@ func TestFuzzWorker_Accounting_Invariants(t *testing.T) {
 	// Start worker
 	go Worker(
 		ctx,
+		ctx,
 		client,
 		fs,
 		0,   // delay

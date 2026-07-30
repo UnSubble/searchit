@@ -76,6 +76,7 @@ func TestFuzz_ConcurrencyAndDeterminism(t *testing.T) {
 			}()
 			results := fuzz.Start(
 				ctx,
+				ctx,
 				client,
 				fs,
 				tc,
@@ -159,6 +160,7 @@ func TestFuzz_TimeoutAndCancellation(t *testing.T) {
 	}()
 	results := fuzz.Start(
 		ctx,
+		ctx,
 		client,
 		fs,
 		4,
@@ -216,7 +218,7 @@ func TestFuzz_ResponseFiltering(t *testing.T) {
 		}
 		close(wiChan)
 	}()
-	results := fuzz.Start(ctx, client, fs, 1, 0, nil, wiChan, nil, nil)
+	results := fuzz.Start(ctx, ctx, client, fs, 1, 0, nil, wiChan, nil, nil)
 	var res []fuzz.Result
 	for r := range results {
 		res = append(res, r)
@@ -264,7 +266,7 @@ func TestFuzz_ShowPresentation(t *testing.T) {
 		}
 		close(wiChan)
 	}()
-	results := fuzz.Start(ctx, client, fs, 1, 0, nil, wiChan, nil, nil)
+	results := fuzz.Start(ctx, ctx, client, fs, 1, 0, nil, wiChan, nil, nil)
 	var res []fuzz.Result
 	for r := range results {
 		res = append(res, r)

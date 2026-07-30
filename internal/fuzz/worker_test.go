@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,7 @@ func TestWorker_ExecutionAndFiltering(t *testing.T) {
 	fs, _ := filter.NewFilterSuite("", exclude.String(), incSize.String(), excSize.String(), nil, nil, nil, nil)
 	fuzz.Worker(
 		context.Background(),
+		context.Background(),
 		client,
 		fs,
 		0,
@@ -146,22 +148,21 @@ func TestWorker_ExecutionAndFiltering(t *testing.T) {
 	}
 }
 
-func TestWorker_DelayCancellation(t *testing.T) {
-	rt := &mockRoundTripper{
-		response: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(bytes.NewReader(nil)),
-			}, nil
-		},
-	}
-	client := &http.Client{Transport: rt}
+func TestWorker_Cancellation(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond) // slow response to test cancellation
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
 
-	jobs := make(chan fuzz.WorkItem, 5)
-	results := make(chan fuzz.Result, 5)
+	client := ts.Client()
+	jobs := make(chan fuzz.WorkItem, 2)
+	results := make(chan fuzz.Result, 2)
 
-	jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: "http://target.com/1"}}
-	jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: "http://target.com/2"}}
+	// Fill queue with 2 jobs
+	jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: ts.URL + "/1"}}
+	jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: ts.URL + "/2"}}
+	close(jobs)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -169,6 +170,7 @@ func TestWorker_DelayCancellation(t *testing.T) {
 	go func() {
 		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
 		fuzz.Worker(
+			ctx,
 			ctx,
 			client,
 			fs,
@@ -184,13 +186,12 @@ func TestWorker_DelayCancellation(t *testing.T) {
 
 	// Read first result
 	r := <-results
-	if r.URL != "http://target.com/1" {
-		t.Errorf("expected URL http://target.com/1, got %q", r.URL)
+	if r.URL != ts.URL+"/1" {
+		t.Errorf("expected URL %s/1, got %q", ts.URL, r.URL)
 	}
 
 	// Cancel context before second request executes
 	cancel()
-	close(jobs)
 
 	// Verify no more results (or second is cancelled/discarded)
 	var trailing []fuzz.Result
@@ -228,7 +229,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		jobs <- fuzz.WorkItem{Req: job}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
+		resChan := fuzz.Start(context.Background(), context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		res := <-resChan
 		if res.Err == nil {
 			t.Error("expected NewRequestWithContext error, got nil")
@@ -248,7 +249,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: "http://localhost"}}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
+		resChan := fuzz.Start(context.Background(), context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		res := <-resChan
 		if res.Err == nil || !strings.Contains(res.Err.Error(), io.ErrUnexpectedEOF.Error()) {
 			t.Errorf("expected error containing unexpected EOF, got: %v", res.Err)
@@ -280,7 +281,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		}}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
+		resChan := fuzz.Start(context.Background(), context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		<-resChan
 
 		if hostOverride != "custom-host.com" {
@@ -309,7 +310,7 @@ func TestWorker_ProcessErrorPaths(t *testing.T) {
 		jobs <- fuzz.WorkItem{Req: fuzz.RequestDTO{URL: "http://localhost"}}
 		close(jobs)
 
-		resChan := fuzz.Start(context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
+		resChan := fuzz.Start(context.Background(), context.Background(), client, fs, 1, 0, nil, jobs, nil, nil)
 		res := <-resChan
 		if res.Err == nil {
 			t.Error("expected body read error, got nil")

@@ -45,7 +45,8 @@ func drainAndClose(body io.ReadCloser) {
 
 // Worker processes incoming fuzzed jobs from the channel.
 func Worker(
-	ctx context.Context,
+	targetCtx context.Context,
+	execCtx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
 	delay time.Duration,
@@ -55,6 +56,9 @@ func Worker(
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
 ) {
+	if execCtx == nil {
+		execCtx = targetCtx
+	}
 	atomic.AddInt64(&stats.GlobalInstrumentation.WorkersStarted, 1)
 	defer func() {
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersExited, 1)
@@ -67,29 +71,32 @@ func Worker(
 	}
 
 	for item := range jobs {
+		if targetCtx != nil && targetCtx.Err() != nil {
+			return
+		}
 		if pauseBlocker != nil {
-			if err := pauseBlocker(ctx); err != nil {
+			if err := pauseBlocker(targetCtx); err != nil {
 				return
 			}
 		}
 
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
 		if limiter != nil {
-			err := limiter.Wait(ctx)
+			err := limiter.Wait(targetCtx)
 			if err != nil {
 				atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRej, 1)
 				return
 			}
 		}
 
-		process(ctx, client, fs, item, results, collector)
+		process(targetCtx, execCtx, client, fs, item, results, collector)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 		if collector != nil {
 		}
 
 		if delay > 0 {
 			select {
-			case <-ctx.Done():
+			case <-targetCtx.Done():
 				stats.GlobalInstrumentation.LogEvent("context cancellation")
 				return
 			case <-time.After(delay):
@@ -99,15 +106,16 @@ func Worker(
 }
 
 func process(
-	ctx context.Context,
+	targetCtx context.Context,
+	execCtx context.Context,
 	client *http.Client,
 	fs *filter.FilterSuite,
 	item WorkItem,
 	results chan<- Result,
 	collector *stats.Collector,
 ) {
-	if collector != nil {
-		collector.RecordRequestSent()
+	if targetCtx != nil && targetCtx.Err() != nil {
+		return
 	}
 
 	var bodyReader io.Reader
@@ -115,10 +123,18 @@ func process(
 		bodyReader = strings.NewReader(item.Req.Body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, item.Req.Method, item.Req.URL, bodyReader)
+	reqCtx := execCtx
+	if reqCtx == nil {
+		reqCtx = targetCtx
+	}
+
+	req, err := http.NewRequestWithContext(reqCtx, item.Req.Method, item.Req.URL, bodyReader)
 	if err != nil {
 		if collector != nil {
 			collector.RecordRequestFailed()
+			if !item.Req.IsProbing {
+				collector.RecordSkipped(1)
+			}
 		}
 		sendResult(results, item, Result{
 			URL:      item.Req.URL,
@@ -157,6 +173,14 @@ func process(
 
 		startTime = time.Now()
 		atomic.AddInt64(&stats.GlobalInstrumentation.RequestsSent, 1)
+		if collector != nil {
+			collector.RecordRequestSent()
+			if i == 0 && !item.Req.IsProbing {
+				collector.RecordTried()
+			} else if i > 0 {
+				collector.RecordRetry()
+			}
+		}
 		resp, err = client.Do(req)
 		if err == nil {
 			if collector != nil {
@@ -165,8 +189,8 @@ func process(
 			break
 		}
 		// Check context before retrying
-		if ctx.Err() != nil {
-			err = ctx.Err()
+		if targetCtx != nil && targetCtx.Err() != nil {
+			err = targetCtx.Err()
 			break
 		}
 		time.Sleep(10 * time.Millisecond * time.Duration(i+1))

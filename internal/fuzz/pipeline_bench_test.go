@@ -41,7 +41,7 @@ func BenchmarkFuzzPipeline(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < 50; i++ {
-		go Worker(context.Background(), client, fs, 0, nil, jobs, results, collector, nil)
+		go Worker(context.Background(), context.Background(), client, fs, 0, nil, jobs, results, collector, nil)
 	}
 
 	var count int32

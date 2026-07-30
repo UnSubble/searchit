@@ -4,12 +4,13 @@ import "net/http"
 
 // RequestDTO is the unit of work representing a fully rendered request configuration.
 type RequestDTO struct {
-	URL      string
-	Method   string
-	Body     string
-	Headers  map[string][]string
-	Cookies  []string
-	UserData any
+	URL       string
+	Method    string
+	Body      string
+	Headers   map[string][]string
+	Cookies   []string
+	UserData  any
+	IsProbing bool
 }
 
 // Result carries metadata produced by a fuzzed request execution.
