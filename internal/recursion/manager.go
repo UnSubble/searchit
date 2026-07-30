@@ -63,7 +63,16 @@ type Manager struct {
 	HighPriorityCount   int
 	MediumPriorityCount int
 	LowPriorityCount    int
-	baseWordlistSize    int
+	entriesPerDir       int64
+}
+
+// RemainingSubtreeWork returns the theoretical request count for unvisited descendant depths below currentDepth.
+func (m *Manager) RemainingSubtreeWork(currentDepth uint16) int64 {
+	if currentDepth >= m.maxDepth {
+		return 0
+	}
+	remainingDepths := int64(m.maxDepth) - int64(currentDepth)
+	return remainingDepths * m.entriesPerDir
 }
 
 // SetRequestManipulation configures custom outbound request templates for scanning.
@@ -100,6 +109,7 @@ func NewManager(
 	delay time.Duration,
 	limiter *rate.Limiter,
 	fingerprintCache *fingerprint.Cache,
+	entriesPerDir int64,
 ) *Manager {
 	fs, _ := filter.NewFilterSuite("", exclude.String(), includeSize.String(), excludeSize.String(), nil, nil, nil, nil)
 
@@ -117,19 +127,18 @@ func NewManager(
 		delay:            delay,
 		limiter:          limiter,
 		fingerprintCache: fingerprintCache,
+		entriesPerDir:    entriesPerDir,
 		wildcardDetector: wildcard.NewDetector(),
 		disableWildcard:  true,
 	}
 }
 
-// SetBaseWordlistSize sets the size of the base wordlist for accurate progress accounting.
-func (m *Manager) SetBaseWordlistSize(size int) {
-	m.baseWordlistSize = size
-}
-
 // SetStats sets the statistics collector for the manager.
 func (m *Manager) SetStats(c *stats.Collector) {
 	m.stats = c
+	if c != nil {
+		c.SetIsFinite(false)
+	}
 }
 
 // SetDisableWildcard enables or disables automatic wildcard detection.
@@ -183,6 +192,7 @@ func (m *Manager) Run(
 
 		jobs := make(chan engine.Job, workers)
 		results := engine.Start(
+			ctx,
 			drainCtx,
 			m.client,
 			m.fs,
@@ -203,12 +213,29 @@ func (m *Manager) Run(
 		// pending counts jobs dispatched to workers but not yet returned.
 		// The loop ends when the frontier is empty and no in-flight work remains.
 		pending := 0
+		var maxDepthReached uint16 = 1
 
 		var activeGenerator Generator
 		var nextJob engine.Job
 		var hasNextJob bool
 
 		for (frontier.Len() > 0 || activeGenerator != nil || hasNextJob) || pending > 0 {
+			if m.stats != nil {
+				snap := m.stats.Snapshot()
+				m.stats.SetDirectories(snap.DirectoriesDiscovered, int64(frontier.Len()))
+			}
+
+			if ctx.Err() != nil {
+				stats.GlobalInstrumentation.LogEvent("context cancellation")
+				stats.GlobalInstrumentation.LogEvent("jobs channel close")
+				close(jobs)
+				for result := range results {
+					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
+					m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+				}
+				return
+			}
+
 			if activeGenerator == nil && frontier.Len() > 0 {
 				activeGenerator, _ = frontier.Peek()
 				frontier.Pop()
@@ -238,9 +265,11 @@ func (m *Manager) Run(
 					return
 
 				case jobs <- nextJob:
+					if nextJob.Depth > maxDepthReached {
+						maxDepthReached = nextJob.Depth
+					}
 					if m.stats != nil {
 						m.stats.RecordJobProduced()
-						m.stats.AddTotalCandidates(1)
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsDispatched, 1)
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
@@ -288,6 +317,13 @@ func (m *Manager) Run(
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 			m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+		}
+
+		if ctx.Err() == nil && m.stats != nil {
+			remaining := m.RemainingSubtreeWork(maxDepthReached)
+			if remaining > 0 {
+				m.stats.RecordSkipped(remaining)
+			}
 		}
 	}()
 }
@@ -485,6 +521,9 @@ func (m *Manager) handleResult(
 	}
 
 	if m.recurseOn.Match(result.StatusCode) {
+		if m.stats != nil {
+			m.stats.RecordDirectoryDiscovered()
+		}
 		if m.strategy == DFS {
 			m.DFSCount++
 		} else {

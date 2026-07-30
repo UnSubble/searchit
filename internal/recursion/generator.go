@@ -40,6 +40,7 @@ func (g *SliceGenerator) Next() (engine.Job, bool) {
 
 // DirectoryGenerator lazily streams a wordlist, applying filtering, extensions, and adaptive scoring.
 type DirectoryGenerator struct {
+	ctx                  context.Context
 	parentURL            string
 	parentPath           []string
 	depth                int
@@ -85,6 +86,7 @@ func NewDirectoryGenerator(
 	lowPriorityCounter *int,
 ) *DirectoryGenerator {
 	g := &DirectoryGenerator{
+		ctx:                  ctx,
 		parentURL:            parentURL,
 		parentPath:           parentPath,
 		depth:                depth,
@@ -116,6 +118,10 @@ func NewDirectoryGenerator(
 
 // Next yields the next generated job from the wordlist stream.
 func (g *DirectoryGenerator) Next() (engine.Job, bool) {
+	if g.ctx != nil && g.ctx.Err() != nil {
+		return engine.Job{}, false
+	}
+
 	if len(g.buffer) > 0 {
 		job := g.buffer[0]
 		g.buffer = g.buffer[1:]
@@ -123,6 +129,11 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 	}
 
 	for word := range g.words {
+		select {
+		case <-g.ctx.Done():
+			return engine.Job{}, false
+		default:
+		}
 		cleaned, ok := wordlist.CleanWord(word, g.normalizePaths, g.collapseSlashes)
 		if !ok {
 			continue

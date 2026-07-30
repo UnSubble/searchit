@@ -71,6 +71,7 @@ func newManager(t *testing.T, reader wordlist.Reader, strategy recursion.Strateg
 		0,
 		nil,
 		nil,
+		100,
 	)
 }
 
@@ -448,7 +449,7 @@ func TestManager_CustomRecursionPolicy(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil, 100)
 
 	results := collectResults(m, context.Background(), seeds, 2)
 
@@ -471,7 +472,7 @@ func TestManager_CustomRecursionPolicy_Matches(t *testing.T) {
 
 	a := newApp(t)
 	recurseOn := status.MustParse("201")
-	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil)
+	m := recursion.NewManager(a.HTTPClient, a.Config.Status.Exclude, reader, recursion.BFS, 2, recurseOn, false, false, nil, nil, nil, nil, 0, nil, nil, 100)
 
 	results := collectResults(m, context.Background(), seeds, 2)
 
@@ -523,6 +524,7 @@ func TestManager_RecursionDepthBoundaries(t *testing.T) {
 			0,
 			nil,
 			nil,
+			100,
 		)
 
 		results := collectResults(m, context.Background(), seeds, 2)
@@ -655,6 +657,7 @@ func TestManager_ReaderErrorHandling(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	results := collectResults(m, context.Background(), seeds, 2)
@@ -723,6 +726,7 @@ func TestManager_RobotsDiscoveryAndFrontierSeeding(t *testing.T) {
 		0,
 		nil,
 		cache,
+		100,
 	)
 
 	results := collectResults(m, context.Background(), seeds, 1)
@@ -952,6 +956,7 @@ func TestManager_RobotsSitemapSSRFPrevention(t *testing.T) {
 		0,
 		nil,
 		nil,
+		100,
 	)
 
 	_ = collectResults(m, context.Background(), seeds, 1)
