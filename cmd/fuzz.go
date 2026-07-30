@@ -597,7 +597,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				} else {
 					fmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 				}
-
+				var totalCandidates int64
 				if !cfg.Quiet {
 					wordlistsCount := 0
 					primaryWl := opts.Wordlist
@@ -641,7 +641,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						BarWords:        barWords,
 						BuzzWords:       buzzWords,
 					}
-					totalCandidates := tmpRunner.EstimateCandidates(baseCount)
+					totalCandidates = tmpRunner.EstimateCandidates(baseCount)
 
 					info := telemetry.ConfigInfo{
 						Target:          targetURL,
@@ -674,6 +674,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				// Setup Context is handled globally above.
 
 				collector := stats.NewCollector()
+				if totalCandidates > 0 {
+					collector.SetTotalWork(totalCandidates)
+				}
 
 				var progMgr *progress.Manager
 				var renderer *progress.ANSIRenderer

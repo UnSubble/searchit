@@ -632,7 +632,25 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					return err
 				}
 
+				entriesPerDir := int64(totalWords)
+				totalWork := entriesPerDir
+				if cfg.Recursive {
+					maxDepth := int64(cfg.MaxDepth)
+					if maxDepth < 1 {
+						maxDepth = 1
+					}
+					totalWork = entriesPerDir * maxDepth
+				}
+
 				collector := stats.NewCollector()
+				if cfg.Recursive {
+					collector.SetIsFinite(false)
+				} else {
+					collector.SetIsFinite(true)
+					if totalWork > 0 {
+						collector.SetTotalWork(totalWork)
+					}
+				}
 				var progMgr *progress.Manager
 				var renderer *progress.ANSIRenderer
 				var progCmdChan chan console.Command
@@ -771,12 +789,12 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						cfg.Delay,
 						limiter,
 						fpCache,
+						entriesPerDir,
 					)
 					manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, cfg.Cookies)
 					manager.SetFilterSuite(fs)
 					manager.SetStats(collector)
 					manager.SetExtensions(cfg.Extensions)
-					manager.SetBaseWordlistSize(totalWords)
 					manager.PauseBlocker = stateMgr.WaitUntilRunning
 					manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
@@ -799,6 +817,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				} else {
 					jobs := make(chan engine.Job, cfg.Threads)
 					results := engine.Start(
+						scanCtx,
 						drainCtx,
 						appState.HTTPClient,
 						fs,

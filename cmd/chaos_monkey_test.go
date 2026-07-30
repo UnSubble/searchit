@@ -115,6 +115,7 @@ func TestChaos_Scans(t *testing.T) {
 				0,
 				nil,
 				nil,
+				100,
 			)
 
 			manager.Run(runCtx, runCtx, cfg.URLs, cfg.Threads, func(r engine.Result) {})
@@ -203,6 +204,7 @@ func TestMonkey_RandomScans(t *testing.T) {
 					time.Duration(delayMs)*time.Millisecond,
 					nil,
 					fingerprint.NewCache(),
+					100,
 				)
 				manager.Run(ctx, ctx, []string{srv.URL}, workers, func(r engine.Result) {})
 			} else {
@@ -223,6 +225,7 @@ func TestMonkey_RandomScans(t *testing.T) {
 
 				collector := stats.NewCollector()
 				results := fuzz.Start(
+					ctx,
 					ctx,
 					client,
 					fs,
