@@ -2,8 +2,10 @@ package httpclient_test
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,4 +173,103 @@ func TestNew_ProxyPanicOnInvalid(t *testing.T) {
 		}
 	}()
 	_ = httpclient.New(10*time.Second, 10*time.Second, false, ":\n")
+}
+
+func TestValidateHTTPVersion(t *testing.T) {
+	valid := []string{"auto", "0.9", "1.0", "1.1", "2", "", "AUTO", " 1.1 "}
+	for _, v := range valid {
+		if err := httpclient.ValidateHTTPVersion(v); err != nil {
+			t.Errorf("expected %q to be valid, got: %v", v, err)
+		}
+	}
+
+	invalid := []string{"foo", "3", "h2", "HTTP/2", "tcp"}
+	for _, v := range invalid {
+		if err := httpclient.ValidateHTTPVersion(v); err == nil {
+			t.Errorf("expected %q to be invalid, but validation passed", v)
+		}
+	}
+}
+
+func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
+	t.Run("wire_format_0.9", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to listen: %v", err)
+		}
+		defer ln.Close()
+
+		go func() {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			buf := make([]byte, 512)
+			n, _ := conn.Read(buf)
+			wire := string(buf[:n])
+			if !strings.HasPrefix(wire, "GET /\r\n") {
+				t.Errorf("expected wire format GET /\\r\\n for HTTP/0.9, got %q", wire)
+			}
+			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nHello"))
+		}()
+
+		c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", "0.9")
+		resp, err := c.Get("http://" + ln.Addr().String() + "/")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		_ = resp.Body.Close()
+	})
+
+	t.Run("wire_format_1.0", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to listen: %v", err)
+		}
+		defer ln.Close()
+
+		go func() {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			buf := make([]byte, 512)
+			n, _ := conn.Read(buf)
+			wire := string(buf[:n])
+			if !strings.HasPrefix(wire, "GET / HTTP/1.0\r\n") {
+				t.Errorf("expected wire format GET / HTTP/1.0\\r\\n for HTTP/1.0, got %q", wire)
+			}
+			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nHello"))
+		}()
+
+		c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", "1.0")
+		resp, err := c.Get("http://" + ln.Addr().String() + "/")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		_ = resp.Body.Close()
+	})
+
+	t.Run("httptest_1.1_and_2", func(t *testing.T) {
+		var capturedProto string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedProto = r.Proto
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		for _, ver := range []string{"1.1", "2", "auto"} {
+			c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", ver)
+			resp, err := c.Get(srv.URL)
+			if err != nil {
+				t.Fatalf("request failed for version %s: %v", ver, err)
+			}
+			_ = resp.Body.Close()
+			if capturedProto != "HTTP/1.1" {
+				t.Errorf("expected HTTP/1.1 on plain server for version %s, got %q", ver, capturedProto)
+			}
+		}
+	})
 }

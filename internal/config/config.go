@@ -52,11 +52,12 @@ type Config struct {
 	Status StatusConfig
 
 	// Request Manipulation fields
-	Method  string
-	Data    string
-	Headers []string
-	Cookies string
-	Proxy   string
+	Method      string
+	HTTPVersion string
+	Data        string
+	Headers     []string
+	Cookies     string
+	Proxy       string
 
 	// Response Filtering fields
 	MatchRegex    []string

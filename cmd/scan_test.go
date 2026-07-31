@@ -91,6 +91,36 @@ func TestCLI_Validation(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "valid http-version auto",
+			args:    []string{"-u", "http://localhost", "--http-version", "auto"},
+			wantErr: false,
+		},
+		{
+			name:    "valid http-version 0.9",
+			args:    []string{"-u", "http://localhost", "--http-version", "0.9"},
+			wantErr: false,
+		},
+		{
+			name:    "valid http-version 1.0",
+			args:    []string{"-u", "http://localhost", "--http-version", "1.0"},
+			wantErr: false,
+		},
+		{
+			name:    "valid http-version 1.1",
+			args:    []string{"-u", "http://localhost", "--http-version", "1.1"},
+			wantErr: false,
+		},
+		{
+			name:    "valid http-version 2",
+			args:    []string{"-u", "http://localhost", "--http-version", "2"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid http-version",
+			args:    []string{"-u", "http://localhost", "--http-version", "invalid"},
+			wantErr: true,
+		},
+		{
 			name:    "explicit ndjson format",
 			args:    []string{"-u", "http://localhost", "--format", "ndjson"},
 			wantErr: false,

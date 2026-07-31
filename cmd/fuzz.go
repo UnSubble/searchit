@@ -25,6 +25,7 @@ import (
 	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fuzz"
+	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/output"
 	"github.com/unsubble/searchit/internal/output/telemetry"
 	"github.com/unsubble/searchit/internal/output/terminal"
@@ -77,6 +78,7 @@ type FuzzOptions struct {
 	MatchContent    []string
 	FilterContent   []string
 	Method          string
+	HTTPVersion     string
 	Data            string
 	Headers         []string
 	Cookie          string
@@ -227,6 +229,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			if cmd.Flags().Changed("format") {
 				if _, err := output.Parse(opts.Format); err != nil {
 					return fmt.Errorf("invalid --format: %w", err)
+				}
+			}
+
+			if opts.HTTPVersion != "" {
+				if err := httpclient.ValidateHTTPVersion(opts.HTTPVersion); err != nil {
+					return err
 				}
 			}
 
@@ -1016,6 +1024,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVar(&opts.Bar, "bar", "", "wordlist path for BAR placeholder")
 	cmd.Flags().StringVar(&opts.Buzz, "buzz", "", "wordlist path for BUZZ placeholder")
 	cmd.Flags().StringVarP(&opts.Method, "method", "X", "GET", "HTTP method")
+	cmd.Flags().StringVar(&opts.HTTPVersion, "http-version", "auto", "Select the HTTP protocol version (auto, 0.9, 1.0, 1.1, 2)")
 	cmd.Flags().StringVarP(&opts.Data, "data", "d", "", "POST request data body with placeholders")
 	cmd.Flags().StringSliceVarP(&opts.Headers, "header", "H", nil, "custom request headers with placeholders (e.g. -H 'X-Header=FUZZ')")
 	cmd.Flags().IntVarP(&opts.Threads, "threads", "t", 32, "number of concurrent worker threads")
@@ -1070,7 +1079,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "HTTP",
-			Names: []string{"method", "cookie", "data", "header"},
+			Names: []string{"method", "cookie", "data", "header", "http-version"},
 		},
 		{
 			Title: "Discovery",
@@ -1166,6 +1175,11 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("method") {
 		cfg.Method = opts.Method
+	}
+	if cmd.Flags().Changed("http-version") {
+		cfg.HTTPVersion = opts.HTTPVersion
+	} else if cfg.HTTPVersion == "" {
+		cfg.HTTPVersion = "auto"
 	}
 	if cmd.Flags().Changed("data") {
 		cfg.Data = opts.Data

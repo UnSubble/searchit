@@ -31,3 +31,27 @@ func FuzzHeaderFlagsAndTargetSplitting(f *testing.F) {
 		_ = targets
 	})
 }
+
+func TestFuzzCLI_HTTPVersionValidation(t *testing.T) {
+	cmd, _ := NewFuzzCmd()
+
+	validArgs := [][]string{
+		{"-u", "http://localhost/FUZZ", "-w", "words.txt", "--http-version", "auto"},
+		{"-u", "http://localhost/FUZZ", "-w", "words.txt", "--http-version", "0.9"},
+		{"-u", "http://localhost/FUZZ", "-w", "words.txt", "--http-version", "1.0"},
+		{"-u", "http://localhost/FUZZ", "-w", "words.txt", "--http-version", "1.1"},
+		{"-u", "http://localhost/FUZZ", "-w", "words.txt", "--http-version", "2"},
+	}
+	for _, args := range validArgs {
+		cmd.SetArgs(args)
+		if err := cmd.ParseFlags(args); err != nil {
+			t.Errorf("failed to parse valid flags %v: %v", args, err)
+		}
+	}
+
+	invalidArgs := []string{"-u", "http://localhost/FUZZ", "-w", "words.txt", "--http-version", "invalid"}
+	cmd.SetArgs(invalidArgs)
+	if err := cmd.Execute(); err == nil {
+		t.Errorf("expected error for invalid --http-version, got nil")
+	}
+}

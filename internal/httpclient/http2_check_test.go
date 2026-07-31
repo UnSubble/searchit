@@ -33,13 +33,9 @@ func TestHTTP2Check(t *testing.T) {
 	// Now check if our New client automatically negotiates HTTP/2
 	client := New(10*time.Second, 2*time.Second, false, "")
 
-	// Set insecure skip verify and configure http2
+	// Set insecure skip verify
 	if tr, ok := client.Transport.(*http.Transport); ok {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		err := http2.ConfigureTransport(tr)
-		if err != nil {
-			t.Fatalf("Failed to configure http2 client transport: %v", err)
-		}
 	}
 
 	resp, err := client.Get(srv.URL)
@@ -51,4 +47,31 @@ func TestHTTP2Check(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	t.Logf("Response Body: %s", string(body))
 	t.Logf("Response Proto: %s", resp.Proto)
+}
+
+func TestHTTPClient_HTTPVersion_ForcedHTTP11_OnH2Server(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s", r.Proto)
+	}))
+	_ = http2.ConfigureServer(srv.Config, nil)
+	srv.TLS = srv.Config.TLSConfig
+	srv.StartTLS()
+	defer srv.Close()
+
+	// Client with httpVersion = "1.1"
+	client := NewWithHTTPVersion(5*time.Second, 2*time.Second, false, 10, "", "1.1")
+	if tr, ok := client.Transport.(*http.Transport); ok {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	resp, err := client.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "HTTP/1.1" {
+		t.Errorf("expected HTTP/1.1 when forced, got %q", string(body))
+	}
 }
