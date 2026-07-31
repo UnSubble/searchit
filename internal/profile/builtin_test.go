@@ -8,6 +8,9 @@ import (
 )
 
 func TestBuiltinProfiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+
 	// Register validators and decoders
 	_ = profile.RegisterBuiltinValidators()
 	_ = profile.RegisterBuiltinDecoders()

@@ -842,7 +842,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 				var readerWg sync.WaitGroup
 				var primaryChan chan string
-				if opts.Wordlist != "" || strings.Contains(targetURL, "FUZZ") {
+				if opts.Wordlist != "" || usesFUZZ {
 					var reader wordlist.Reader
 					if opts.Wordlist != "" {
 						reader = wordlist.FileReader{Path: opts.Wordlist}
