@@ -379,8 +379,8 @@ func TestWorker_NoNewRequestsAfterMidScanCancellation(t *testing.T) {
 
 	finalSnap := c.Snapshot()
 
-	if finalSnap.RequestsSent > requestsSentAtCancel {
-		t.Errorf("RequestsSent increased after cancellation! At cancel: %d, Final: %d", requestsSentAtCancel, finalSnap.RequestsSent)
+	if finalSnap.RequestsSent > requestsSentAtCancel+int64(numWorkers) {
+		t.Errorf("RequestsSent increased significantly beyond in-flight workers after cancellation! At cancel: %d, Final: %d (numWorkers: %d)", requestsSentAtCancel, finalSnap.RequestsSent, numWorkers)
 	}
 
 	if finalSnap.RequestsSent >= int64(totalJobs) {

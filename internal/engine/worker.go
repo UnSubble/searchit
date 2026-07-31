@@ -174,6 +174,10 @@ func process(
 		req.Header.Set("Cookie", cookieStr)
 	}
 
+	if targetCtx != nil && targetCtx.Err() != nil {
+		return
+	}
+
 	atomic.AddInt64(&stats.GlobalInstrumentation.RequestsBuilt, 1)
 
 	startTime := time.Now()
