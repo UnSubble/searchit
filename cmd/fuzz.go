@@ -18,6 +18,7 @@ import (
 	"regexp"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
@@ -149,8 +150,14 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 		Use:   "fuzz",
 		Short: "Fuzz parameters, paths, subdomains and bodies",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && (args[0] == "help" || args[0] == "help-all") {
+				if args[0] == "help-all" || (len(args) > 1 && args[1] == "all") {
+					opts.HelpAll = true
+				}
+				return pflag.ErrHelp
+			}
 			if opts.HelpAll {
-				return nil
+				return pflag.ErrHelp
 			}
 			if opts.RawProfile != "" {
 				for _, p := range strings.Split(opts.RawProfile, ",") {
@@ -1079,7 +1086,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "HTTP",
-			Names: []string{"method", "cookie", "data", "header", "http-version"},
+			Names: []string{"method", "cookie", "data", "header"},
 		},
 		{
 			Title: "Discovery",

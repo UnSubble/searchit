@@ -23,7 +23,21 @@ type HelpConfig struct {
 func setupCmdHelp(cmd *cobra.Command, getHelpAll func() bool, config HelpConfig) {
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		w := c.OutOrStdout()
+
+		isHelpAll := false
 		if getHelpAll != nil && getHelpAll() {
+			isHelpAll = true
+		}
+		if f := c.Flags().Lookup("help-all"); f != nil && f.Changed {
+			isHelpAll = true
+		}
+		for _, arg := range args {
+			if arg == "help-all" || arg == "--help-all" || arg == "all" {
+				isHelpAll = true
+			}
+		}
+
+		if isHelpAll {
 			renderHelpAll(w, c)
 		} else {
 			renderCondensedHelp(w, c, config)

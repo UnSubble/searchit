@@ -43,6 +43,9 @@ func TestScanHelpOutput(t *testing.T) {
 		if strings.Contains(output, "--connect-timeout") {
 			t.Errorf("did not expect --connect-timeout in condensed scan help")
 		}
+		if strings.Contains(output, "--http-version") {
+			t.Errorf("did not expect --http-version in condensed scan help")
+		}
 	})
 
 	t.Run("Help All", func(t *testing.T) {
@@ -68,7 +71,7 @@ func TestScanHelpOutput(t *testing.T) {
 		}
 
 		// Verify every flag exists in help-all
-		for _, flag := range []string{"--url", "--wordlist", "--recursive", "--threads", "--timeout", "--connect-timeout", "--help-all"} {
+		for _, flag := range []string{"--url", "--wordlist", "--recursive", "--threads", "--timeout", "--connect-timeout", "--http-version", "--help-all"} {
 			if !strings.Contains(output, flag) {
 				t.Errorf("expected flag %q in scan --help-all output", flag)
 			}
@@ -111,6 +114,9 @@ func TestFuzzHelpOutput(t *testing.T) {
 		if strings.Contains(output, "--timeout") {
 			t.Errorf("did not expect --timeout in condensed fuzz help")
 		}
+		if strings.Contains(output, "--http-version") {
+			t.Errorf("did not expect --http-version in condensed fuzz help")
+		}
 	})
 
 	t.Run("Help All", func(t *testing.T) {
@@ -136,7 +142,7 @@ func TestFuzzHelpOutput(t *testing.T) {
 		}
 
 		// Verify every flag exists in help-all
-		for _, flag := range []string{"--url", "--wordlist", "--foo", "--bar", "--buzz", "--timeout", "--proxy", "--help-all"} {
+		for _, flag := range []string{"--url", "--wordlist", "--foo", "--bar", "--buzz", "--timeout", "--proxy", "--http-version", "--help-all"} {
 			if !strings.Contains(output, flag) {
 				t.Errorf("expected flag %q in fuzz --help-all output", flag)
 			}
