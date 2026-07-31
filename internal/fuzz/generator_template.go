@@ -11,6 +11,7 @@ const (
 	PlaceholderFUZZ Placeholder = iota
 	PlaceholderFOO
 	PlaceholderBAR
+	PlaceholderBAZ
 	PlaceholderBUZZ
 )
 
@@ -33,7 +34,7 @@ type GenTemplateSegment struct {
 type GenCompiledTemplate struct {
 	Segments         []GenTemplateSegment
 	LiteralBytes     int
-	PlaceholderCount [4]uint8
+	PlaceholderCount [5]uint8
 }
 
 // GenCompiledHeader represents an HTTP header where both the key and values are compiled templates.
@@ -52,6 +53,7 @@ func CompileGenTemplate(input string) GenCompiledTemplate {
 	if !strings.Contains(input, "FUZZ") &&
 		!strings.Contains(input, "FOO") &&
 		!strings.Contains(input, "BAR") &&
+		!strings.Contains(input, "BAZ") &&
 		!strings.Contains(input, "BUZZ") {
 		return GenCompiledTemplate{
 			Segments:     []GenTemplateSegment{{Kind: SegmentLiteral, Text: input}},
@@ -102,6 +104,18 @@ func CompileGenTemplate(input string) GenCompiledTemplate {
 				literalStart = i
 				continue
 			}
+			if strings.HasPrefix(input[i:], "BAZ") {
+				if i > literalStart {
+					text := input[literalStart:i]
+					ct.Segments = append(ct.Segments, GenTemplateSegment{Kind: SegmentLiteral, Text: text})
+					ct.LiteralBytes += len(text)
+				}
+				ct.Segments = append(ct.Segments, GenTemplateSegment{Kind: SegmentPlaceholder, ID: PlaceholderBAZ})
+				ct.PlaceholderCount[PlaceholderBAZ]++
+				i += 3
+				literalStart = i
+				continue
+			}
 			if strings.HasPrefix(input[i:], "BUZZ") {
 				if i > literalStart {
 					text := input[literalStart:i]
@@ -128,7 +142,7 @@ func CompileGenTemplate(input string) GenCompiledTemplate {
 }
 
 // Render executes the compiled template substituting placeholders with values.
-func (t *GenCompiledTemplate) Render(values [4]string) string {
+func (t *GenCompiledTemplate) Render(values [5]string) string {
 	if len(t.Segments) == 0 {
 		return ""
 	}
@@ -145,6 +159,7 @@ func (t *GenCompiledTemplate) Render(values [4]string) string {
 		int(t.PlaceholderCount[PlaceholderFUZZ])*len(values[PlaceholderFUZZ]) +
 		int(t.PlaceholderCount[PlaceholderFOO])*len(values[PlaceholderFOO]) +
 		int(t.PlaceholderCount[PlaceholderBAR])*len(values[PlaceholderBAR]) +
+		int(t.PlaceholderCount[PlaceholderBAZ])*len(values[PlaceholderBAZ]) +
 		int(t.PlaceholderCount[PlaceholderBUZZ])*len(values[PlaceholderBUZZ])
 
 	var b strings.Builder

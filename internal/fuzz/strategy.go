@@ -128,6 +128,7 @@ type Runner struct {
 
 	FooWords  []string
 	BarWords  []string
+	BazWords  []string
 	BuzzWords []string
 
 	Client    *http.Client
@@ -180,6 +181,9 @@ func (r *Runner) EstimateCandidates(primaryWordlistSize int) int64 {
 	if len(r.BarWords) > 0 {
 		total *= int64(len(r.BarWords))
 	}
+	if len(r.BazWords) > 0 {
+		total *= int64(len(r.BazWords))
+	}
 	if len(r.BuzzWords) > 0 {
 		total *= int64(len(r.BuzzWords))
 	}
@@ -216,42 +220,54 @@ func (r *Runner) compileRequest() *compiledRequest {
 func GetTargetDepth(urlTemplate string) int {
 	hasFOO := strings.Contains(urlTemplate, "FOO")
 	hasBAR := strings.Contains(urlTemplate, "BAR")
+	hasBAZ := strings.Contains(urlTemplate, "BAZ")
 	hasBUZZ := strings.Contains(urlTemplate, "BUZZ")
 
-	if hasBUZZ && hasBAR && hasFOO {
-		return 3
-	}
-	if hasBAR && hasFOO {
-		return 2
-	}
+	count := 0
 	if hasFOO {
-		return 1
+		count++
 	}
-	return 0
+	if hasBAR {
+		count++
+	}
+	if hasBAZ {
+		count++
+	}
+	if hasBUZZ {
+		count++
+	}
+	return count
 }
 
 // TruncateTemplate cuts template segments for a specific target depth.
 func TruncateTemplate(urlTemplate string, depth int) string {
+	hasBAZ := strings.Contains(urlTemplate, "BAZ")
+	hasBUZZ := strings.Contains(urlTemplate, "BUZZ")
+
 	switch depth {
 	case 1:
-		if idx := strings.Index(urlTemplate, "/BAR"); idx != -1 {
-			return urlTemplate[:idx]
-		}
-		if idx := strings.Index(urlTemplate, "BAR"); idx != -1 {
-			return urlTemplate[:idx]
-		}
-		if idx := strings.Index(urlTemplate, "/BUZZ"); idx != -1 {
-			return urlTemplate[:idx]
-		}
-		if idx := strings.Index(urlTemplate, "BUZZ"); idx != -1 {
-			return urlTemplate[:idx]
+		for _, ph := range []string{"/BAR", "BAR", "/BAZ", "BAZ", "/BUZZ", "BUZZ"} {
+			if idx := strings.Index(urlTemplate, ph); idx != -1 {
+				return urlTemplate[:idx]
+			}
 		}
 	case 2:
-		if idx := strings.Index(urlTemplate, "/BUZZ"); idx != -1 {
-			return urlTemplate[:idx]
+		targetPhs := []string{"/BUZZ", "BUZZ"}
+		if hasBAZ {
+			targetPhs = []string{"/BAZ", "BAZ", "/BUZZ", "BUZZ"}
 		}
-		if idx := strings.Index(urlTemplate, "BUZZ"); idx != -1 {
-			return urlTemplate[:idx]
+		for _, ph := range targetPhs {
+			if idx := strings.Index(urlTemplate, ph); idx != -1 {
+				return urlTemplate[:idx]
+			}
+		}
+	case 3:
+		if hasBAZ && hasBUZZ {
+			for _, ph := range []string{"/BUZZ", "BUZZ"} {
+				if idx := strings.Index(urlTemplate, ph); idx != -1 {
+					return urlTemplate[:idx]
+				}
+			}
 		}
 	}
 	return urlTemplate
@@ -297,6 +313,10 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	if len(barList) == 0 {
 		barList = []string{""}
 	}
+	bazList := r.BazWords
+	if len(bazList) == 0 {
+		bazList = []string{""}
+	}
 	buzzList := r.BuzzWords
 	if len(buzzList) == 0 {
 		buzzList = []string{""}
@@ -335,30 +355,32 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 					}
 					for _, fooVal := range fooList {
 						for _, barVal := range barList {
-							for _, buzzVal := range buzzList {
-								resCh := make(chan Result, 1)
-								select {
-								case <-producerCtx.Done():
-									return
-								case jobChan <- resCh:
-								}
-								producerWg.Add(1)
-								go func(f, foo, bar, buzz string, ch chan<- Result) {
-									defer producerWg.Done()
-									job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FUZZ": f, "FOO": foo, "BAR": bar, "BUZZ": buzz})
-									if err != nil {
-										if r.Collector != nil {
-											r.Collector.RecordSkipped(1)
-										}
-										ch <- Result{Err: err}
+							for _, bazVal := range bazList {
+								for _, buzzVal := range buzzList {
+									resCh := make(chan Result, 1)
+									select {
+									case <-producerCtx.Done():
 										return
+									case jobChan <- resCh:
 									}
-									res, err := e.Execute(job)
-									if err != nil {
-										res.Err = err
-									}
-									ch <- res
-								}(word, fooVal, barVal, buzzVal, resCh)
+									producerWg.Add(1)
+									go func(f, foo, bar, baz, buzz string, ch chan<- Result) {
+										defer producerWg.Done()
+										job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FUZZ": f, "FOO": foo, "BAR": bar, "BAZ": baz, "BUZZ": buzz})
+										if err != nil {
+											if r.Collector != nil {
+												r.Collector.RecordSkipped(1)
+											}
+											ch <- Result{Err: err}
+											return
+										}
+										res, err := e.Execute(job)
+										if err != nil {
+											res.Err = err
+										}
+										ch <- res
+									}(word, fooVal, barVal, bazVal, buzzVal, resCh)
+								}
 							}
 						}
 					}
@@ -367,30 +389,32 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		} else {
 			for _, fooVal := range fooList {
 				for _, barVal := range barList {
-					for _, buzzVal := range buzzList {
-						resCh := make(chan Result, 1)
-						select {
-						case <-producerCtx.Done():
-							return
-						case jobChan <- resCh:
-						}
-						producerWg.Add(1)
-						go func(foo, bar, buzz string, ch chan<- Result) {
-							defer producerWg.Done()
-							job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FOO": foo, "BAR": bar, "BUZZ": buzz})
-							if err != nil {
-								if r.Collector != nil {
-									r.Collector.RecordSkipped(1)
-								}
-								ch <- Result{Err: err}
+					for _, bazVal := range bazList {
+						for _, buzzVal := range buzzList {
+							resCh := make(chan Result, 1)
+							select {
+							case <-producerCtx.Done():
 								return
+							case jobChan <- resCh:
 							}
-							res, err := e.Execute(job)
-							if err != nil {
-								res.Err = err
-							}
-							ch <- res
-						}(fooVal, barVal, buzzVal, resCh)
+							producerWg.Add(1)
+							go func(foo, bar, baz, buzz string, ch chan<- Result) {
+								defer producerWg.Done()
+								job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FOO": foo, "BAR": bar, "BAZ": baz, "BUZZ": buzz})
+								if err != nil {
+									if r.Collector != nil {
+										r.Collector.RecordSkipped(1)
+									}
+									ch <- Result{Err: err}
+									return
+								}
+								res, err := e.Execute(job)
+								if err != nil {
+									res.Err = err
+								}
+								ch <- res
+							}(fooVal, barVal, bazVal, buzzVal, resCh)
+						}
 					}
 				}
 			}

@@ -178,7 +178,7 @@ func ResolveURL(baseURLStr string, hostHeader string, rawPath string) (string, e
 }
 
 func hasPlaceholders(s string) bool {
-	return strings.Contains(s, "FUZZ") || strings.Contains(s, "FOO") || strings.Contains(s, "BAR") || strings.Contains(s, "BUZZ")
+	return strings.Contains(s, "FUZZ") || strings.Contains(s, "FOO") || strings.Contains(s, "BAR") || strings.Contains(s, "BAZ") || strings.Contains(s, "BUZZ")
 }
 
 func resolvePlaceholderURL(base, path string) string {

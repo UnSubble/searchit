@@ -18,6 +18,7 @@ func TestGenerator_SingleFuzz(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	primaryChan := make(chan string, 3)
@@ -62,6 +63,7 @@ func TestGenerator_CartesianProduct(t *testing.T) {
 		"",
 		[]string{"foo1", "foo2"},
 		[]string{"bar1", "bar2", "bar3"},
+		nil,
 		[]string{"buzz1"},
 	)
 
@@ -113,6 +115,7 @@ func TestGenerator_NoPrimaryWordlist(t *testing.T) {
 		[]string{"admin", "user"},
 		[]string{"1", "2"},
 		nil,
+		nil,
 	)
 
 	jobs := make(chan fuzz.RequestDTO, 10)
@@ -152,6 +155,7 @@ func TestGenerator_WithCookies(t *testing.T) {
 		[]string{"admin", "guest"}, // fooWords (FOO)
 		nil,
 		nil,
+		nil,
 	)
 
 	primary := make(chan string, 1)
@@ -179,5 +183,42 @@ func TestGenerator_WithCookies(t *testing.T) {
 	}
 	if c0[0] != "sess=admin; user=john" {
 		t.Errorf("unexpected cookie string: %+v", c0[0])
+	}
+}
+
+func TestGenerator_BazPlaceholder(t *testing.T) {
+	g := fuzz.NewGenerator(
+		"http://test.com/FOO/BAR/BAZ",
+		"GET",
+		"",
+		nil,
+		"",
+		[]string{"foo1"},
+		[]string{"bar1"},
+		[]string{"baz1", "baz2"},
+		nil,
+	)
+
+	jobs := make(chan fuzz.RequestDTO, 10)
+	g.Generate(context.Background(), nil, jobs)
+	close(jobs)
+
+	var results []fuzz.RequestDTO
+	for j := range jobs {
+		results = append(results, j)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(results))
+	}
+
+	expectedURLs := []string{
+		"http://test.com/foo1/bar1/baz1",
+		"http://test.com/foo1/bar1/baz2",
+	}
+	for i, r := range results {
+		if r.URL != expectedURLs[i] {
+			t.Errorf("expected URL %q, got %q", expectedURLs[i], r.URL)
+		}
 	}
 }

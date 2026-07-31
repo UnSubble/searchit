@@ -16,7 +16,7 @@ type RequestTemplate struct {
 }
 
 // SupportedPlaceholders defines the complete list of valid fuzz placeholders.
-var SupportedPlaceholders = []string{"FUZZ", "FOO", "BAR", "BUZZ"}
+var SupportedPlaceholders = []string{"FUZZ", "FOO", "BAR", "BAZ", "BUZZ"}
 
 // FindPlaceholders inspects a merged RequestTemplate and returns a slice
 // containing all supported placeholders that are present within the request.

@@ -28,6 +28,7 @@ func BenchmarkGenerator(b *testing.B) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	b.ResetTimer()
@@ -38,9 +39,9 @@ func BenchmarkGenerator(b *testing.B) {
 // Placeholder Rendering Benchmarks
 // ==========================================
 
-const benchTemplate = "http://example.com/api/FUZZ/v1/FOO/test?session=BAR&tracking=BUZZ&id=FUZZ"
+const benchTemplate = "http://example.com/api/FUZZ/v1/FOO/test?session=BAR&baz=BAZ&tracking=BUZZ&id=FUZZ"
 
-var benchValues = [4]string{"fuzz_value", "foo_value", "bar_value", "buzz_value"}
+var benchValues = [5]string{"fuzz_value", "foo_value", "bar_value", "baz_value", "buzz_value"}
 
 func BenchmarkReplaceAll(b *testing.B) {
 	b.ResetTimer()
@@ -49,6 +50,7 @@ func BenchmarkReplaceAll(b *testing.B) {
 		res = strings.ReplaceAll(res, "FUZZ", benchValues[PlaceholderFUZZ])
 		res = strings.ReplaceAll(res, "FOO", benchValues[PlaceholderFOO])
 		res = strings.ReplaceAll(res, "BAR", benchValues[PlaceholderBAR])
+		res = strings.ReplaceAll(res, "BAZ", benchValues[PlaceholderBAZ])
 		res = strings.ReplaceAll(res, "BUZZ", benchValues[PlaceholderBUZZ])
 		_ = res
 	}
@@ -61,9 +63,10 @@ func BenchmarkBuilder(b *testing.B) {
 		fuzzVal := benchValues[PlaceholderFUZZ]
 		fooVal := benchValues[PlaceholderFOO]
 		barVal := benchValues[PlaceholderBAR]
+		bazVal := benchValues[PlaceholderBAZ]
 		buzzVal := benchValues[PlaceholderBUZZ]
 
-		fuzzCount, fooCount, barCount, buzzCount := 0, 0, 0, 0
+		fuzzCount, fooCount, barCount, bazCount, buzzCount := 0, 0, 0, 0, 0
 		j := 0
 		for j < len(template) {
 			if template[j] == 'F' {
@@ -83,6 +86,11 @@ func BenchmarkBuilder(b *testing.B) {
 					j += 3
 					continue
 				}
+				if strings.HasPrefix(template[j:], "BAZ") {
+					bazCount++
+					j += 3
+					continue
+				}
 				if strings.HasPrefix(template[j:], "BUZZ") {
 					buzzCount++
 					j += 4
@@ -96,6 +104,7 @@ func BenchmarkBuilder(b *testing.B) {
 			fuzzCount*(len(fuzzVal)-4) +
 			fooCount*(len(fooVal)-3) +
 			barCount*(len(barVal)-3) +
+			bazCount*(len(bazVal)-3) +
 			buzzCount*(len(buzzVal)-4)
 
 		var builder strings.Builder
@@ -117,6 +126,11 @@ func BenchmarkBuilder(b *testing.B) {
 			} else if template[j] == 'B' {
 				if strings.HasPrefix(template[j:], "BAR") {
 					builder.WriteString(barVal)
+					j += 3
+					continue
+				}
+				if strings.HasPrefix(template[j:], "BAZ") {
+					builder.WriteString(bazVal)
 					j += 3
 					continue
 				}

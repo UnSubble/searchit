@@ -52,6 +52,7 @@ type FuzzOptions struct {
 	Ext             []string
 	Foo             string
 	Bar             string
+	Baz             string
 	Buzz            string
 	Threads         int
 	Timeout         int
@@ -463,6 +464,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			if err != nil {
 				return fmt.Errorf("failed to load BAR wordlist: %w", err)
 			}
+			bazWords, err := loadLines(opts.Baz)
+			if err != nil {
+				return fmt.Errorf("failed to load BAZ wordlist: %w", err)
+			}
 			buzzWords, err := loadLines(opts.Buzz)
 			if err != nil {
 				return fmt.Errorf("failed to load BUZZ wordlist: %w", err)
@@ -527,10 +532,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			detectedPlaceholders := fuzz.FindPlaceholders(reqTmpl)
 
 			if len(detectedPlaceholders) == 0 {
-				return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BUZZ) found in URL, body, cookies or headers")
+				return fmt.Errorf("no placeholders (FUZZ, FOO, BAR, BAZ, BUZZ) found in URL, body, cookies or headers")
 			}
 
-			usesFUZZ, usesFOO, usesBAR, usesBUZZ := false, false, false, false
+			usesFUZZ, usesFOO, usesBAR, usesBAZ, usesBUZZ := false, false, false, false, false
 			for _, p := range detectedPlaceholders {
 				if p == "FUZZ" {
 					usesFUZZ = true
@@ -540,6 +545,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 				if p == "BAR" {
 					usesBAR = true
+				}
+				if p == "BAZ" {
+					usesBAZ = true
 				}
 				if p == "BUZZ" {
 					usesBUZZ = true
@@ -551,6 +559,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			}
 			if usesBAR && opts.Bar == "" {
 				return fmt.Errorf("placeholder BAR is used but no --bar wordlist provided")
+			}
+			if usesBAZ && opts.Baz == "" {
+				return fmt.Errorf("placeholder BAZ is used but no --baz wordlist provided")
 			}
 			if usesBUZZ && opts.Buzz == "" {
 				return fmt.Errorf("placeholder BUZZ is used but no --buzz wordlist provided")
@@ -653,6 +664,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							primaryWl = opts.Bar
 						}
 					}
+					if usesBAZ {
+						wordlistsCount++
+						if primaryWl == "" {
+							primaryWl = opts.Baz
+						}
+					}
 					if usesBUZZ {
 						wordlistsCount++
 						if primaryWl == "" {
@@ -673,6 +690,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						CookieTemplate:  opts.Cookie,
 						FooWords:        fooWords,
 						BarWords:        barWords,
+						BazWords:        bazWords,
 						BuzzWords:       buzzWords,
 					}
 					totalCandidates = tmpRunner.EstimateCandidates(baseCount)
@@ -879,6 +897,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					CookieTemplate:  opts.Cookie,
 					FooWords:        fooWords,
 					BarWords:        barWords,
+					BazWords:        bazWords,
 					BuzzWords:       buzzWords,
 					Client:          appState.HTTPClient,
 					FS:              fs,
@@ -1023,12 +1042,13 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.URL, "url", "u", "", "target URL with placeholders (FUZZ, FOO, BAR, BUZZ)")
+	cmd.Flags().StringVarP(&opts.URL, "url", "u", "", "target URL with placeholders (FUZZ, FOO, BAR, BAZ, BUZZ)")
 	cmd.Flags().StringVar(&opts.URLFile, "url-file", "", "Target URL file (NOT SUPPORTED in fuzz)")
 	cmd.Flags().StringVarP(&opts.Wordlist, "wordlist", "w", "", "primary wordlist path (maps to FUZZ)")
 	cmd.Flags().StringSliceVarP(&opts.Ext, "ext", "e", nil, "comma-separated extensions or @file")
 	cmd.Flags().StringVar(&opts.Foo, "foo", "", "wordlist path for FOO placeholder")
 	cmd.Flags().StringVar(&opts.Bar, "bar", "", "wordlist path for BAR placeholder")
+	cmd.Flags().StringVar(&opts.Baz, "baz", "", "wordlist path for BAZ placeholder")
 	cmd.Flags().StringVar(&opts.Buzz, "buzz", "", "wordlist path for BUZZ placeholder")
 	cmd.Flags().StringVarP(&opts.Method, "method", "X", "GET", "HTTP method")
 	cmd.Flags().StringVar(&opts.HTTPVersion, "http-version", "auto", "Select the HTTP protocol version (auto, 0.9, 1.0, 1.1, 2)")

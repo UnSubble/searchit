@@ -58,6 +58,7 @@ func TestFuzz_ConcurrencyAndDeterminism(t *testing.T) {
 				fooWords,
 				barWords,
 				nil,
+				nil,
 			)
 
 			jobs := make(chan fuzz.RequestDTO, tc)
@@ -136,6 +137,7 @@ func TestFuzz_TimeoutAndCancellation(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	primaryChan := make(chan string, 10)
@@ -199,7 +201,7 @@ func TestFuzz_ResponseFiltering(t *testing.T) {
 	primaryChan <- "test"
 	close(primaryChan)
 
-	generator := fuzz.NewGenerator(srv.URL+"/FUZZ", "GET", "", nil, "", nil, nil, nil)
+	generator := fuzz.NewGenerator(srv.URL+"/FUZZ", "GET", "", nil, "", nil, nil, nil, nil)
 	jobs := make(chan fuzz.RequestDTO, 1)
 	go func() {
 		defer close(jobs)
@@ -248,7 +250,7 @@ func TestFuzz_ShowPresentation(t *testing.T) {
 	primaryChan <- "test"
 	close(primaryChan)
 
-	generator := fuzz.NewGenerator(srv.URL+"/FUZZ", "GET", "", nil, "", nil, nil, nil)
+	generator := fuzz.NewGenerator(srv.URL+"/FUZZ", "GET", "", nil, "", nil, nil, nil, nil)
 	jobs := make(chan fuzz.RequestDTO, 1)
 	go func() {
 		defer close(jobs)
