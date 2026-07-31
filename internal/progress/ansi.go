@@ -22,18 +22,22 @@ const (
 // All writes go through the TerminalManager (TM), which holds the single global
 // output lock.
 type ANSIRenderer struct {
-	TM       *terminal.Manager
-	Target   string
-	Profiles []string
-	Mode     string
-	limit    int
-	frozen   bool // true if the underlying writer is a real TTY
+	TM                *terminal.Manager
+	Target            string
+	Profiles          []string
+	Mode              string
+	Method            string
+	HTTPVersion       string
+	limit             int
+	frozen            bool // true if the underlying writer is a real TTY
+	ConfiguredThreads int
 
 	mu            sync.Mutex // protects lastLineCount + lastProgCount only
 	lastLineCount int
 	lastProgCount int
 
-	IsPaused func() bool
+	IsPaused      func() bool
+	IsStatsActive func() bool
 }
 
 // NewANSIRenderer creates a new ANSIRenderer.
@@ -136,7 +140,7 @@ func (tr *ANSIRenderer) Reset() {
 	tr.lastProgCount = 0
 }
 
-// renderInto draws the progress panel. Called INSIDE an Emit closure.
+// renderInto draws the progress panel or statistics overlay. Called INSIDE an Emit closure.
 func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 	tr.mu.Lock()
 	lastLines := tr.lastLineCount
@@ -144,8 +148,11 @@ func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 
 	var lines []string
 
-	progLines := tr.renderCompactProgress(snap)
-	lines = append(lines, progLines...)
+	if tr.IsStatsActive != nil && tr.IsStatsActive() {
+		lines = statsReport(tr.TM.ContentWidth(), snap, tr.ConfiguredThreads, tr.Target, tr.Profiles, tr.Mode, tr.Method, tr.HTTPVersion)
+	} else {
+		lines = tr.renderCompactProgress(snap)
+	}
 
 	// Print lines
 	if !tr.frozen {
@@ -175,7 +182,7 @@ func (tr *ANSIRenderer) renderInto(w io.Writer, snap stats.Snapshot) {
 
 	tr.mu.Lock()
 	tr.lastLineCount = len(lines)
-	tr.lastProgCount = len(progLines)
+	tr.lastProgCount = len(lines)
 	tr.mu.Unlock()
 }
 

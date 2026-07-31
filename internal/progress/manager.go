@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/unsubble/searchit/internal/console"
@@ -12,11 +13,9 @@ import (
 	"github.com/unsubble/searchit/internal/stats"
 )
 
-// Manager handles periodic rendering of runtime statistics.
+// Manager handles periodic rendering of runtime statistics and progress overlays.
 //
-// All terminal output goes through TM.Emit(OwnerProgress, ...) which holds
-// the single global output lock. There is no local mutex: the TerminalManager's
-// sync.Mutex is the ONE global output lock for the entire process.
+// All terminal output goes through TM.Emit(OwnerProgress, ...) which holds the process-wide output lock.
 type Manager struct {
 	TM                *terminal.Manager
 	Collector         *stats.Collector
@@ -25,6 +24,7 @@ type Manager struct {
 	ConfiguredThreads int
 
 	isStatsActive bool
+	mu            sync.Mutex
 }
 
 // NewManager creates a new progress Manager.
@@ -33,23 +33,30 @@ func NewManager(tm *terminal.Manager, collector *stats.Collector, renderer *ANSI
 	if interval <= 0 {
 		interval = 1 * time.Second
 	}
-	return &Manager{
+	m := &Manager{
 		TM:        tm,
 		Collector: collector,
 		Renderer:  renderer,
 		Interval:  interval,
 	}
+	renderer.IsStatsActive = func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.isStatsActive
+	}
+	return m
 }
 
 // Start launches the periodic refresh loop. Blocks until the context is cancelled.
 // The caller must hold OwnerProgress on TM before calling Start and release it
 // after Start returns.
 func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
+	m.Renderer.ConfiguredThreads = m.ConfiguredThreads
+
 	ticker := time.NewTicker(m.Interval)
 	defer ticker.Stop()
 
 	// Initialize the terminal regions at startup.
-	// SetupRegions is no longer needed.
 	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
 		m.Renderer.RenderInto(w, m.Collector.Snapshot())
 	})
@@ -58,18 +65,15 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 		select {
 		case <-ctx.Done():
 			// Final render before the goroutine exits.
-			// The global TM lock ensures this cannot interleave with Close().
 			_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
 				m.Renderer.RenderInto(w, m.Collector.Snapshot())
 			})
 			return
 
 		case <-ticker.C:
-			if !m.isStatsActive {
-				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-					m.Renderer.RenderInto(w, m.Collector.Snapshot())
-				})
-			}
+			_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+				m.Renderer.RenderInto(w, m.Collector.Snapshot())
+			})
 
 		case cmd, ok := <-cmdChan:
 			if !ok {
@@ -78,52 +82,20 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 			}
 			switch cmd {
 			case console.CommandProgress:
-				if !m.isStatsActive {
-					_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-						m.Renderer.RenderInto(w, m.Collector.Snapshot())
-					})
-				}
+				m.mu.Lock()
+				m.isStatsActive = false
+				m.mu.Unlock()
+				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+					m.Renderer.RenderInto(w, m.Collector.Snapshot())
+				})
 
 			case console.CommandStats:
-				m.isStatsActive = true
-				// Switch owner to Statistics and render the full-screen report.
-				_ = m.Renderer.Clear()
-				_ = m.TM.SwitchOwner(terminal.OwnerProgress, terminal.OwnerStatistics)
-				m.renderStatsReport()
-				m.awaitStatsExit(ctx, ticker, &cmdChan)
-			}
-		}
-	}
-}
-
-// awaitStatsExit blocks while the statistics view is visible.
-func (m *Manager) awaitStatsExit(
-	ctx context.Context,
-	ticker *time.Ticker,
-	cmdChan *<-chan console.Command,
-) {
-	for {
-		select {
-		case <-ctx.Done():
-			// Switch back before exiting.
-			_ = m.TM.SwitchOwner(terminal.OwnerStatistics, terminal.OwnerProgress)
-			return
-
-		case <-ticker.C:
-			// Absorb: do not render while the stats view is active.
-
-		case cmd2, ok2 := <-*cmdChan:
-			if !ok2 {
-				*cmdChan = nil
-				m.restoreDashboard()
-				return
-			}
-			switch cmd2 {
-			case console.CommandProgress:
-				m.restoreDashboard()
-				return
-			case console.CommandStopTarget, console.CommandAbortAll:
-				// Graceful stop/abort is handled by the caller cancelling the context.
+				m.mu.Lock()
+				m.isStatsActive = !m.isStatsActive
+				m.mu.Unlock()
+				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+					m.Renderer.RenderInto(w, m.Collector.Snapshot())
+				})
 			}
 		}
 	}
@@ -133,34 +105,12 @@ func (m *Manager) awaitStatsExit(
 func (m *Manager) ExecuteAbove(fn func()) {
 	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
 		m.Renderer.ClearInto(w)
+		_ = os.Stderr.Sync()
+		fmt.Fprint(os.Stdout, "\r")
 		fn()
 		_ = os.Stdout.Sync()
 		m.Renderer.RenderInto(w, m.Collector.Snapshot())
-	})
-}
-
-// renderStatsReport renders the full-screen statistics view under OwnerStatistics.
-func (m *Manager) renderStatsReport() {
-	snap := m.Collector.Snapshot()
-	_ = m.TM.Emit(terminal.OwnerStatistics, func(w io.Writer) {
-		RenderStatsViewFull(w, m.TM.ContentWidth(), snap, m.ConfiguredThreads,
-			m.Renderer.Target, m.Renderer.Profiles, m.Renderer.Mode)
-	})
-}
-
-// restoreDashboard prints the resuming message and switches back to the progress owner.
-func (m *Manager) restoreDashboard() {
-	_ = m.TM.SwitchOwner(terminal.OwnerStatistics, terminal.OwnerProgress)
-	m.isStatsActive = false
-
-	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Resuming scan...")
-		fmt.Fprintln(w)
-		m.Renderer.Reset()
-
-		// Re-render the fresh dashboard
-		m.Renderer.RenderInto(w, m.Collector.Snapshot())
+		_ = os.Stderr.Sync()
 	})
 }
 
@@ -170,6 +120,6 @@ func (m *Manager) PrintStats() {
 	snap := m.Collector.Snapshot()
 	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
 		RenderStatsViewFull(w, m.TM.ContentWidth(), snap, m.ConfiguredThreads,
-			m.Renderer.Target, m.Renderer.Profiles, m.Renderer.Mode)
+			m.Renderer.Target, m.Renderer.Profiles, m.Renderer.Mode, m.Renderer.Method, m.Renderer.HTTPVersion)
 	})
 }

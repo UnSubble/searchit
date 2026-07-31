@@ -691,6 +691,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					}
 
 					renderer = progress.NewANSIRenderer(tm, targetURL, appliedProfiles, modeStr)
+					renderer.Method = cfg.Method
+					renderer.HTTPVersion = "HTTP/1.1"
 					renderer.IsPaused = func() bool {
 						return stateMgr != nil && stateMgr.Current() == state.PhasePaused
 					}

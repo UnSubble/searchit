@@ -715,6 +715,8 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				if enableProgress {
 					modeStr := fmt.Sprintf("Fuzz (%s)", strings.ToUpper(cfg.FuzzStrategy))
 					renderer = progress.NewANSIRenderer(tm, targetURL, nil, modeStr)
+					renderer.Method = cfg.Method
+					renderer.HTTPVersion = "HTTP/1.1"
 					renderer.IsPaused = func() bool {
 						return stateMgr != nil && stateMgr.Current() == state.PhasePaused
 					}

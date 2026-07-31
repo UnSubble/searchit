@@ -112,16 +112,17 @@ func TestManager_PrintStats(t *testing.T) {
 
 	out := buf.String()
 	expectedSubstrings := []string{
-		"Statistics",
-		"General",
-		"http://localhost",
-		"bfs",
-		"Requests sent",
-		"PERFORMANCE",
-		"Total requests",
-		"TIMING",
+		"Statistics (press any key to return)",
+		"Method",
+		"HTTP",
+		"Requests Sent",
+		"Findings",
+		"Errors",
+		"Retries",
+		"Bytes Received",
+		"Total Candidates",
+		"Total Req/sec",
 		"Elapsed",
-		"Workers",
 	}
 
 	for _, sub := range expectedSubstrings {
@@ -343,4 +344,71 @@ func TestANSIRenderer_FiniteVsOpenEndedProgress(t *testing.T) {
 			t.Errorf("expected exact directory activity metrics in output, got:\n%s", out)
 		}
 	})
+}
+
+type safeWriter struct {
+	buf *bytes.Buffer
+	mu  *sync.Mutex
+}
+
+func (w *safeWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
+func TestManager_InPlaceStatisticsOverlay(t *testing.T) {
+	c := stats.NewCollector()
+	var buf bytes.Buffer
+	var bufMu sync.Mutex
+	writer := &safeWriter{buf: &buf, mu: &bufMu}
+	tm := terminal.New(writer)
+	_ = tm.AcquireOwner(terminal.OwnerProgress)
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "bfs")
+	m := progress.NewManager(tm, c, r, 10*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmdChan := make(chan console.Command, 10)
+	done := make(chan struct{})
+	go func() {
+		m.Start(ctx, cmdChan)
+		close(done)
+	}()
+
+	// 1. Enter Stats view by sending CommandStats
+	cmdChan <- console.CommandStats
+	time.Sleep(30 * time.Millisecond)
+
+	bufMu.Lock()
+	out := buf.String()
+	bufMu.Unlock()
+	if !strings.Contains(out, "Statistics") {
+		t.Errorf("expected statistics report header in output, got:\n%s", out)
+	}
+
+	// 2. Execute a finding above while stats view is open
+	var findingExecuted bool
+	m.ExecuteAbove(func() {
+		findingExecuted = true
+	})
+
+	if !findingExecuted {
+		t.Error("expected finding to be executed immediately above the in-place stats overlay")
+	}
+
+	// 3. Exit Stats view by sending CommandStats again (toggle)
+	cmdChan <- console.CommandStats
+	time.Sleep(30 * time.Millisecond)
+
+	bufMu.Lock()
+	out = buf.String()
+	bufMu.Unlock()
+	if !strings.Contains(out, "Requests Sent:") && !strings.Contains(out, "Progress:") {
+		t.Errorf("expected normal progress panel restored after exiting stats view, got:\n%s", out)
+	}
+
+	cancel()
+	<-done
 }
