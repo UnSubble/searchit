@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -547,6 +548,146 @@ func TestFormatters_ShowPresentation(t *testing.T) {
 		mdStr := mdBuf.String()
 		if !strings.Contains(mdStr, "Server") || !strings.Contains(mdStr, "nginx") {
 			t.Errorf("expected Markdown headers/values in output, got:\n%s", mdStr)
+		}
+	})
+}
+
+func TestTextFormatter_Redirects(t *testing.T) {
+	t.Run("301 with absolute location", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, false, false, false)
+		headers := make(http.Header)
+		headers.Set("Location", "http://10.114.169.75/upload/")
+
+		r := engine.Result{
+			URL:        "http://10.114.169.75/upload",
+			StatusCode: 301,
+			Length:     312,
+			Headers:    headers,
+		}
+
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+		got := buf.String()
+		want := "[301] - 312 B - /upload -> http://10.114.169.75/upload/\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("302 with relative location and query params", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, false, false, false)
+		headers := make(http.Header)
+		headers.Set("Location", "/signin")
+
+		r := engine.Result{
+			URL:        "http://10.114.169.75/login?next=admin",
+			StatusCode: 302,
+			Length:     0,
+			Headers:    headers,
+		}
+
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+		got := buf.String()
+		want := "[302] - 0 B - /login?next=admin -> /signin\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("all redirect status codes 300 301 302 303 307 308", func(t *testing.T) {
+		codes := []int{300, 301, 302, 303, 307, 308}
+		for _, code := range codes {
+			var buf bytes.Buffer
+			f := output.NewTextFormatter(&buf, false, false, false)
+			headers := make(http.Header)
+			headers.Set("Location", "/dest")
+
+			r := engine.Result{
+				URL:        "http://example.com/src",
+				StatusCode: code,
+				Length:     100,
+				Headers:    headers,
+			}
+
+			if err := f.Print(r); err != nil {
+				t.Fatalf("Print failed for %d: %v", code, err)
+			}
+			got := buf.String()
+			want := fmt.Sprintf("[%d] - 100 B - /src -> /dest\n", code)
+			if got != want {
+				t.Errorf("code %d: got %q, want %q", code, got, want)
+			}
+		}
+	})
+
+	t.Run("missing Location header falls back to normal formatter", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, false, false, false)
+
+		r := engine.Result{
+			URL:        "http://example.com/redirect-no-loc",
+			StatusCode: 301,
+			Length:     150,
+		}
+
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+		got := buf.String()
+		want := "[+] 301 - 150 B - http://example.com/redirect-no-loc\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("quiet mode with redirect", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, true, false, false)
+		headers := make(http.Header)
+		headers.Set("Location", "http://example.com/dest")
+
+		r := engine.Result{
+			URL:        "http://example.com/src",
+			StatusCode: 301,
+			Length:     200,
+			Headers:    headers,
+		}
+
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+		got := buf.String()
+		want := "http://example.com/src\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("non-redirect status code with Location header falls back to normal", func(t *testing.T) {
+		var buf bytes.Buffer
+		f := output.NewTextFormatter(&buf, false, false, false)
+		headers := make(http.Header)
+		headers.Set("Location", "http://example.com/dest")
+
+		r := engine.Result{
+			URL:        "http://example.com/created",
+			StatusCode: 201,
+			Length:     50,
+			Headers:    headers,
+		}
+
+		if err := f.Print(r); err != nil {
+			t.Fatalf("Print failed: %v", err)
+		}
+		got := buf.String()
+		want := "[+] 201 - 50 B - http://example.com/created\n"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 }

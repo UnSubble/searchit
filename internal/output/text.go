@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -77,58 +78,107 @@ func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle
 	}
 
 	if showHeaders || showTitle {
-		var sb strings.Builder
-
-		sizeStr := "0 B"
-		if r.Length >= 0 {
-			sizeStr = fmt.Sprintf("%d B", r.Length)
-		} else {
-			sizeStr = "-1 B"
-		}
-
-		sb.WriteString(fmt.Sprintf("%d     %s\n\n%s\n", r.StatusCode, sizeStr, r.URL))
-
-		if showTitle {
-			sb.WriteString("\nTITLE:\n------\n")
-			if r.Title != "" {
-				sb.WriteString(r.Title)
-			}
-			sb.WriteString("\n------\n")
-		}
-
-		if showHeaders && len(r.Headers) > 0 {
-			sb.WriteString("\nHEADERS:\n--------\n")
-			var keys []string
-			for k := range r.Headers {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				for _, v := range r.Headers[k] {
-					sb.WriteString(fmt.Sprintf("%s: %s\n", k, v))
-				}
-			}
-			sb.WriteString("--------\n")
-		}
-
-		_, err := io.WriteString(w, sb.String())
-		return err
+		return writeVerboseTextResult(w, r, showHeaders, showTitle)
 	}
 
+	if isRedirect(r) {
+		return writeRedirectResult(w, r)
+	}
+
+	return writeNormalTextResult(w, r)
+}
+
+func isRedirect(r engine.Result) bool {
+	switch r.StatusCode {
+	case 300, 301, 302, 303, 307, 308:
+		return r.Headers != nil && r.Headers.Get("Location") != ""
+	default:
+		return false
+	}
+}
+
+func requestedPath(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	reqURI := u.RequestURI()
+	if reqURI == "" {
+		return rawURL
+	}
+	return reqURI
+}
+
+func formatSize(length int64) string {
+	if length < 1024 {
+		return fmt.Sprintf("%d B", length)
+	}
+	if length < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(length)/1024.0)
+	}
+	if length < 1024*1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(length)/(1024.0*1024.0))
+	}
+	return fmt.Sprintf("%.1f GB", float64(length)/(1024.0*1024.0*1024.0))
+}
+
+func writeRedirectResult(w io.Writer, r engine.Result) error {
+	reqPath := requestedPath(r.URL)
+	loc := r.Headers.Get("Location")
 	if r.Length >= 0 {
-		var s string
-		if r.Length < 1024 {
-			s = fmt.Sprintf("%d B", r.Length)
-		} else if r.Length < 1024*1024 {
-			s = fmt.Sprintf("%.1f KB", float64(r.Length)/1024.0)
-		} else if r.Length < 1024*1024*1024 {
-			s = fmt.Sprintf("%.1f MB", float64(r.Length)/(1024.0*1024.0))
-		} else {
-			s = fmt.Sprintf("%.1f GB", float64(r.Length)/(1024.0*1024.0*1024.0))
-		}
+		s := formatSize(r.Length)
+		_, err := fmt.Fprintf(w, "[%d] - %s - %s -> %s\n", r.StatusCode, s, reqPath, loc)
+		return err
+	}
+	_, err := fmt.Fprintf(w, "[%d] -        - %s -> %s\n", r.StatusCode, reqPath, loc)
+	return err
+}
+
+func writeNormalTextResult(w io.Writer, r engine.Result) error {
+	if r.Length >= 0 {
+		s := formatSize(r.Length)
 		_, err := fmt.Fprintf(w, "[+] %d - %s - %s\n", r.StatusCode, s, r.URL)
 		return err
 	}
 	_, err := fmt.Fprintf(w, "[+] %d -        - %s\n", r.StatusCode, r.URL)
+	return err
+}
+
+func writeVerboseTextResult(w io.Writer, r engine.Result, showHeaders, showTitle bool) error {
+	var sb strings.Builder
+
+	sizeStr := "0 B"
+	if r.Length >= 0 {
+		sizeStr = fmt.Sprintf("%d B", r.Length)
+	} else {
+		sizeStr = "-1 B"
+	}
+
+	sb.WriteString(fmt.Sprintf("%d     %s\n\n%s\n", r.StatusCode, sizeStr, r.URL))
+
+	if showTitle {
+		sb.WriteString("\nTITLE:\n------\n")
+		if r.Title != "" {
+			sb.WriteString(r.Title)
+		}
+		sb.WriteString("\n------\n")
+	}
+
+	if showHeaders && len(r.Headers) > 0 {
+		sb.WriteString("\nHEADERS:\n--------\n")
+		var keys []string
+		for k := range r.Headers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			for _, v := range r.Headers[k] {
+				sb.WriteString(fmt.Sprintf("%s: %s\n", k, v))
+			}
+		}
+		sb.WriteString("--------\n")
+	}
+
+	_, err := io.WriteString(w, sb.String())
 	return err
 }
