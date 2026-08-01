@@ -25,9 +25,9 @@ type Engine struct {
 	Collector *Collector
 	Summary   *summary.Summary
 
-	once     sync.Once
-	discErr  error
-	mu       sync.Mutex
+	once    sync.Once
+	discErr error
+	mu      sync.Mutex
 }
 
 // NewEngine instantiates a modular Adaptive Engine.
