@@ -22,6 +22,7 @@ import (
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
+	"github.com/unsubble/searchit/internal/diagnostics"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
@@ -837,6 +838,13 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							})
 						}
 					}
+
+					// Diagnostic: dump structured state if shutdown takes too long
+					diagTimeout := cfg.Timeout + 2*time.Second
+					if diagTimeout < 5*time.Second {
+						diagTimeout = 5 * time.Second
+					}
+					go diagnostics.RunDiagnostics(diagTimeout, fuzzCtx.Err(), drainCtx.Err())
 				}()
 
 				stateMgr.Transition(state.PhaseRunning)

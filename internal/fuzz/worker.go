@@ -128,6 +128,11 @@ func process(
 	if reqCtx == nil {
 		reqCtx = targetCtx
 	}
+	if client != nil && client.Timeout > 0 {
+		var reqCancel context.CancelFunc
+		reqCtx, reqCancel = context.WithTimeout(reqCtx, client.Timeout)
+		defer reqCancel()
+	}
 
 	req, err := http.NewRequestWithContext(reqCtx, item.Req.Method, item.Req.URL, bodyReader)
 	if err != nil {

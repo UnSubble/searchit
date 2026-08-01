@@ -75,6 +75,10 @@ func (p *protoTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		conn, err = dialer.DialContext(ctx, "tcp", host)
 	}
 
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -149,10 +153,11 @@ func NewWithHTTPVersion(
 	}
 
 	tr := &http.Transport{
-		MaxIdleConns:        1000,
-		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     90 * time.Second,
-		DisableCompression:  false,
+		MaxIdleConns:          1000,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: timeout,
+		DisableCompression:    false,
 		DialContext: (&net.Dialer{
 			Timeout:   connectTimeout,
 			KeepAlive: 30 * time.Second,

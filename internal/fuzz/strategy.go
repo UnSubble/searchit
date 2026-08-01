@@ -420,8 +420,14 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	}()
 
 	for resCh := range jobChan {
-		res := <-resCh
-		if ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			// Context cancelled. The worker might have dropped this job,
+			// so we skip reading from resCh to prevent a deadlock.
+			// We continue the loop to drain jobChan until the producer closes it,
+			// ensuring the producer has exited before we return.
+			continue
+		case res := <-resCh:
 			if res.Accepted || res.Err != nil {
 				yield(res)
 			}

@@ -71,6 +71,7 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 			return
 
 		case <-ticker.C:
+			m.Collector.Sample()
 			_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
 				m.Renderer.RenderInto(w, m.Collector.Snapshot())
 			})

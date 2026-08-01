@@ -16,6 +16,7 @@ const (
 // rateSlot is a pair of (nanosecond timestamp, cumulative request count) stored
 // as two separate int64 atomics so each field can be updated independently.
 type rateSlot struct {
+	bucketSec     int64
 	timestampNano int64
 	requestsSent  int64
 }
@@ -51,9 +52,6 @@ type Collector struct {
 	peakRequestsPerSecBits uint64
 
 	// Sliding-window ring buffer for Current Req/s tracking.
-	// windowSlots slots, each covering windowSlotDuration. No lock required:
-	// each slot is written by at most one goroutine at a time (slot index
-	// advances monotonically by wall-clock time, not concurrently).
 	window [windowSlots]rateSlot
 
 	// Fixed-size status code array covering status codes 0-999.
@@ -68,18 +66,74 @@ func NewCollector() *Collector {
 	c := &Collector{
 		startTime: nowNano,
 	}
-	// Seed the slot immediately before the current one with the start time
-	// so that the very first Snapshot() can compute a current rate rather
-	// than returning 0 (which would happen if no prior slot existed).
-	seedSlot := int((nowNano/int64(windowSlotDuration) - 1 + windowSlots) % windowSlots)
-	atomic.StoreInt64(&c.window[seedSlot].timestampNano, nowNano-int64(windowSlotDuration))
-	atomic.StoreInt64(&c.window[seedSlot].requestsSent, 0)
+	startSec := nowNano / int64(time.Second)
+	priorSec := startSec - 1
+	priorSlot := int((priorSec%windowSlots + windowSlots) % windowSlots)
+	atomic.StoreInt64(&c.window[priorSlot].timestampNano, nowNano-int64(time.Second))
+	atomic.StoreInt64(&c.window[priorSlot].requestsSent, 0)
+	atomic.StoreInt64(&c.window[priorSlot].bucketSec, priorSec)
 	return c
+}
+
+// Sample records a discrete throughput sample if not already recorded for the current second.
+// Decoupled from rendering: does not affect Snapshot() calls.
+func (c *Collector) Sample() {
+	c.sampleAt(time.Now().UnixNano())
+}
+
+func (c *Collector) sampleAt(nowNano int64) {
+	bucketSec := nowNano / int64(time.Second)
+	slotIndex := int(bucketSec % windowSlots)
+	sent := atomic.LoadInt64(&c.requestsSent)
+
+	atomic.StoreInt64(&c.window[slotIndex].timestampNano, nowNano)
+	atomic.StoreInt64(&c.window[slotIndex].requestsSent, sent)
+	atomic.StoreInt64(&c.window[slotIndex].bucketSec, bucketSec)
+
+	// Update peak throughput metric during sampling
+	startNano := atomic.LoadInt64(&c.startTime)
+	elapsedSec := float64(nowNano-startNano) / float64(time.Second)
+	if elapsedSec > 0 {
+		currentRate := float64(sent) / elapsedSec
+		var priorSec int64 = -1
+		var priorNano, priorSent int64
+		for i := 0; i < windowSlots; i++ {
+			if i == slotIndex {
+				continue
+			}
+			bSec := atomic.LoadInt64(&c.window[i].bucketSec)
+			if bSec > 0 && bSec < bucketSec && bSec >= bucketSec-windowSlots {
+				if bSec > priorSec {
+					priorSec = bSec
+					priorNano = atomic.LoadInt64(&c.window[i].timestampNano)
+					priorSent = atomic.LoadInt64(&c.window[i].requestsSent)
+				}
+			}
+		}
+		if priorSec > 0 {
+			dSec := float64(nowNano-priorNano) / float64(time.Second)
+			dSent := sent - priorSent
+			if dSec >= 0.2 && dSent >= 0 {
+				currentRate = float64(dSent) / dSec
+			}
+		}
+		for {
+			currentPeakBits := atomic.LoadUint64(&c.peakRequestsPerSecBits)
+			currentPeak := math.Float64frombits(currentPeakBits)
+			if currentRate <= currentPeak {
+				break
+			}
+			if atomic.CompareAndSwapUint64(&c.peakRequestsPerSecBits, currentPeakBits, math.Float64bits(currentRate)) {
+				break
+			}
+		}
+	}
 }
 
 // RecordRequestSent increments the total requests sent counter.
 func (c *Collector) RecordRequestSent() {
 	atomic.AddInt64(&c.requestsSent, 1)
+	c.sampleAt(time.Now().UnixNano())
 }
 
 // SetTotalWork sets the fixed total theoretical work for the scan.
@@ -256,7 +310,6 @@ func (c *Collector) Snapshot() Snapshot {
 
 	startTime := time.Unix(0, startNano)
 	elapsed := time.Since(startTime)
-	nowNano := time.Now().UnixNano()
 
 	// Lifetime average Req/s.
 	var avgReqPerSec float64
@@ -264,45 +317,48 @@ func (c *Collector) Snapshot() Snapshot {
 		avgReqPerSec = float64(sent) / elapsed.Seconds()
 	}
 
-	// Sliding-window Current Req/s.
-	// Write the current sample into the ring buffer slot for this moment.
-	slotIndex := int((nowNano / int64(windowSlotDuration)) % windowSlots)
-	atomic.StoreInt64(&c.window[slotIndex].timestampNano, nowNano)
-	atomic.StoreInt64(&c.window[slotIndex].requestsSent, sent)
-
-	// Scan older slots to find the oldest reading within the full window duration.
-	windowNano := int64(windowSlots) * int64(windowSlotDuration)
-	oldestNano := nowNano - windowNano
-	var bestOldNano, bestOldSent int64 = nowNano, sent
-	for i := 0; i < windowSlots; i++ {
-		if i == slotIndex {
-			continue
-		}
-		slotNano := atomic.LoadInt64(&c.window[i].timestampNano)
-		if slotNano > oldestNano && slotNano < bestOldNano {
-			bestOldNano = slotNano
-			bestOldSent = atomic.LoadInt64(&c.window[i].requestsSent)
-		}
-	}
+	// Sliding-window Current Req/s (pure read-only from discrete bucket samples).
 	var currentReqPerSec float64
-	if windowDelta := float64(nowNano-bestOldNano) / float64(time.Second); windowDelta > 0 {
-		currentReqPerSec = float64(sent-bestOldSent) / windowDelta
-		if currentReqPerSec < 0 {
-			currentReqPerSec = 0
+	var newestSampleSec int64 = -1
+	var newestSampleNano, newestSampleSent int64
+	var priorSampleSec int64 = -1
+	var priorSampleNano, priorSampleSent int64
+
+	for i := 0; i < windowSlots; i++ {
+		bSec := atomic.LoadInt64(&c.window[i].bucketSec)
+		if bSec > 0 {
+			if bSec > newestSampleSec {
+				priorSampleSec = newestSampleSec
+				priorSampleNano = newestSampleNano
+				priorSampleSent = newestSampleSent
+
+				newestSampleSec = bSec
+				newestSampleNano = atomic.LoadInt64(&c.window[i].timestampNano)
+				newestSampleSent = atomic.LoadInt64(&c.window[i].requestsSent)
+			} else if bSec > priorSampleSec {
+				priorSampleSec = bSec
+				priorSampleNano = atomic.LoadInt64(&c.window[i].timestampNano)
+				priorSampleSent = atomic.LoadInt64(&c.window[i].requestsSent)
+			}
 		}
 	}
 
-	// Update Peak using the current (windowed) rate, not the lifetime average.
-	for {
-		currentPeakBits := atomic.LoadUint64(&c.peakRequestsPerSecBits)
-		currentPeak := math.Float64frombits(currentPeakBits)
-		if currentReqPerSec <= currentPeak {
-			break
+	if newestSampleSec >= 0 {
+		var baseNano, baseSent int64
+		if priorSampleSec >= 0 {
+			baseNano = priorSampleNano
+			baseSent = priorSampleSent
+		} else {
+			baseNano = startNano
+			baseSent = 0
 		}
-		if atomic.CompareAndSwapUint64(&c.peakRequestsPerSecBits, currentPeakBits, math.Float64bits(currentReqPerSec)) {
-			break
+		deltaSec := float64(newestSampleNano-baseNano) / float64(time.Second)
+		deltaSent := newestSampleSent - baseSent
+		if deltaSec > 0 && deltaSent >= 0 {
+			currentReqPerSec = float64(deltaSent) / deltaSec
 		}
 	}
+
 	peakReqPerSec := math.Float64frombits(atomic.LoadUint64(&c.peakRequestsPerSecBits))
 
 	var avgLat time.Duration
