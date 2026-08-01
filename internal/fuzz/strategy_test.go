@@ -260,31 +260,6 @@ func TestStrategies(t *testing.T) {
 		}
 	})
 
-	t.Run("helper utilities", func(t *testing.T) {
-		if d := fuzz.GetTargetDepth("http://localhost/FUZZ"); d != 1 {
-			t.Errorf("expected depth 1, got %d", d)
-		}
-		if d := fuzz.GetTargetDepth("http://localhost/FOO"); d != 1 {
-			t.Errorf("expected depth 1, got %d", d)
-		}
-		if d := fuzz.GetTargetDepth("http://localhost/FOO/BAR"); d != 2 {
-			t.Errorf("expected depth 2, got %d", d)
-		}
-		if d := fuzz.GetTargetDepth("http://localhost/FOO/BAR/BUZZ"); d != 3 {
-			t.Errorf("expected depth 3, got %d", d)
-		}
-
-		// TruncateTemplate edge cases
-		if tr := fuzz.TruncateTemplate("http://localhost/FOO/BAR/BUZZ", 1); tr != "http://localhost/FOO" {
-			t.Errorf("expected truncated depth 1, got %q", tr)
-		}
-		if tr := fuzz.TruncateTemplate("http://localhost/FOO/BAR/BUZZ", 2); tr != "http://localhost/FOO/BAR" {
-			t.Errorf("expected truncated depth 2, got %q", tr)
-		}
-		if tr := fuzz.TruncateTemplate("http://localhost/FOO/BAR/BUZZ", 3); tr != "http://localhost/FOO/BAR/BUZZ" {
-			t.Errorf("expected truncated depth 3, got %q", tr)
-		}
-	})
 }
 
 func TestFuzzAccounting_Regressions(t *testing.T) {

@@ -72,37 +72,49 @@ func Worker(
 	}
 
 	for item := range jobs {
-		if targetCtx != nil && targetCtx.Err() != nil {
-			return
-		}
-		if pauseBlocker != nil {
-			if err := pauseBlocker(targetCtx); err != nil {
+		func() {
+			replied := false
+			defer func() {
+				if !replied {
+					sendResult(results, item, Result{
+						URL:      item.Req.URL,
+						Accepted: false,
+						Err:      context.Canceled,
+						UserData: item.Req.UserData,
+					})
+				}
+			}()
+
+			if targetCtx != nil && targetCtx.Err() != nil {
 				return
 			}
-		}
-
-		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
-		if limiter != nil {
-			err := limiter.Wait(targetCtx)
-			if err != nil {
-				atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRej, 1)
-				return
+			if pauseBlocker != nil {
+				if err := pauseBlocker(targetCtx); err != nil {
+					return
+				}
 			}
-		}
 
-		process(targetCtx, execCtx, client, fs, item, results, collector)
-		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
-		if collector != nil {
-		}
-
-		if delay > 0 {
-			select {
-			case <-targetCtx.Done():
-				stats.GlobalInstrumentation.LogEvent("context cancellation")
-				return
-			case <-time.After(delay):
+			atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRecv, 1)
+			if limiter != nil {
+				err := limiter.Wait(targetCtx)
+				if err != nil {
+					atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsRej, 1)
+					return
+				}
 			}
-		}
+
+			replied = process(targetCtx, execCtx, client, fs, item, results, collector)
+			atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
+
+			if delay > 0 {
+				select {
+				case <-targetCtx.Done():
+					stats.GlobalInstrumentation.LogEvent("context cancellation")
+					return
+				case <-time.After(delay):
+				}
+			}
+		}()
 	}
 }
 
@@ -114,9 +126,9 @@ func process(
 	item WorkItem,
 	results chan<- Result,
 	collector *stats.Collector,
-) {
+) bool {
 	if targetCtx != nil && targetCtx.Err() != nil {
-		return
+		return false
 	}
 
 	var bodyReader io.Reader
@@ -148,7 +160,7 @@ func process(
 			Err:      err,
 			UserData: item.Req.UserData,
 		})
-		return
+		return true
 	}
 
 	for k, values := range item.Req.Headers {
@@ -212,7 +224,7 @@ func process(
 			Err:      err,
 			UserData: item.Req.UserData,
 		})
-		return
+		return true
 	}
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResponsesReceived, 1)
 
@@ -241,7 +253,7 @@ func process(
 			Accepted:   false,
 			UserData:   item.Req.UserData,
 		})
-		return
+		return true
 	}
 
 	// Filter 2: Match Body (Regex)
@@ -289,7 +301,7 @@ func process(
 				Err:        err,
 				UserData:   item.Req.UserData,
 			})
-			return
+			return true
 		}
 	}
 
@@ -312,7 +324,7 @@ func process(
 			Err:        readErr,
 			UserData:   item.Req.UserData,
 		})
-		return
+		return true
 	}
 
 	if bodyRead {
@@ -329,7 +341,7 @@ func process(
 				Err:        readErr,
 				UserData:   item.Req.UserData,
 			})
-			return
+			return true
 		}
 	}
 
@@ -376,6 +388,7 @@ func process(
 		Headers:     resHeaders,
 		UserData:    item.Req.UserData,
 	})
+	return true
 }
 
 var titleRx = regexp.MustCompile(`(?i)<title(?:\s+[^>]*)?>([^<]*)</title>`)

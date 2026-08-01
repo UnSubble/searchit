@@ -1,6 +1,7 @@
 package httpclient_test
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"net/http"
@@ -197,6 +198,28 @@ func TestValidateHTTPVersion(t *testing.T) {
 }
 
 func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
+	readRequest := func(conn net.Conn) string {
+		reader := bufio.NewReader(conn)
+		var sb strings.Builder
+		for {
+			line, err := reader.ReadString('\n')
+			sb.WriteString(line)
+			if err != nil {
+				break
+			}
+			// HTTP/0.9 has no protocol version on the request line (e.g. "GET /\r\n")
+			// and ends immediately after line 1.
+			if !strings.Contains(sb.String(), "HTTP/") {
+				break
+			}
+			// HTTP/1.0+ headers end with an empty line.
+			if line == "\r\n" || line == "\n" {
+				break
+			}
+		}
+		return sb.String()
+	}
+
 	t.Run("wire_format_0.9", func(t *testing.T) {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -210,13 +233,11 @@ func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
 				return
 			}
 			defer conn.Close()
-			buf := make([]byte, 512)
-			n, _ := conn.Read(buf)
-			wire := string(buf[:n])
+			wire := readRequest(conn)
 			if !strings.HasPrefix(wire, "GET /\r\n") {
 				t.Errorf("expected wire format GET /\\r\\n for HTTP/0.9, got %q", wire)
 			}
-			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nHello"))
+			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nHello"))
 		}()
 
 		c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", "0.9")
@@ -240,13 +261,11 @@ func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
 				return
 			}
 			defer conn.Close()
-			buf := make([]byte, 512)
-			n, _ := conn.Read(buf)
-			wire := string(buf[:n])
+			wire := readRequest(conn)
 			if !strings.HasPrefix(wire, "GET / HTTP/1.0\r\n") {
 				t.Errorf("expected wire format GET / HTTP/1.0\\r\\n for HTTP/1.0, got %q", wire)
 			}
-			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nHello"))
+			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nHello"))
 		}()
 
 		c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", "1.0")

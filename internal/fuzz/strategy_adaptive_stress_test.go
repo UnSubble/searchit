@@ -162,8 +162,8 @@ func TestAdaptive_EmptyPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected no error for empty payloads, got %v", err)
 	}
-	if len(results) != 0 {
-		t.Errorf("Expected 0 results, got %d", len(results))
+	if len(results) != 1 {
+		t.Errorf("Expected 1 results, got %d", len(results))
 	}
 }
 
