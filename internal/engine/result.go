@@ -23,4 +23,7 @@ type Result struct {
 
 	// Hash of the response body for wildcard/duplicate detection
 	BodyHash uint64
+
+	// Substituted non-URL fuzzed fields (if any)
+	FuzzData *FuzzData
 }

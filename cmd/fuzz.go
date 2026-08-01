@@ -936,6 +936,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							Origin:      "fuzz",
 							Title:       r.Title,
 							Headers:     r.Headers,
+							FuzzData:    r.FuzzData,
 						}
 						if outWriter == os.Stdout && progMgr != nil {
 							progMgr.ExecuteAbove(func() {

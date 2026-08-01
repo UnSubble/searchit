@@ -30,6 +30,9 @@ func (f *NDJSONFormatter) Print(r engine.Result) error {
 	if f.showHeaders && len(r.Headers) > 0 {
 		jr.Headers = r.Headers
 	}
+	if r.FuzzData != nil && len(r.FuzzData.Fields) > 0 {
+		jr.Fuzz = r.FuzzData.Fields
+	}
 	data, err := json.Marshal(jr)
 	if err != nil {
 		return err

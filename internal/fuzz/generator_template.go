@@ -37,10 +37,33 @@ type GenCompiledTemplate struct {
 	PlaceholderCount [5]uint8
 }
 
+// HasPlaceholders returns true if the compiled template contains any placeholders.
+func (t *GenCompiledTemplate) HasPlaceholders() bool {
+	for _, count := range t.PlaceholderCount {
+		if count > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // GenCompiledHeader represents an HTTP header where both the key and values are compiled templates.
 type GenCompiledHeader struct {
 	Key    GenCompiledTemplate
 	Values []GenCompiledTemplate
+}
+
+// HasPlaceholders returns true if either the header key or any of its values contain placeholders.
+func (ch *GenCompiledHeader) HasPlaceholders() bool {
+	if ch.Key.HasPlaceholders() {
+		return true
+	}
+	for _, v := range ch.Values {
+		if v.HasPlaceholders() {
+			return true
+		}
+	}
+	return false
 }
 
 // CompileGenTemplate parses an input string into a GenCompiledTemplate.

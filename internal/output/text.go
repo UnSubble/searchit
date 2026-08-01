@@ -74,18 +74,69 @@ func (f *TerminalTextFormatter) Close() error {
 func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle bool) error {
 	if quiet {
 		_, err := fmt.Fprintf(w, "%s\n", r.URL)
-		return err
+		if err != nil {
+			return err
+		}
+		return writeFuzzFieldsText(w, r.FuzzData)
 	}
 
 	if showHeaders || showTitle {
-		return writeVerboseTextResult(w, r, showHeaders, showTitle)
+		if err := writeVerboseTextResult(w, r, showHeaders, showTitle); err != nil {
+			return err
+		}
+		return writeFuzzFieldsText(w, r.FuzzData)
 	}
 
 	if isRedirect(r) {
-		return writeRedirectResult(w, r)
+		if err := writeRedirectResult(w, r); err != nil {
+			return err
+		}
+		return writeFuzzFieldsText(w, r.FuzzData)
 	}
 
-	return writeNormalTextResult(w, r)
+	if err := writeNormalTextResult(w, r); err != nil {
+		return err
+	}
+	return writeFuzzFieldsText(w, r.FuzzData)
+}
+
+func writeFuzzFieldsText(w io.Writer, fuzzData *engine.FuzzData) error {
+	if fuzzData == nil || len(fuzzData.Fields) == 0 {
+		return nil
+	}
+	for _, field := range fuzzData.Fields {
+		switch field.Location {
+		case engine.LocationHeader:
+			if field.Name != "" {
+				if _, err := fmt.Fprintf(w, "Header: %s=%s\n", field.Name, field.Value); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(w, "Header: %s\n", field.Value); err != nil {
+					return err
+				}
+			}
+		case engine.LocationCookie:
+			if field.Name != "" {
+				if _, err := fmt.Fprintf(w, "Cookie: %s=%s\n", field.Name, field.Value); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(w, "Cookie: %s\n", field.Value); err != nil {
+					return err
+				}
+			}
+		case engine.LocationBody:
+			if _, err := fmt.Fprintf(w, "Body: %s\n", field.Value); err != nil {
+				return err
+			}
+		case engine.LocationJSON:
+			if _, err := fmt.Fprintf(w, "JSON: %s\n", field.Value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func isRedirect(r engine.Result) bool {

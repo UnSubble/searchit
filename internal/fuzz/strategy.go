@@ -3,12 +3,14 @@ package fuzz
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/unsubble/searchit/internal/adaptive/summary"
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/stats"
@@ -192,27 +194,59 @@ func (r *Runner) EstimateCandidates(primaryWordlistSize int) int64 {
 	return total
 }
 
+type compiledHeader struct {
+	key    CompiledTemplate
+	values []CompiledTemplate
+}
+
 type compiledRequest struct {
-	targetURL CompiledTemplate
-	body      CompiledTemplate
-	headers   map[*CompiledTemplate][]CompiledTemplate
-	cookie    CompiledTemplate
+	targetURL             CompiledTemplate
+	body                  CompiledTemplate
+	headers               []compiledHeader
+	fuzzedHeaders         []compiledHeader
+	cookie                CompiledTemplate
+	hasHeaderPlaceholders bool
+	hasCookiePlaceholders bool
+	hasBodyPlaceholders   bool
+	isJSONBody            bool
 }
 
 func (r *Runner) compileRequest() *compiledRequest {
+	bodyTmpl := CompileTemplate(r.BodyTemplate, SupportedPlaceholders)
+	cookieTmpl := CompileTemplate(r.CookieTemplate, SupportedPlaceholders)
 	cr := &compiledRequest{
-		targetURL: CompileTemplate(r.TargetURL, SupportedPlaceholders),
-		body:      CompileTemplate(r.BodyTemplate, SupportedPlaceholders),
-		cookie:    CompileTemplate(r.CookieTemplate, SupportedPlaceholders),
-		headers:   make(map[*CompiledTemplate][]CompiledTemplate),
+		targetURL:             CompileTemplate(r.TargetURL, SupportedPlaceholders),
+		body:                  bodyTmpl,
+		cookie:                cookieTmpl,
+		hasBodyPlaceholders:   bodyTmpl.HasPlaceholders(),
+		hasCookiePlaceholders: cookieTmpl.HasPlaceholders(),
+		isJSONBody:            isJSONString(r.BodyTemplate),
 	}
-	for k, vals := range r.HeaderTemplates {
+
+	var keys []string
+	for k := range r.HeaderTemplates {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		vals := r.HeaderTemplates[k]
 		ck := CompileTemplate(k, SupportedPlaceholders)
 		cvals := make([]CompiledTemplate, 0, len(vals))
+		hasHPh := ck.HasPlaceholders()
 		for _, v := range vals {
-			cvals = append(cvals, CompileTemplate(v, SupportedPlaceholders))
+			cv := CompileTemplate(v, SupportedPlaceholders)
+			if cv.HasPlaceholders() {
+				hasHPh = true
+			}
+			cvals = append(cvals, cv)
 		}
-		cr.headers[&ck] = cvals
+		ch := compiledHeader{key: ck, values: cvals}
+		cr.headers = append(cr.headers, ch)
+		if hasHPh {
+			cr.fuzzedHeaders = append(cr.fuzzedHeaders, ch)
+			cr.hasHeaderPlaceholders = true
+		}
 	}
 	return cr
 }
@@ -264,10 +298,6 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 }
 
 func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan string, yield ResultCallback) error {
-	fooList := r.FooWords
-	if len(fooList) == 0 {
-		fooList = []string{""}
-	}
 	barList := r.BarWords
 	if len(barList) == 0 {
 		barList = []string{""}
@@ -285,17 +315,12 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	if bufSize < 512 {
 		bufSize = 512
 	}
-	jobChan := make(chan chan Result, bufSize)
+	jobChan := make(chan (<-chan Result), bufSize)
 
 	go func() {
 		defer close(jobChan)
 
 		pushCandidate := func(vars map[string]string) bool {
-			if e.PauseBlocker != nil {
-				if err := e.PauseBlocker(ctx); err != nil {
-					return false
-				}
-			}
 			job, err := r.buildJob(r.compiledReq.targetURL, vars)
 			if err != nil {
 				if r.Collector != nil {
@@ -308,22 +333,21 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			if e.collector != nil {
 				e.collector.RecordJobProduced()
 			}
-			resCh := make(chan Result, 1)
-			item := WorkItem{
-				Req:   job,
-				Reply: resCh,
+			asyncCh, err := e.ExecuteAsync(job)
+			if err != nil {
+				return false
 			}
 			select {
 			case <-ctx.Done():
 				return false
-			case e.jobsChan <- item:
-			}
-			select {
-			case <-ctx.Done():
-				return false
-			case jobChan <- resCh:
+			case jobChan <- asyncCh:
 				return true
 			}
+		}
+
+		fuzzList := r.FooWords
+		if primaryChan != nil {
+			fuzzList = nil
 		}
 
 		if primaryChan != nil {
@@ -333,35 +357,39 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 					return
 				default:
 				}
-				for _, fooVal := range fooList {
-					for _, barVal := range barList {
-						for _, bazVal := range bazList {
-							for _, buzzVal := range buzzList {
-								if !pushCandidate(map[string]string{
-									"FUZZ": word,
-									"FOO":  fooVal,
-									"BAR":  barVal,
-									"BAZ":  bazVal,
-									"BUZZ": buzzVal,
-								}) {
-									return
-								}
+				vars := map[string]string{
+					"FUZZ": word,
+					"FOO":  word,
+				}
+				for _, barVal := range barList {
+					vars["BAR"] = barVal
+					for _, bazVal := range bazList {
+						vars["BAZ"] = bazVal
+						for _, buzzVal := range buzzList {
+							vars["BUZZ"] = buzzVal
+							if !pushCandidate(vars) {
+								return
 							}
 						}
 					}
 				}
 			}
 		} else {
-			for _, fooVal := range fooList {
+			if len(fuzzList) == 0 {
+				fuzzList = []string{""}
+			}
+			for _, fuzzVal := range fuzzList {
+				vars := map[string]string{
+					"FUZZ": fuzzVal,
+					"FOO":  fuzzVal,
+				}
 				for _, barVal := range barList {
+					vars["BAR"] = barVal
 					for _, bazVal := range bazList {
+						vars["BAZ"] = bazVal
 						for _, buzzVal := range buzzList {
-							if !pushCandidate(map[string]string{
-								"FOO":  fooVal,
-								"BAR":  barVal,
-								"BAZ":  bazVal,
-								"BUZZ": buzzVal,
-							}) {
+							vars["BUZZ"] = buzzVal
+							if !pushCandidate(vars) {
 								return
 							}
 						}
@@ -374,11 +402,7 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	for resCh := range jobChan {
 		select {
 		case <-ctx.Done():
-			// Context cancelled. The worker might have dropped this job,
-			// so we skip reading from resCh to prevent a deadlock.
-			// We continue the loop to drain jobChan until the producer closes it,
-			// ensuring the producer has exited before we return.
-			continue
+			return ctx.Err()
 		case res := <-resCh:
 			if res.Accepted || res.Err != nil {
 				yield(res)
@@ -398,10 +422,10 @@ func (r *Runner) buildJob(urlTemplate CompiledTemplate, vars map[string]string) 
 	}
 
 	headers := make(map[string][]string)
-	for k, vals := range r.compiledReq.headers {
-		newK := k.RenderString(vars)
+	for _, ch := range r.compiledReq.headers {
+		newK := ch.key.RenderString(vars)
 		var newValues []string
-		for _, val := range vals {
+		for _, val := range ch.values {
 			newValues = append(newValues, val.RenderString(vars))
 		}
 		headers[newK] = newValues
@@ -409,17 +433,58 @@ func (r *Runner) buildJob(urlTemplate CompiledTemplate, vars map[string]string) 
 
 	var cookies []string
 	if len(r.compiledReq.cookie) > 0 {
-		// Split raw cookie strings into distinct Cookie headers if needed,
-		// but since Cookie header is usually one line or multiple Cookie headers,
-		// we just append the rendered template as a single Cookie string
 		cookies = append(cookies, r.compiledReq.cookie.RenderString(vars))
 	}
 
+	var fuzzData *engine.FuzzData
+	if r.compiledReq.hasHeaderPlaceholders || r.compiledReq.hasCookiePlaceholders || r.compiledReq.hasBodyPlaceholders {
+		var fields []engine.FuzzField
+		if r.compiledReq.hasHeaderPlaceholders {
+			for _, ch := range r.compiledReq.fuzzedHeaders {
+				newK := ch.key.RenderString(vars)
+				for _, val := range ch.values {
+					newV := val.RenderString(vars)
+					fields = append(fields, engine.FuzzField{
+						Location: engine.LocationHeader,
+						Name:     newK,
+						Value:    newV,
+					})
+				}
+			}
+		}
+		if r.compiledReq.hasCookiePlaceholders && len(cookies) > 0 {
+			for _, cStr := range cookies {
+				if cStr != "" {
+					name, val := parseCookieField(cStr)
+					fields = append(fields, engine.FuzzField{
+						Location: engine.LocationCookie,
+						Name:     name,
+						Value:    val,
+					})
+				}
+			}
+		}
+		if r.compiledReq.hasBodyPlaceholders && bodyStr != "" {
+			loc := engine.LocationBody
+			if r.compiledReq.isJSONBody {
+				loc = engine.LocationJSON
+			}
+			fields = append(fields, engine.FuzzField{
+				Location: loc,
+				Value:    bodyStr,
+			})
+		}
+		if len(fields) > 0 {
+			fuzzData = &engine.FuzzData{Fields: fields}
+		}
+	}
+
 	return RequestDTO{
-		URL:     urlStr,
-		Method:  r.Method,
-		Body:    bodyStr,
-		Headers: headers,
-		Cookies: cookies,
+		URL:      urlStr,
+		Method:   r.Method,
+		Body:     bodyStr,
+		Headers:  headers,
+		Cookies:  cookies,
+		FuzzData: fuzzData,
 	}, nil
 }

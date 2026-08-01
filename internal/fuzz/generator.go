@@ -4,18 +4,25 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
 	"sync/atomic"
 
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/stats"
 )
 
 // Generator produces RequestDTO instances by replacing placeholders in templates.
 type Generator struct {
-	urlTemplate     GenCompiledTemplate
-	method          string
-	bodyTemplate    GenCompiledTemplate
-	headerTemplates []GenCompiledHeader
-	cookieTemplate  GenCompiledTemplate
+	urlTemplate           GenCompiledTemplate
+	method                string
+	bodyTemplate          GenCompiledTemplate
+	headerTemplates       []GenCompiledHeader
+	cookieTemplate        GenCompiledTemplate
+	fuzzedHeaderIndices   []int
+	hasCookiePlaceholders bool
+	hasBodyPlaceholders   bool
+	isJSONBody            bool
 
 	fooWords  []string
 	barWords  []string
@@ -39,27 +46,45 @@ func NewGenerator(
 		method = http.MethodGet
 	}
 
+	var keys []string
+	for k := range headerTemplates {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	var compiledHeaders []GenCompiledHeader
-	for k, values := range headerTemplates {
+	var fuzzedHeaderIndices []int
+	for _, k := range keys {
+		values := headerTemplates[k]
 		ch := GenCompiledHeader{
 			Key: CompileGenTemplate(k),
 		}
 		for _, v := range values {
 			ch.Values = append(ch.Values, CompileGenTemplate(v))
 		}
+		if ch.HasPlaceholders() {
+			fuzzedHeaderIndices = append(fuzzedHeaderIndices, len(compiledHeaders))
+		}
 		compiledHeaders = append(compiledHeaders, ch)
 	}
 
+	bodyComp := CompileGenTemplate(bodyTemplate)
+	cookieComp := CompileGenTemplate(cookieTemplate)
+
 	return &Generator{
-		urlTemplate:     CompileGenTemplate(urlTemplate),
-		method:          method,
-		bodyTemplate:    CompileGenTemplate(bodyTemplate),
-		headerTemplates: compiledHeaders,
-		cookieTemplate:  CompileGenTemplate(cookieTemplate),
-		fooWords:        fooWords,
-		barWords:        barWords,
-		bazWords:        bazWords,
-		buzzWords:       buzzWords,
+		urlTemplate:           CompileGenTemplate(urlTemplate),
+		method:                method,
+		bodyTemplate:          bodyComp,
+		headerTemplates:       compiledHeaders,
+		cookieTemplate:        cookieComp,
+		fuzzedHeaderIndices:   fuzzedHeaderIndices,
+		hasCookiePlaceholders: cookieComp.HasPlaceholders(),
+		hasBodyPlaceholders:   bodyComp.HasPlaceholders(),
+		isJSONBody:            isJSONString(bodyTemplate),
+		fooWords:              fooWords,
+		barWords:              barWords,
+		bazWords:              bazWords,
+		buzzWords:             buzzWords,
 	}
 }
 
@@ -143,19 +168,71 @@ func (g *Generator) generatePermutations(
 						cookieStr = g.cookieTemplate.Render(values)
 					}
 
+					var fuzzData *engine.FuzzData
+					if len(g.fuzzedHeaderIndices) > 0 || g.hasCookiePlaceholders || g.hasBodyPlaceholders {
+						var fields []engine.FuzzField
+						for _, idx := range g.fuzzedHeaderIndices {
+							ch := g.headerTemplates[idx]
+							newK := ch.Key.Render(values)
+							for _, val := range ch.Values {
+								newV := val.Render(values)
+								fields = append(fields, engine.FuzzField{
+									Location: engine.LocationHeader,
+									Name:     newK,
+									Value:    newV,
+								})
+							}
+						}
+						if g.hasCookiePlaceholders && cookieStr != "" {
+							name, val := parseCookieField(cookieStr)
+							fields = append(fields, engine.FuzzField{
+								Location: engine.LocationCookie,
+								Name:     name,
+								Value:    val,
+							})
+						}
+						if g.hasBodyPlaceholders && bodyStr != "" {
+							loc := engine.LocationBody
+							if g.isJSONBody {
+								loc = engine.LocationJSON
+							}
+							fields = append(fields, engine.FuzzField{
+								Location: loc,
+								Value:    bodyStr,
+							})
+						}
+						if len(fields) > 0 {
+							fuzzData = &engine.FuzzData{Fields: fields}
+						}
+					}
+
 					select {
 					case <-ctx.Done():
 						return
 					case jobs <- RequestDTO{
-						URL:     urlStr,
-						Method:  g.method,
-						Body:    bodyStr,
-						Headers: headers,
-						Cookies: []string{cookieStr},
+						URL:      urlStr,
+						Method:   g.method,
+						Body:     bodyStr,
+						Headers:  headers,
+						Cookies:  []string{cookieStr},
+						FuzzData: fuzzData,
 					}:
 					}
 				}
 			}
 		}
 	}
+}
+
+func parseCookieField(cookieStr string) (string, string) {
+	if idx := strings.Index(cookieStr, "="); idx != -1 {
+		return strings.TrimSpace(cookieStr[:idx]), strings.TrimSpace(cookieStr[idx+1:])
+	}
+	return "", strings.TrimSpace(cookieStr)
+}
+
+func isJSONString(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	return (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+		(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]"))
 }

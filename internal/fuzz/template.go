@@ -89,3 +89,13 @@ func (c CompiledTemplate) RenderString(vars map[string]string) string {
 	c.Render(vars, &b)
 	return b.String()
 }
+
+// HasPlaceholders returns true if the compiled template contains any variable tokens.
+func (c CompiledTemplate) HasPlaceholders() bool {
+	for _, t := range c {
+		if t.IsVar {
+			return true
+		}
+	}
+	return false
+}

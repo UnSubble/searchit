@@ -16,12 +16,13 @@ type JSONFormatter struct {
 }
 
 type jsonResult struct {
-	URL     string      `json:"url"`
-	Status  int         `json:"status"`
-	Length  int64       `json:"length"`
-	Depth   uint16      `json:"depth"`
-	Title   string      `json:"title,omitempty"`
-	Headers http.Header `json:"headers,omitempty"`
+	URL     string             `json:"url"`
+	Status  int                `json:"status"`
+	Length  int64              `json:"length"`
+	Depth   uint16             `json:"depth"`
+	Title   string             `json:"title,omitempty"`
+	Headers http.Header        `json:"headers,omitempty"`
+	Fuzz    []engine.FuzzField `json:"fuzz,omitempty"`
 }
 
 func NewJSONFormatter(w io.Writer, showHeaders bool, showTitle bool) *JSONFormatter {
@@ -40,6 +41,9 @@ func (f *JSONFormatter) Print(r engine.Result) error {
 	}
 	if f.showHeaders && len(r.Headers) > 0 {
 		jr.Headers = r.Headers
+	}
+	if r.FuzzData != nil && len(r.FuzzData.Fields) > 0 {
+		jr.Fuzz = r.FuzzData.Fields
 	}
 	f.results = append(f.results, jr)
 	return nil

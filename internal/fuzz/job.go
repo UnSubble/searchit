@@ -1,6 +1,10 @@
 package fuzz
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/unsubble/searchit/internal/engine"
+)
 
 // RequestDTO is the unit of work representing a fully rendered request configuration.
 type RequestDTO struct {
@@ -11,6 +15,7 @@ type RequestDTO struct {
 	Cookies   []string
 	UserData  any
 	IsProbing bool
+	FuzzData  *engine.FuzzData
 }
 
 // Result carries metadata produced by a fuzzed request execution.
@@ -23,6 +28,7 @@ type Result struct {
 	Err         error
 	UserData    any
 
-	Title   string
-	Headers http.Header
+	Title    string
+	Headers  http.Header
+	FuzzData *engine.FuzzData
 }

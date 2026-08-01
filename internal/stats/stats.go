@@ -11,6 +11,7 @@ import (
 const (
 	windowSlots        = 5
 	windowSlotDuration = time.Second
+	emaAlpha           = 0.25
 )
 
 // rateSlot is a pair of (nanosecond timestamp, cumulative request count) stored
@@ -44,12 +45,13 @@ type Collector struct {
 	startTime             int64 // Unix nano timestamp
 
 	// Future metrics support
-	retries                int64
-	redirects              int64
-	bodyInspected          int64
-	totalLatencyNano       int64
-	latencyCount           int64
-	peakRequestsPerSecBits uint64
+	retries                    int64
+	redirects                  int64
+	bodyInspected              int64
+	totalLatencyNano           int64
+	latencyCount               int64
+	peakRequestsPerSecBits     uint64
+	smoothedRequestsPerSecBits uint64
 
 	// Sliding-window ring buffer for Current Req/s tracking.
 	window [windowSlots]rateSlot
@@ -90,26 +92,54 @@ func (c *Collector) sampleAt(nowNano int64) {
 	atomic.StoreInt64(&c.window[slotIndex].requestsSent, sent)
 	atomic.StoreInt64(&c.window[slotIndex].bucketSec, bucketSec)
 
-	// Update peak throughput metric during sampling
+	// Update peak and smoothed throughput metrics during sampling
 	startNano := atomic.LoadInt64(&c.startTime)
 	elapsedSec := float64(nowNano-startNano) / float64(time.Second)
 	if elapsedSec > 0 {
-		currentRate := float64(sent) / elapsedSec
+		rollingRate := float64(sent) / elapsedSec
+		var oldestSec int64 = -1
+		var oldestNano, oldestSent int64
 		var priorSec int64 = -1
 		var priorNano, priorSent int64
 		for i := 0; i < windowSlots; i++ {
-			if i == slotIndex {
-				continue
-			}
 			bSec := atomic.LoadInt64(&c.window[i].bucketSec)
-			if bSec > 0 && bSec < bucketSec && bSec >= bucketSec-windowSlots {
-				if bSec > priorSec {
+			if bSec > 0 && bSec <= bucketSec && bSec >= bucketSec-windowSlots {
+				if oldestSec == -1 || bSec < oldestSec {
+					oldestSec = bSec
+					oldestNano = atomic.LoadInt64(&c.window[i].timestampNano)
+					oldestSent = atomic.LoadInt64(&c.window[i].requestsSent)
+				}
+				if i != slotIndex && bSec < bucketSec && bSec > priorSec {
 					priorSec = bSec
 					priorNano = atomic.LoadInt64(&c.window[i].timestampNano)
 					priorSent = atomic.LoadInt64(&c.window[i].requestsSent)
 				}
 			}
 		}
+		if oldestSec > 0 && nowNano > oldestNano {
+			dSec := float64(nowNano-oldestNano) / float64(time.Second)
+			dSent := sent - oldestSent
+			if dSec >= 0.2 && dSent >= 0 {
+				rollingRate = float64(dSent) / dSec
+			}
+		}
+
+		// Update EMA smoothed rate
+		for {
+			prevBits := atomic.LoadUint64(&c.smoothedRequestsPerSecBits)
+			var newEma float64
+			if prevBits == 0 {
+				newEma = rollingRate
+			} else {
+				prevEma := math.Float64frombits(prevBits)
+				newEma = emaAlpha*rollingRate + (1.0-emaAlpha)*prevEma
+			}
+			if atomic.CompareAndSwapUint64(&c.smoothedRequestsPerSecBits, prevBits, math.Float64bits(newEma)) {
+				break
+			}
+		}
+
+		currentRate := rollingRate
 		if priorSec > 0 {
 			dSec := float64(nowNano-priorNano) / float64(time.Second)
 			dSent := sent - priorSent
@@ -343,7 +373,10 @@ func (c *Collector) Snapshot() Snapshot {
 		}
 	}
 
-	if newestSampleSec >= 0 {
+	smoothedBits := atomic.LoadUint64(&c.smoothedRequestsPerSecBits)
+	if smoothedBits > 0 {
+		currentReqPerSec = math.Float64frombits(smoothedBits)
+	} else if newestSampleSec >= 0 {
 		var baseNano, baseSent int64
 		if priorSampleSec >= 0 {
 			baseNano = priorSampleNano
