@@ -954,7 +954,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						}
 					}
 				})
-				if runErr != nil {
+				if runErr != nil && !errors.Is(runErr, context.Canceled) {
 					if globalFmttr != nil {
 						_ = globalFmttr.Close()
 					}

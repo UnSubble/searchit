@@ -2,6 +2,7 @@ package targets
 
 import (
 	"context"
+	"errors"
 )
 
 // JobFunc is the signature for the execution closure over a single target.
@@ -53,7 +54,7 @@ func (m *Manager) Execute(globalCtx context.Context, job JobFunc) error {
 			// Currently searchit aborts on execution setup errors.
 
 			// If it's a context cancellation, we need to check if it's global or local.
-			if err == context.Canceled {
+			if errors.Is(err, context.Canceled) {
 				if globalCtx.Err() != nil {
 					// Global abort
 					return globalCtx.Err()

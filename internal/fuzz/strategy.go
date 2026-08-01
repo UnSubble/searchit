@@ -18,6 +18,13 @@ import (
 )
 
 // Executor manages a concurrent worker pool for executing jobs.
+//
+// Single-Owner Channel Invariant:
+// Executor enforces strict single-owner channel semantics for jobsChan.
+// Producers submit jobs via ExecuteAsync(). Close() MUST only be invoked
+// after all producer goroutines have terminated and joined (e.g. via sync.WaitGroup
+// or channel drainage). No mutex is required because ExecuteAsync() and close(jobsChan)
+// can never run concurrently.
 type Executor struct {
 	ctx          context.Context
 	client       *http.Client
@@ -111,7 +118,10 @@ func (e *Executor) Execute(job RequestDTO) (Result, error) {
 	}
 }
 
-// Close signals worker pool termination.
+// Close signals worker pool termination by closing jobsChan.
+//
+// Invariant: Callers must guarantee that all producer goroutines invoking ExecuteAsync()
+// have exited and joined before calling Close().
 func (e *Executor) Close() {
 	e.closeOnce.Do(func() {
 		close(e.jobsChan)
@@ -316,8 +326,11 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		bufSize = 512
 	}
 	jobChan := make(chan (<-chan Result), bufSize)
+	var producerWg sync.WaitGroup
+	producerWg.Add(1)
 
 	go func() {
+		defer producerWg.Done()
 		defer close(jobChan)
 
 		pushCandidate := func(vars map[string]string) bool {
@@ -402,6 +415,7 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	for resCh := range jobChan {
 		select {
 		case <-ctx.Done():
+			producerWg.Wait()
 			return ctx.Err()
 		case res := <-resCh:
 			if res.Accepted || res.Err != nil {
@@ -410,6 +424,7 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		}
 	}
 
+	producerWg.Wait()
 	return nil
 }
 
