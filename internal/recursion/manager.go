@@ -638,13 +638,13 @@ func (m *Manager) handleResult(
 		&m.LowPriorityCount,
 	)
 
-	if m.strategy == DFS {
+	if m.strategy == DFS || m.strategy == Priority {
 		if *activeGenerator != nil {
 			frontier.PushFront(*activeGenerator)
 		}
 		*activeGenerator = gen
 	} else {
-		frontier.Push(gen)
+		frontier.PushBack(gen)
 	}
 }
 

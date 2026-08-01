@@ -296,8 +296,8 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 			if opts.Strategy != "" {
 				strategyLower := strings.ToLower(opts.Strategy)
-				if strategyLower != "eager" && strategyLower != "bfs" && strategyLower != "dfs" {
-					return fmt.Errorf("invalid --strategy: %q (must be eager, bfs, or dfs)", opts.Strategy)
+				if strategyLower != "eager" && strategyLower != "bfs" && strategyLower != "dfs" && strategyLower != "priority" {
+					return fmt.Errorf("invalid --strategy: %q (must be eager, bfs, dfs, or priority)", opts.Strategy)
 				}
 			}
 
@@ -1091,7 +1091,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVarP(&opts.RawProfile, "profile", "p", "", "apply one or more profiles (comma-separated)")
 	cmd.Flags().BoolVar(&opts.FollowRedirects, "follow-redirects", false, "follow HTTP redirects")
 	cmd.Flags().IntVar(&opts.MaxRedirects, "max-redirects", 10, "maximum redirect limit")
-	cmd.Flags().StringVarP(&opts.Strategy, "strategy", "s", "eager", "Traversal strategy (eager, bfs, dfs)")
+	cmd.Flags().StringVarP(&opts.Strategy, "strategy", "s", "eager", "Traversal strategy (eager, bfs, dfs, priority)")
 	cmd.Flags().BoolVar(&opts.Adaptive, "adaptive", false, "enable adaptive fuzzing (prioritization, framework detection, robots.txt, sitemaps)")
 	cmd.Flags().StringVar(&opts.UserAgent, "user-agent", "", "set a custom User-Agent for every request")
 	cmd.Flags().BoolVar(&opts.RandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")

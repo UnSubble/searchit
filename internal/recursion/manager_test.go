@@ -85,6 +85,9 @@ func TestParseStrategy(t *testing.T) {
 		{"BFS", recursion.BFS, false},
 		{"dfs", recursion.DFS, false},
 		{"DFS", recursion.DFS, false},
+		{"priority", recursion.Priority, false},
+		{"PRIORITY", recursion.Priority, false},
+		{" Priority ", recursion.Priority, false},
 		{" Bfs ", recursion.BFS, false},
 		{"invalid", recursion.BFS, true},
 		{"", recursion.BFS, true},
@@ -121,14 +124,14 @@ func TestFrontier_BFS_Order(t *testing.T) {
 	}
 }
 
-func TestFrontier_DFS_Order(t *testing.T) {
-	f := recursion.NewFrontier(recursion.DFS)
+func TestFrontier_PushFront_Order(t *testing.T) {
+	f := recursion.NewFrontier()
 	jobs := []engine.Job{{URL: "a"}, {URL: "b"}, {URL: "c"}}
 	for _, j := range jobs {
-		f.Push(recursion.NewSliceGenerator([]engine.Job{j}))
+		f.PushFront(recursion.NewSliceGenerator([]engine.Job{j}))
 	}
 
-	// DFS pushes to front, so the last pushed comes out first.
+	// PushFront pushes to front, so the last pushed comes out first.
 	want := []string{"c", "b", "a"}
 	for _, w := range want {
 		gen, ok := f.Peek()
@@ -137,7 +140,7 @@ func TestFrontier_DFS_Order(t *testing.T) {
 		}
 		got, _ := gen.Next()
 		if got.URL != w {
-			t.Errorf("Next() = %q, want %q (DFS must reverse insertion order)", got.URL, w)
+			t.Errorf("Next() = %q, want %q (PushFront must reverse insertion order)", got.URL, w)
 		}
 		f.Pop()
 	}
@@ -599,7 +602,7 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 		f := recursion.NewFrontier(recursion.DFS)
 		numJobs := 2500
 		for i := 0; i < numJobs; i++ {
-			f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
+			f.PushFront(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
 		}
 
 		if f.Len() != numJobs {
@@ -827,22 +830,26 @@ func TestManager_RobotsDiscoveryAndFrontierSeeding(t *testing.T) {
 
 func TestFrontier_GrowthAndStress(t *testing.T) {
 	tests := []struct {
-		name     string
-		strategy recursion.Strategy
+		name      string
+		pushFront bool
 	}{
-		{"BFS Growth", recursion.BFS},
-		{"DFS Growth", recursion.DFS},
+		{"PushBack Growth", false},
+		{"PushFront Growth", true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			f := recursion.NewFrontier(tc.strategy)
+			f := recursion.NewFrontier()
 
 			// 1. Stress insertions to trigger growth multiple times.
 			// Initial default capacity is 2048. Pushing 5000 items will trigger growth.
 			const count = 5000
 			for i := 0; i < count; i++ {
-				f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
+				if tc.pushFront {
+					f.PushFront(recursion.NewSliceGenerator([]engine.Job{{URL: fmt.Sprintf("url-%d", i)}}))
+				} else {
+					f.PushBack(recursion.NewSliceGenerator([]engine.Job{{URL: fmt.Sprintf("url-%d", i)}}))
+				}
 			}
 
 			if f.Len() != count {
@@ -865,20 +872,20 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 				t.Fatalf("expected to pop %d items, popped %d", count, len(popped))
 			}
 
-			if tc.strategy == recursion.BFS {
-				// BFS: FIFO order
+			if !tc.pushFront {
+				// FIFO order
 				for i := 0; i < count; i++ {
 					want := fmt.Sprintf("url-%d", i)
 					if popped[i] != want {
-						t.Errorf("BFS ordering mismatch at %d: got %q, want %q", i, popped[i], want)
+						t.Errorf("FIFO ordering mismatch at %d: got %q, want %q", i, popped[i], want)
 					}
 				}
 			} else {
-				// DFS: LIFO order
+				// LIFO order
 				for i := 0; i < count; i++ {
 					want := fmt.Sprintf("url-%d", count-1-i)
 					if popped[i] != want {
-						t.Errorf("DFS ordering mismatch at %d: got %q, want %q", i, popped[i], want)
+						t.Errorf("LIFO ordering mismatch at %d: got %q, want %q", i, popped[i], want)
 					}
 				}
 			}
@@ -892,14 +899,8 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 				}
 				j, _ := gen.Next()
 				f.Pop()
-				if tc.strategy == recursion.BFS {
-					if j.URL != fmt.Sprintf("interleaved-%d", i) {
-						t.Errorf("expected %q, got %q", fmt.Sprintf("interleaved-%d", i), j.URL)
-					}
-				} else {
-					if j.URL != fmt.Sprintf("interleaved-%d", i) {
-						t.Errorf("expected %q, got %q", fmt.Sprintf("interleaved-%d", i), j.URL)
-					}
+				if j.URL != fmt.Sprintf("interleaved-%d", i) {
+					t.Errorf("expected %q, got %q", fmt.Sprintf("interleaved-%d", i), j.URL)
 				}
 			}
 		})

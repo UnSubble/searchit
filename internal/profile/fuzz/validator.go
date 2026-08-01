@@ -39,8 +39,8 @@ func (v *FuzzValidator) Validate(p *types.Profile) error {
 	}
 	if o.Strategy != nil {
 		s := *o.Strategy
-		if s != "eager" && s != "bfs" && s != "dfs" {
-			return fmt.Errorf("invalid strategy %q: must be eager, bfs, or dfs", s)
+		if s != "eager" && s != "bfs" && s != "dfs" && s != "priority" {
+			return fmt.Errorf("invalid strategy %q: must be eager, bfs, dfs, or priority", s)
 		}
 	}
 	if o.MaxRedirects != nil && *o.MaxRedirects < 0 {

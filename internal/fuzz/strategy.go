@@ -237,7 +237,7 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 	}
 
 	stratLower := strings.ToLower(strategy)
-	if stratLower == "dfs" || stratLower == "bfs" {
+	if stratLower == "dfs" || stratLower == "bfs" || stratLower == "priority" {
 		if primaryChan != nil {
 			var mat []string
 			for word := range primaryChan {
@@ -253,6 +253,9 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 		}
 		if stratLower == "dfs" {
 			return r.runDFS(ctx, e, plan, yield)
+		}
+		if stratLower == "priority" {
+			return r.runPriority(ctx, e, plan, yield)
 		}
 		return r.runBFS(ctx, e, plan, yield)
 	}

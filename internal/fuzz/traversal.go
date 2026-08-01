@@ -294,6 +294,149 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 	return nil
 }
 
+type priorityTask struct {
+	depth int
+	vars  map[string]string
+}
+
+type priorityResult struct {
+	task priorityTask
+	res  Result
+	err  error
+}
+
+func (r *Runner) runPriority(ctx context.Context, e *Executor, plan TraversalPlan, yield ResultCallback) error {
+	if len(plan.Levels) == 0 {
+		return nil
+	}
+
+	// Precompile templates for each depth level.
+	cTmpls := make([]CompiledTemplate, len(plan.Levels))
+	for d := 0; d < len(plan.Levels); d++ {
+		tmpl := plan.TruncateTemplate(r.TargetURL, d)
+		cTmpls[d] = CompileTemplate(tmpl, SupportedPlaceholders)
+	}
+
+	// Seed priority deque with level 0 tasks in original wordlist order.
+	level0 := plan.Levels[0]
+	var deque []priorityTask
+	for _, word := range level0.Words {
+		vars := map[string]string{level0.Placeholder: word}
+		deque = append(deque, priorityTask{
+			depth: 0,
+			vars:  vars,
+		})
+	}
+
+	maxInFlight := r.Threads
+	if maxInFlight <= 0 {
+		maxInFlight = e.workers
+	}
+	if maxInFlight <= 0 {
+		maxInFlight = 10
+	}
+
+	inFlight := 0
+	completionChan := make(chan priorityResult, maxInFlight*4)
+
+	for len(deque) > 0 || inFlight > 0 {
+		// Dispatch tasks while executor has capacity AND priority deque is not empty.
+		for len(deque) > 0 && inFlight < maxInFlight {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			task := deque[0]
+			deque = deque[1:]
+
+			job, err := r.buildJob(cTmpls[task.depth], task.vars)
+			if err != nil {
+				r.recordPruned(plan, task.depth)
+				continue
+			}
+			job.IsProbing = (task.depth < len(plan.Levels)-1)
+
+			asyncCh, err := e.ExecuteAsync(job)
+			if err != nil {
+				r.recordPruned(plan, task.depth)
+				continue
+			}
+
+			inFlight++
+			go func(t priorityTask, ch <-chan Result) {
+				select {
+				case <-ctx.Done():
+					return
+				case res, ok := <-ch:
+					if !ok {
+						return
+					}
+					select {
+					case completionChan <- priorityResult{task: t, res: res}:
+					case <-ctx.Done():
+					}
+				}
+			}(task, asyncCh)
+		}
+
+		if inFlight == 0 && len(deque) == 0 {
+			break
+		}
+
+		// Wait for next completed result asynchronously.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case comp := <-completionChan:
+			inFlight--
+
+			if comp.err != nil {
+				r.recordPruned(plan, comp.task.depth)
+				continue
+			}
+
+			res := comp.res
+			if ctx.Err() == nil {
+				if res.Accepted || res.Err != nil {
+					yield(res)
+				}
+				if !res.Accepted && comp.task.depth < len(plan.Levels)-1 {
+					r.recordPruned(plan, comp.task.depth)
+				}
+			}
+			if ctx.Err() != nil {
+				continue
+			}
+
+			// If accepted and deeper levels exist, enqueue child tasks to FRONT of priority deque
+			if res.Accepted && comp.task.depth < len(plan.Levels)-1 {
+				nextDepth := comp.task.depth + 1
+				nextLevel := plan.Levels[nextDepth]
+
+				var childTasks []priorityTask
+				for _, word := range nextLevel.Words {
+					childVars := make(map[string]string, len(comp.task.vars)+1)
+					for k, v := range comp.task.vars {
+						childVars[k] = v
+					}
+					childVars[nextLevel.Placeholder] = word
+					childTasks = append(childTasks, priorityTask{
+						depth: nextDepth,
+						vars:  childVars,
+					})
+				}
+
+				// Push child tasks to the FRONT of the priority deque
+				deque = append(childTasks, deque...)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPlan, yield ResultCallback) error {
 	engine := adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
 	r.Summary = engine.Summary

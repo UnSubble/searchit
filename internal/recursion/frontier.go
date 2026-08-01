@@ -11,16 +11,19 @@ type Strategy int
 const (
 	BFS Strategy = iota
 	DFS
+	Priority
 )
 
 // ParseStrategy parses a string representation into a Strategy.
-// It accepts "bfs" and "dfs" case-insensitively, returning an error for other inputs.
+// It accepts "bfs", "dfs", and "priority" case-insensitively, returning an error for other inputs.
 func ParseStrategy(s string) (Strategy, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "bfs":
 		return BFS, nil
 	case "dfs":
 		return DFS, nil
+	case "priority":
+		return Priority, nil
 	default:
 		return BFS, fmt.Errorf("unknown strategy: %q", s)
 	}
@@ -32,6 +35,8 @@ func (s Strategy) String() string {
 		return "bfs"
 	case DFS:
 		return "dfs"
+	case Priority:
+		return "priority"
 	default:
 		return "unknown"
 	}
@@ -39,52 +44,52 @@ func (s Strategy) String() string {
 
 const DefaultJobBuffer = 2048
 
-// Frontier is a scheduling ring buffer for pending jobs.
-// BFS appends to the back; DFS prepends to the front.
+// Frontier is a pure deque ring buffer for pending generators.
 // Single-threaded ownership eliminates synchronization overhead.
+// It does not contain traversal policy; the caller decides whether to PushFront or PushBack.
 type Frontier struct {
-	strategy Strategy
-	buf      []Generator
-	head     int
-	size     int
+	buf  []Generator
+	head int
+	size int
 }
 
 // NewFrontier creates a Frontier with the default initial capacity.
-func NewFrontier(s Strategy) *Frontier {
+func NewFrontier(optionalStrategy ...Strategy) *Frontier {
 	return &Frontier{
-		strategy: s,
-		buf:      make([]Generator, DefaultJobBuffer),
+		buf: make([]Generator, DefaultJobBuffer),
 	}
 }
 
 // NewFrontierWithCapacity creates a Frontier with the specified initial capacity.
-func NewFrontierWithCapacity(s Strategy, capacity int) *Frontier {
-	if capacity <= 0 {
-		capacity = DefaultJobBuffer
+func NewFrontierWithCapacity(args ...any) *Frontier {
+	capacity := DefaultJobBuffer
+	for _, arg := range args {
+		if capVal, ok := arg.(int); ok && capVal > 0 {
+			capacity = capVal
+		}
 	}
 	return &Frontier{
-		strategy: s,
-		buf:      make([]Generator, capacity),
+		buf: make([]Generator, capacity),
 	}
 }
 
-// Push enqueues a generator. If the buffer is full, it is doubled.
-func (f *Frontier) Push(gen Generator) {
+// PushBack enqueues a generator at the tail of the buffer (FIFO / BFS order).
+func (f *Frontier) PushBack(gen Generator) {
 	if f.size == len(f.buf) {
 		f.grow()
 	}
 
-	if f.strategy == DFS {
-		f.head = (f.head - 1 + len(f.buf)) % len(f.buf)
-		f.buf[f.head] = gen
-	} else {
-		tail := (f.head + f.size) % len(f.buf)
-		f.buf[tail] = gen
-	}
+	tail := (f.head + f.size) % len(f.buf)
+	f.buf[tail] = gen
 	f.size++
 }
 
-// PushFront enqueues a generator at the head of the buffer, giving it the highest priority.
+// Push enqueues a generator at the tail of the buffer (alias for PushBack).
+func (f *Frontier) Push(gen Generator) {
+	f.PushBack(gen)
+}
+
+// PushFront enqueues a generator at the head of the buffer, giving it the highest priority (LIFO / Priority order).
 func (f *Frontier) PushFront(gen Generator) {
 	if f.size == len(f.buf) {
 		f.grow()
@@ -95,8 +100,8 @@ func (f *Frontier) PushFront(gen Generator) {
 	f.size++
 }
 
-// Pop dequeues the next generator from the head of the buffer.
-func (f *Frontier) Pop() {
+// PopFront dequeues the next generator from the head of the buffer.
+func (f *Frontier) PopFront() {
 	if f.size == 0 {
 		return
 	}
@@ -109,17 +114,27 @@ func (f *Frontier) Pop() {
 	}
 }
 
+// Pop dequeues the next generator from the head of the buffer (alias for PopFront).
+func (f *Frontier) Pop() {
+	f.PopFront()
+}
+
 // Len returns the number of active elements in the buffer.
 func (f *Frontier) Len() int {
 	return f.size
 }
 
-// Peek returns the next generator without removing it.
-func (f *Frontier) Peek() (Generator, bool) {
+// PeekFront returns the generator at the head without removing it.
+func (f *Frontier) PeekFront() (Generator, bool) {
 	if f.size == 0 {
 		return nil, false
 	}
 	return f.buf[f.head], true
+}
+
+// Peek returns the next generator from the head without removing it (alias for PeekFront).
+func (f *Frontier) Peek() (Generator, bool) {
+	return f.PeekFront()
 }
 
 // grow doubles the buffer capacity. Elements are copied in logical order

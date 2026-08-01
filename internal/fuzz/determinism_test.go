@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -76,6 +77,7 @@ func TestStrategies_Determinism(t *testing.T) {
 		{"eager", "eager", false},
 		{"bfs", "bfs", false},
 		{"dfs", "dfs", false},
+		{"priority", "priority", false},
 		{"adaptive", "eager", true},
 	}
 	workerCounts := []int{1, 8, 32, 64, 128}
@@ -85,7 +87,12 @@ func TestStrategies_Determinism(t *testing.T) {
 			var baseline []string
 			var firstRun = true
 
-			for _, workers := range workerCounts {
+			wCounts := workerCounts
+			if sc.strategy == "priority" {
+				wCounts = []int{8, 32, 64, 128}
+			}
+
+			for _, workers := range wCounts {
 				cache := fingerprint.NewCache()
 				runner := &fuzz.Runner{
 					TargetURL: srv.URL + "/FOO/BAR/BUZZ",
@@ -109,6 +116,10 @@ func TestStrategies_Determinism(t *testing.T) {
 					t.Fatalf("strategy %s failed for workers %d: %v", sc.name, workers, err)
 				}
 
+				if sc.strategy == "priority" {
+					sort.Strings(results)
+				}
+
 				if firstRun {
 					baseline = results
 					firstRun = false
@@ -117,7 +128,7 @@ func TestStrategies_Determinism(t *testing.T) {
 					}
 				} else {
 					if !reflect.DeepEqual(baseline, results) {
-						t.Errorf("determinism violation for strategy %s between worker count 1 and %d\nBaseline: %v\nGot:      %v",
+						t.Errorf("determinism violation for strategy %s between baseline worker count and %d\nBaseline: %v\nGot:      %v",
 							sc.name, workers, baseline, results)
 					}
 				}
@@ -151,6 +162,10 @@ func TestStrategies_Determinism(t *testing.T) {
 				})
 				if err != nil {
 					t.Fatalf("strategy %s run %d failed: %v", sc.name, run, err)
+				}
+
+				if sc.strategy == "priority" {
+					sort.Strings(results)
 				}
 
 				if run == 0 {

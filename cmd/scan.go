@@ -171,8 +171,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			if opts.MaxDepth < 1 {
 				return fmt.Errorf("max depth must be at least 1")
 			}
-			if opts.Strategy != "bfs" && opts.Strategy != "dfs" {
-				return fmt.Errorf("invalid strategy %q: must be bfs or dfs", opts.Strategy)
+			if opts.Strategy != "bfs" && opts.Strategy != "dfs" && opts.Strategy != "priority" {
+				return fmt.Errorf("invalid strategy %q: must be bfs, dfs, or priority", opts.Strategy)
 			}
 			if cmd.Flags().Changed("max-depth") && !opts.Recursive {
 				return fmt.Errorf("max-depth requires recursive scanning to be enabled")
@@ -1078,7 +1078,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"strategy",
 		"s",
 		"bfs",
-		"recursion strategy (bfs, dfs)",
+		"recursion strategy (bfs, dfs, priority)",
 	)
 
 	cmd.Flags().StringVarP(

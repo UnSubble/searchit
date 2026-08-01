@@ -37,8 +37,8 @@ func (v *ScanValidator) Validate(p *types.Profile) error {
 	if o.MaxDepth != nil && *o.MaxDepth < 1 {
 		return fmt.Errorf("max-depth must be at least 1")
 	}
-	if o.Strategy != nil && *o.Strategy != "bfs" && *o.Strategy != "dfs" {
-		return fmt.Errorf("invalid strategy %q: must be bfs or dfs", *o.Strategy)
+	if o.Strategy != nil && *o.Strategy != "bfs" && *o.Strategy != "dfs" && *o.Strategy != "priority" {
+		return fmt.Errorf("invalid strategy %q: must be bfs, dfs, or priority", *o.Strategy)
 	}
 	if o.Rate != nil && *o.Rate <= 0 {
 		return fmt.Errorf("rate must be greater than 0")

@@ -146,12 +146,12 @@ func TestFrontier_GrowPreservesBFSOrder(t *testing.T) {
 }
 
 func TestFrontier_GrowPreservesDFSOrder(t *testing.T) {
-	f := NewFrontier(DFS)
+	f := NewFrontier()
 
 	n := DefaultJobBuffer * 3
 
 	for i := 0; i < n; i++ {
-		f.Push(NewSliceGenerator([]engine.Job{
+		f.PushFront(NewSliceGenerator([]engine.Job{
 			{Depth: uint16(i)},
 		}))
 	}
