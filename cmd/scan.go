@@ -528,6 +528,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				outWriter = f
 			}
 
+			httpclient.ConfigureTransportForWorkers(appState.HTTPClient, cfg.Threads)
+
 			// Construct the formatter from the resolved format name.
 			fmt_, err := output.Parse(cfg.OutputFormat)
 			if err != nil {

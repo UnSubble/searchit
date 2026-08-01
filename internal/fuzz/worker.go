@@ -331,6 +331,9 @@ func process(
 	var resHeaders http.Header
 	if fs.ShowHeaders {
 		resHeaders = resp.Header
+	} else if loc := resp.Header.Get("Location"); loc != "" {
+		resHeaders = make(http.Header)
+		resHeaders.Set("Location", loc)
 	}
 
 	var title string

@@ -45,6 +45,11 @@ func TestNew_TransportSettings(t *testing.T) {
 	if tr.MaxIdleConnsPerHost != 100 {
 		t.Errorf("MaxIdleConnsPerHost = %d, want 100", tr.MaxIdleConnsPerHost)
 	}
+
+	httpclient.ConfigureTransportForWorkers(c, 128)
+	if tr.MaxIdleConnsPerHost != 256 {
+		t.Errorf("after ConfigureTransportForWorkers(128), MaxIdleConnsPerHost = %d, want 256", tr.MaxIdleConnsPerHost)
+	}
 	if tr.IdleConnTimeout != 90*time.Second {
 		t.Errorf("IdleConnTimeout = %v, want 90s", tr.IdleConnTimeout)
 	}

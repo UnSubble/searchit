@@ -91,7 +91,7 @@ func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle
 func isRedirect(r engine.Result) bool {
 	switch r.StatusCode {
 	case 300, 301, 302, 303, 307, 308:
-		return r.Headers != nil && r.Headers.Get("Location") != ""
+		return (r.Headers != nil && r.Headers.Get("Location") != "") || r.RedirectURL != ""
 	default:
 		return false
 	}
@@ -124,7 +124,13 @@ func formatSize(length int64) string {
 
 func writeRedirectResult(w io.Writer, r engine.Result) error {
 	reqPath := requestedPath(r.URL)
-	loc := r.Headers.Get("Location")
+	loc := ""
+	if r.Headers != nil {
+		loc = r.Headers.Get("Location")
+	}
+	if loc == "" {
+		loc = r.RedirectURL
+	}
 	if r.Length >= 0 {
 		s := formatSize(r.Length)
 		_, err := fmt.Fprintf(w, "[%d] - %s - %s -> %s\n", r.StatusCode, s, reqPath, loc)

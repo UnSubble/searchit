@@ -235,3 +235,23 @@ func NewWithHTTPVersion(
 		CheckRedirect: checkRedirect,
 	}
 }
+
+// ConfigureTransportForWorkers dynamically adjusts transport idle connection caps
+// based on the configured worker thread count: max(8, workers * 2).
+func ConfigureTransportForWorkers(client *http.Client, workers int) {
+	if client == nil {
+		return
+	}
+	tr, ok := client.Transport.(*http.Transport)
+	if !ok {
+		return
+	}
+	maxHost := workers * 2
+	if maxHost < 8 {
+		maxHost = 8
+	}
+	tr.MaxIdleConnsPerHost = maxHost
+	if tr.MaxIdleConns < maxHost*10 {
+		tr.MaxIdleConns = maxHost * 10
+	}
+}

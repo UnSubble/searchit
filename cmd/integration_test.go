@@ -387,7 +387,7 @@ func TestIntegration_Scans(t *testing.T) {
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
-		if !strings.Contains(out, "301 - ") || !strings.Contains(out, redirectSrv.URL+"/redirect") {
+		if !strings.Contains(out, "[301]") || !strings.Contains(out, "/redirect ->") {
 			t.Errorf("expected 301 redirect report, got:\n%s", out)
 		}
 	})

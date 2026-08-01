@@ -33,6 +33,7 @@ type Executor struct {
 	jobsChan     chan WorkItem
 	resultsChan  <-chan Result
 	PauseBlocker func(context.Context) error
+	closeOnce    sync.Once
 }
 
 // NewExecutor initializes and starts the worker pool.
@@ -47,7 +48,11 @@ func NewExecutor(
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
 ) *Executor {
-	jobsChan := make(chan WorkItem, workers*2)
+	bufSize := workers * 32
+	if bufSize < 512 {
+		bufSize = 512
+	}
+	jobsChan := make(chan WorkItem, bufSize)
 	resultsChan := Start(ctx, drainCtx, client, fs, workers, delay, limiter, jobsChan, collector, pauseBlocker)
 
 	e := &Executor{
@@ -112,7 +117,9 @@ func (e *Executor) Execute(job RequestDTO) (Result, error) {
 
 // Close signals worker pool termination.
 func (e *Executor) Close() {
-	close(e.jobsChan)
+	e.closeOnce.Do(func() {
+		close(e.jobsChan)
+	})
 }
 
 // ResultCallback is invoked when a successful result is found.
@@ -322,64 +329,70 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		buzzList = []string{""}
 	}
 
-	batchSize := r.Threads * 4
-	if batchSize < 32 {
-		batchSize = 32
+	bufSize := r.Threads * 32
+	if bufSize < 512 {
+		bufSize = 512
 	}
+	jobChan := make(chan chan Result, bufSize)
 
-	jobChan := make(chan chan Result, batchSize)
-
-	// Declare WaitGroup first so it is pushed onto the defer stack FIRST.
-	// This ensures it executes LAST during stack unwinding.
-	var producerWg sync.WaitGroup
-	defer producerWg.Wait()
-
-	// Declare context cancellation next so it is pushed onto the defer stack SECOND.
-	// This ensures it executes FIRST during stack unwinding.
-	producerCtx, cancelProducer := context.WithCancel(ctx)
-	defer cancelProducer()
-
-	producerWg.Add(1)
 	go func() {
-		defer producerWg.Done()
 		defer close(jobChan)
 
+		pushCandidate := func(vars map[string]string) bool {
+			if e.PauseBlocker != nil {
+				if err := e.PauseBlocker(ctx); err != nil {
+					return false
+				}
+			}
+			job, err := r.buildJob(r.compiledReq.targetURL, vars)
+			if err != nil {
+				if r.Collector != nil {
+					r.Collector.RecordSkipped(1)
+				}
+				return true
+			}
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
+			atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+			if e.collector != nil {
+				e.collector.RecordJobProduced()
+			}
+			resCh := make(chan Result, 1)
+			item := WorkItem{
+				Req:   job,
+				Reply: resCh,
+			}
+			select {
+			case <-ctx.Done():
+				return false
+			case e.jobsChan <- item:
+			}
+			select {
+			case <-ctx.Done():
+				return false
+			case jobChan <- resCh:
+				return true
+			}
+		}
+
 		if primaryChan != nil {
-			for {
+			for word := range primaryChan {
 				select {
-				case <-producerCtx.Done():
+				case <-ctx.Done():
 					return
-				case word, ok := <-primaryChan:
-					if !ok {
-						return
-					}
-					for _, fooVal := range fooList {
-						for _, barVal := range barList {
-							for _, bazVal := range bazList {
-								for _, buzzVal := range buzzList {
-									resCh := make(chan Result, 1)
-									select {
-									case <-producerCtx.Done():
-										return
-									case jobChan <- resCh:
-									}
-									producerWg.Add(1)
-									go func(f, foo, bar, baz, buzz string, ch chan<- Result) {
-										defer producerWg.Done()
-										job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FUZZ": f, "FOO": foo, "BAR": bar, "BAZ": baz, "BUZZ": buzz})
-										if err != nil {
-											if r.Collector != nil {
-												r.Collector.RecordSkipped(1)
-											}
-											ch <- Result{Err: err}
-											return
-										}
-										res, err := e.Execute(job)
-										if err != nil {
-											res.Err = err
-										}
-										ch <- res
-									}(word, fooVal, barVal, bazVal, buzzVal, resCh)
+				default:
+				}
+				for _, fooVal := range fooList {
+					for _, barVal := range barList {
+						for _, bazVal := range bazList {
+							for _, buzzVal := range buzzList {
+								if !pushCandidate(map[string]string{
+									"FUZZ": word,
+									"FOO":  fooVal,
+									"BAR":  barVal,
+									"BAZ":  bazVal,
+									"BUZZ": buzzVal,
+								}) {
+									return
 								}
 							}
 						}
@@ -391,29 +404,14 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 				for _, barVal := range barList {
 					for _, bazVal := range bazList {
 						for _, buzzVal := range buzzList {
-							resCh := make(chan Result, 1)
-							select {
-							case <-producerCtx.Done():
+							if !pushCandidate(map[string]string{
+								"FOO":  fooVal,
+								"BAR":  barVal,
+								"BAZ":  bazVal,
+								"BUZZ": buzzVal,
+							}) {
 								return
-							case jobChan <- resCh:
 							}
-							producerWg.Add(1)
-							go func(foo, bar, baz, buzz string, ch chan<- Result) {
-								defer producerWg.Done()
-								job, err := r.buildJob(r.compiledReq.targetURL, map[string]string{"FOO": foo, "BAR": bar, "BAZ": baz, "BUZZ": buzz})
-								if err != nil {
-									if r.Collector != nil {
-										r.Collector.RecordSkipped(1)
-									}
-									ch <- Result{Err: err}
-									return
-								}
-								res, err := e.Execute(job)
-								if err != nil {
-									res.Err = err
-								}
-								ch <- res
-							}(fooVal, barVal, bazVal, buzzVal, resCh)
 						}
 					}
 				}
@@ -422,10 +420,6 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	}()
 
 	for resCh := range jobChan {
-		// Always drain resCh, regardless of ctx state.
-		// If we skip the receive after selecting ctx.Done(), the background goroutine
-		// that owns resCh blocks trying to send, which fills jobChan and deadlocks
-		// the producer goroutine — causing workers to appear stuck.
 		res := <-resCh
 		if ctx.Err() == nil {
 			if res.Accepted || res.Err != nil {
