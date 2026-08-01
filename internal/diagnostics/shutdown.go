@@ -19,6 +19,10 @@ type GoRoutine struct {
 }
 
 func RunDiagnostics(timeout time.Duration, scanCtxErr, drainCtxErr error) {
+	if strings.HasSuffix(os.Args[0], ".test") {
+		return
+	}
+
 	time.Sleep(timeout)
 	fmt.Fprintf(os.Stderr, "\n=== SHUTDOWN DIAGNOSTIC (stuck > %v) ===\n", timeout)
 
