@@ -225,25 +225,21 @@ func (r *Runner) compileRequest() *compiledRequest {
 
 // GetTargetDepth checks placeholder levels in target URL template.
 func GetTargetDepth(urlTemplate string) int {
-	hasFOO := strings.Contains(urlTemplate, "FOO")
+	hasFOO := strings.Contains(urlTemplate, "FOO") || strings.Contains(urlTemplate, "FUZZ")
 	hasBAR := strings.Contains(urlTemplate, "BAR")
 	hasBAZ := strings.Contains(urlTemplate, "BAZ")
 	hasBUZZ := strings.Contains(urlTemplate, "BUZZ")
 
-	count := 0
-	if hasFOO {
-		count++
+	if hasBUZZ || hasBAZ {
+		return 3
 	}
 	if hasBAR {
-		count++
+		return 2
 	}
-	if hasBAZ {
-		count++
+	if hasFOO {
+		return 1
 	}
-	if hasBUZZ {
-		count++
-	}
-	return count
+	return 0
 }
 
 // TruncateTemplate cuts template segments for a specific target depth.
@@ -299,16 +295,27 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 		return r.runAdaptive(ctx, e, yield)
 	}
 
-	switch strings.ToLower(strategy) {
-	case "bfs":
+	stratLower := strings.ToLower(strategy)
+	if stratLower == "dfs" || stratLower == "bfs" {
+		if primaryChan != nil {
+			var mat []string
+			for word := range primaryChan {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				mat = append(mat, word)
+			}
+			r.FooWords = mat
+		}
+		if stratLower == "dfs" {
+			return r.runDFS(ctx, e, yield)
+		}
 		return r.runBFS(ctx, e, yield)
-	case "dfs":
-		return r.runDFS(ctx, e, yield)
-	case "eager":
-		return r.runEager(ctx, e, primaryChan, yield)
-	default:
-		return r.runEager(ctx, e, primaryChan, yield)
 	}
+
+	return r.runEager(ctx, e, primaryChan, yield)
 }
 
 func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan string, yield ResultCallback) error {
@@ -443,10 +450,25 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		return r.runEager(ctx, e, nil, yield)
 	}
 
+	primaryPH := "FOO"
+	if strings.Contains(r.TargetURL, "FUZZ") {
+		primaryPH = "FUZZ"
+	}
+
 	// Level 1: Fuzz FOO
 	tmpl1 := TruncateTemplate(r.TargetURL, 1)
 	cTmpl1 := CompileTemplate(tmpl1, SupportedPlaceholders)
 	var foundFOO []string
+
+	if len(r.FooWords) == 0 {
+		r.FooWords = []string{""}
+	}
+	if len(r.BarWords) == 0 {
+		r.BarWords = []string{""}
+	}
+	if len(r.BuzzWords) == 0 {
+		r.BuzzWords = []string{""}
+	}
 
 	type pendingJob1 struct {
 		word string
@@ -463,7 +485,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				return
 			default:
 			}
-			vars := map[string]string{"FOO": word}
+			vars := map[string]string{primaryPH: word}
 			job, err := r.buildJob(cTmpl1, vars)
 			if err != nil {
 				pending1 <- pendingJob1{word: word, err: err}
@@ -553,7 +575,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				return
 			default:
 			}
-			vars := map[string]string{"FOO": bj.foo, "BAR": bj.bar}
+			vars := map[string]string{primaryPH: bj.foo, "BAR": bj.bar}
 			job, err := r.buildJob(cTmpl2, vars)
 			if err != nil {
 				pending2 <- pendingJob2{info: bj, err: err}
@@ -636,7 +658,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, yield ResultCallback) 
 				return
 			default:
 			}
-			vars := map[string]string{"FOO": bj.foo, "BAR": bj.bar, "BUZZ": bj.buzz}
+			vars := map[string]string{primaryPH: bj.foo, "BAR": bj.bar, "BUZZ": bj.buzz}
 			job, err := r.buildJob(cTmpl3, vars)
 			if err != nil {
 				pending3 <- pendingJob3{info: bj, err: err}
@@ -670,7 +692,23 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 		return r.runEager(ctx, e, nil, yield)
 	}
 
+	primaryPH := "FOO"
+	if strings.Contains(r.TargetURL, "FUZZ") {
+		primaryPH = "FUZZ"
+	}
+
 	var dfsVisit func(parentFoo, parentBar string, currentDepth int)
+
+	if len(r.FooWords) == 0 {
+		r.FooWords = []string{""}
+	}
+	if len(r.BarWords) == 0 {
+		r.BarWords = []string{""}
+	}
+	if len(r.BuzzWords) == 0 {
+		r.BuzzWords = []string{""}
+	}
+
 	dfsVisit = func(parentFoo, parentBar string, currentDepth int) {
 		select {
 		case <-ctx.Done():
@@ -698,7 +736,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 						return
 					default:
 					}
-					vars := map[string]string{"FOO": word}
+					vars := map[string]string{primaryPH: word}
 					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
 						pending1 <- pendingDFS{word: word, err: err}
@@ -774,7 +812,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 						return
 					default:
 					}
-					vars := map[string]string{"FOO": parentFoo, "BAR": word}
+					vars := map[string]string{primaryPH: parentFoo, "BAR": word}
 					job, err := r.buildJob(cTmpl, vars)
 					if err != nil {
 						pending2 <- pendingDFS{word: word, err: err}
@@ -842,7 +880,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, yield ResultCallback) 
 						return
 					default:
 					}
-					vars := map[string]string{"FOO": parentFoo, "BAR": parentBar, "BUZZ": word}
+					vars := map[string]string{primaryPH: parentFoo, "BAR": parentBar, "BUZZ": word}
 					job, err := r.buildJob(r.compiledReq.targetURL, vars)
 					if err != nil {
 						pending3 <- pendingDFS{word: word, err: err}

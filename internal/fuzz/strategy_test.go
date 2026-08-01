@@ -261,8 +261,8 @@ func TestStrategies(t *testing.T) {
 	})
 
 	t.Run("helper utilities", func(t *testing.T) {
-		if d := fuzz.GetTargetDepth("http://localhost/FUZZ"); d != 0 {
-			t.Errorf("expected depth 0, got %d", d)
+		if d := fuzz.GetTargetDepth("http://localhost/FUZZ"); d != 1 {
+			t.Errorf("expected depth 1, got %d", d)
 		}
 		if d := fuzz.GetTargetDepth("http://localhost/FOO"); d != 1 {
 			t.Errorf("expected depth 1, got %d", d)
