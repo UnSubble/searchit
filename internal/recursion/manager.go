@@ -208,6 +208,7 @@ func (m *Manager) Run(
 			jobs,
 			m.stats,
 			m.PauseBlocker,
+			engine.WorkerOptions{ExtractLinks: true},
 		)
 
 		// pending counts jobs dispatched to workers but not yet returned.

@@ -62,7 +62,7 @@ func TestEngineWorker_BytesReceivedAccounting(t *testing.T) {
 		ctx, ctx, srv.Client(), fs,
 		nil, nil, 0, nil,
 		"GET", nil, nil, "",
-		jobs, results, collector, nil,
+		jobs, results, collector, nil, engine.WorkerOptions{ExtractLinks: false},
 	)
 
 	jobs <- engine.Job{URL: srv.URL + "/content-length"}

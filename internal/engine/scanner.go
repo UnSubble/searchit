@@ -22,6 +22,7 @@ type Scanner struct {
 	delay      time.Duration
 	limiter    *rate.Limiter
 	stats      *stats.Collector
+	opts       WorkerOptions
 
 	// Request manipulation fields
 	method    string
@@ -44,6 +45,7 @@ func NewScanner(
 	incHeaders, excHeaders []HeaderFilter,
 	delay time.Duration,
 	limiter *rate.Limiter,
+	opts WorkerOptions,
 ) *Scanner {
 	return &Scanner{
 		client:     client,
@@ -53,6 +55,7 @@ func NewScanner(
 		errors:     make(chan error, 1),
 		delay:      delay,
 		limiter:    limiter,
+		opts:       opts,
 	}
 }
 
@@ -66,7 +69,7 @@ func (s *Scanner) SetStats(c *stats.Collector) {
 // Cancelling ctx stops job emission and aborts in-flight requests.
 func (s *Scanner) Scan(ctx context.Context, producer Producer, workers int, pauseBlocker func(context.Context) error) <-chan Result {
 	jobs := make(chan Job, workers)
-	results := Start(ctx, ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookieStr, jobs, s.stats, pauseBlocker)
+	results := Start(ctx, ctx, s.client, s.fs, s.incHeaders, s.excHeaders, workers, s.delay, s.limiter, s.method, s.body, s.headers, s.cookieStr, jobs, s.stats, pauseBlocker, s.opts)
 	out := make(chan Result, workers)
 
 	go func() {

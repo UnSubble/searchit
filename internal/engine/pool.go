@@ -30,6 +30,7 @@ func Start(
 	jobs <-chan Job,
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
+	opts WorkerOptions,
 ) <-chan Result {
 	results := make(chan Result, workers)
 
@@ -39,7 +40,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(targetCtx, execCtx, client, fs, incHeaders, excHeaders, delay, limiter, method, body, headers, cookieStr, jobs, results, collector, pauseBlocker)
+			Worker(targetCtx, execCtx, client, fs, incHeaders, excHeaders, delay, limiter, method, body, headers, cookieStr, jobs, results, collector, pauseBlocker, opts)
 		}()
 	}
 

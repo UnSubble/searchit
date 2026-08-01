@@ -51,7 +51,7 @@ func TestWorker_HangingBody_TimesOutWithinConfiguredTimeout(t *testing.T) {
 	close(jobs)
 
 	start := time.Now()
-	engine.Worker(ctx, ctx, client, fs, nil, nil, 0, nil, "GET", nil, nil, "", jobs, results, nil, nil)
+	engine.Worker(ctx, ctx, client, fs, nil, nil, 0, nil, "GET", nil, nil, "", jobs, results, nil, nil, engine.WorkerOptions{ExtractLinks: false})
 	elapsed := time.Since(start)
 
 	if elapsed > 2*time.Second {
@@ -81,7 +81,7 @@ func TestShutdown_StopTarget_WaitsAtMostConfiguredTimeout(t *testing.T) {
 	defer cancelDrain()
 
 	jobs := make(chan engine.Job, 1)
-	results := engine.Start(targetCtx, drainCtx, client, fs, nil, nil, 1, 0, nil, "GET", nil, nil, "", jobs, nil, nil)
+	results := engine.Start(targetCtx, drainCtx, client, fs, nil, nil, 1, 0, nil, "GET", nil, nil, "", jobs, nil, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	jobs <- engine.Job{URL: ts.URL}
 
@@ -119,7 +119,7 @@ func TestShutdown_AbortAll_CancelsImmediately(t *testing.T) {
 	drainCtx, cancelDrain := context.WithCancel(context.Background())
 
 	jobs := make(chan engine.Job, 1)
-	results := engine.Start(targetCtx, drainCtx, client, fs, nil, nil, 1, 0, nil, "GET", nil, nil, "", jobs, nil, nil)
+	results := engine.Start(targetCtx, drainCtx, client, fs, nil, nil, 1, 0, nil, "GET", nil, nil, "", jobs, nil, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	jobs <- engine.Job{URL: ts.URL}
 	time.Sleep(50 * time.Millisecond) // Ensure worker starts request
@@ -162,7 +162,7 @@ func TestShutdown_NoGoroutinesBlockedAfterShutdown(t *testing.T) {
 	defer cancelDrain()
 
 	jobs := make(chan engine.Job, 4)
-	results := engine.Start(targetCtx, drainCtx, a.HTTPClient, fs, nil, nil, 4, 0, nil, "GET", nil, nil, "", jobs, nil, nil)
+	results := engine.Start(targetCtx, drainCtx, a.HTTPClient, fs, nil, nil, 4, 0, nil, "GET", nil, nil, "", jobs, nil, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	for i := 0; i < 4; i++ {
 		jobs <- engine.Job{URL: ts.URL}

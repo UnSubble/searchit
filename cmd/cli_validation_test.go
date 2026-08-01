@@ -10,6 +10,17 @@ import (
 )
 
 func TestCLI_RedirectValidation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	tmpDir := t.TempDir()
+	wlPath := filepath.Join(tmpDir, "wl.txt")
+	if err := os.WriteFile(wlPath, []byte("test\n"), 0600); err != nil {
+		t.Fatalf("failed to write wordlist: %v", err)
+	}
+
 	tests := []struct {
 		name    string
 		args    []string
@@ -18,19 +29,19 @@ func TestCLI_RedirectValidation(t *testing.T) {
 	}{
 		{
 			name:    "negative max-redirects",
-			args:    []string{"scan", "-u", "http://localhost", "--follow-redirects", "--max-redirects", "-5"},
+			args:    []string{"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--max-redirects", "-5"},
 			wantErr: true,
 			errMsg:  "max-redirects cannot be negative",
 		},
 		{
 			name:    "invalid max-redirects string value",
-			args:    []string{"scan", "-u", "http://localhost", "--follow-redirects", "--max-redirects", "abc"},
+			args:    []string{"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--max-redirects", "abc"},
 			wantErr: true,
 			errMsg:  "invalid argument",
 		},
 		{
 			name:    "valid max-redirects",
-			args:    []string{"scan", "-u", "http://localhost", "--follow-redirects", "--max-redirects", "5"},
+			args:    []string{"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--max-redirects", "5", "-q"},
 			wantErr: false,
 		},
 	}
@@ -52,6 +63,17 @@ func TestCLI_RedirectValidation(t *testing.T) {
 }
 
 func TestCLI_FuzzValidation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	tmpDir := t.TempDir()
+	wlPath := filepath.Join(tmpDir, "wl.txt")
+	if err := os.WriteFile(wlPath, []byte("test\n"), 0600); err != nil {
+		t.Fatalf("failed to write wordlist: %v", err)
+	}
+
 	tests := []struct {
 		name    string
 		args    []string
@@ -66,23 +88,23 @@ func TestCLI_FuzzValidation(t *testing.T) {
 		},
 		{
 			name:    "missing placeholder in fuzz url",
-			args:    []string{"fuzz", "-u", "http://localhost/admin"},
+			args:    []string{"fuzz", "-u", srv.URL + "/admin", "-w", wlPath},
 			wantErr: true,
 			errMsg:  "no placeholders",
 		},
 		{
-			name:    "FUZZ without -w uses embedded default wordlist",
-			args:    []string{"fuzz", "-u", "http://localhost/FUZZ"},
+			name:    "FUZZ without -w uses custom 1-item wordlist",
+			args:    []string{"fuzz", "-u", srv.URL + "/FUZZ", "-w", wlPath},
 			wantErr: false,
 		},
 		{
 			name:    "FUZZ with -w custom wordlist",
-			args:    []string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "go.mod"},
+			args:    []string{"fuzz", "-u", srv.URL + "/FUZZ", "-w", wlPath},
 			wantErr: false,
 		},
 		{
 			name:    "FOO placeholder without --foo wordlist returns validation error",
-			args:    []string{"fuzz", "-u", "http://localhost/FOO"},
+			args:    []string{"fuzz", "-u", srv.URL + "/FOO", "-w", wlPath},
 			wantErr: true,
 			errMsg:  "placeholder foo is used but no --foo wordlist provided",
 		},

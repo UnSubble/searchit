@@ -31,7 +31,7 @@ func runBench(b *testing.B, workers int) {
 
 	a := benchApp(b)
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	s := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil)
+	s := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	urls := make([]string, b.N)
 	for i := range urls {
@@ -54,7 +54,7 @@ func BenchmarkWorker_RateLimitZeroOverhead(b *testing.B) {
 
 	a := benchApp(b)
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	s := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil)
+	s := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	urls := make([]string, b.N)
 	for i := range urls {

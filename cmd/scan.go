@@ -876,6 +876,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						jobs,
 						collector,
 						stateMgr.WaitUntilRunning,
+						engine.WorkerOptions{ExtractLinks: false},
 					)
 
 					go func() {

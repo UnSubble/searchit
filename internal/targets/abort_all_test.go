@@ -241,7 +241,7 @@ func TestAbortDuringAdaptiveScanning(t *testing.T) {
 	cfg.Adaptive = true
 	a := app.New(ctx, cfg)
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	scanner := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil)
+	scanner := engine.NewScanner(a.HTTPClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	p := engine.SliceProducer{URLs: []string{srv.URL, srv.URL + "/2"}}
 	resChan := scanner.Scan(ctx, p, 2, nil)
@@ -288,7 +288,7 @@ func TestAbortAllRaceSafety(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-		scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
+		scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 		urls := []string{srv.URL, srv.URL, srv.URL, srv.URL}
 		resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, 8, nil)
@@ -313,7 +313,7 @@ func TestAbortWorkerScaling(t *testing.T) {
 		for run := 0; run < 10; run++ {
 			ctx, cancel := context.WithCancel(context.Background())
 			fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-			scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
+			scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 			var urls []string
 			for k := 0; k < 100; k++ {
@@ -341,7 +341,7 @@ func TestAbortAllNoGoroutineLeak(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
+	scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	urls := []string{srv.URL, srv.URL, srv.URL}
 	resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: urls}, 4, nil)
@@ -386,7 +386,7 @@ func TestAbortAfterCompletion(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	fs, _ := filter.NewFilterSuite("", "", "", "", nil, nil, nil, nil)
-	scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil)
+	scanner := engine.NewScanner(http.DefaultClient, fs, nil, nil, 0, nil, engine.WorkerOptions{ExtractLinks: false})
 
 	resChan := scanner.Scan(ctx, engine.SliceProducer{URLs: []string{srv.URL}}, 1, nil)
 	for range resChan {

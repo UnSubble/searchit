@@ -57,6 +57,7 @@ func TestWorker_ProgressAccounting_DecrementsQueuedJobs(t *testing.T) {
 		results,
 		collector,
 		nil,
+		WorkerOptions{ExtractLinks: false},
 	)
 
 	// Send jobs

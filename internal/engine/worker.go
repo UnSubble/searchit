@@ -44,6 +44,11 @@ func drainAndClose(body io.ReadCloser) int64 {
 	return n
 }
 
+// WorkerOptions defines capability-oriented configuration flags for execution workers.
+type WorkerOptions struct {
+	ExtractLinks bool
+}
+
 // Worker executes the response pipeline for incoming jobs.
 // Pipeline: Status -> Headers -> Content-Length -> Body
 func Worker(
@@ -62,6 +67,7 @@ func Worker(
 	results chan<- Result,
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
+	opts WorkerOptions,
 ) {
 	if execCtx == nil {
 		execCtx = targetCtx
@@ -99,7 +105,7 @@ func Worker(
 			}
 		}
 
-		process(targetCtx, execCtx, client, fs, incHeaders, excHeaders, method, body, headers, cookieStr, job, results, collector)
+		process(targetCtx, execCtx, client, fs, incHeaders, excHeaders, method, body, headers, cookieStr, job, results, collector, opts)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 		atomic.AddInt64(&stats.GlobalInstrumentation.WorkersActive, -1)
 
@@ -127,6 +133,7 @@ func process(
 	job Job,
 	results chan<- Result,
 	collector *stats.Collector,
+	opts WorkerOptions,
 ) {
 	if targetCtx != nil && targetCtx.Err() != nil {
 		return
@@ -362,7 +369,7 @@ func process(
 	}
 
 	var links []string
-	if isHTML && bodyRead && readErr == nil {
+	if opts.ExtractLinks && isHTML && bodyRead && readErr == nil {
 		links = htmlparser.ExtractLinks(bodyBytes)
 	}
 
