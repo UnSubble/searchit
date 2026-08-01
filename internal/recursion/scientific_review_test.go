@@ -328,10 +328,11 @@ func TestScientific_PrioritizationRatio(t *testing.T) {
 		a.FingerprintCache,
 		100,
 	)
+	m.SetAdaptiveEngine(a.AdaptiveEngine)
 
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
 
-	_, _, _, _, _, high, _, low := m.GetAdaptiveMetrics()
+	_, _, high, _, low := a.AdaptiveEngine.GetMetrics()
 	t.Logf("High priority count: %d, Low priority count: %d", high, low)
 }
 

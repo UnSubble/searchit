@@ -9,11 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
-	"github.com/unsubble/searchit/internal/robots"
-	"github.com/unsubble/searchit/internal/sitemap"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
@@ -41,6 +40,7 @@ type Manager struct {
 	limiter          *rate.Limiter
 	stats            *stats.Collector
 	fingerprintCache *fingerprint.Cache
+	adaptiveEngine   *adaptive.Engine
 	PauseBlocker     func(context.Context) error
 	wildcardDetector *wildcard.Detector
 	disableWildcard  bool
@@ -52,11 +52,6 @@ type Manager struct {
 	cookieStr string
 
 	// Adaptive summary tracking fields
-	LaravelDetected     bool
-	WPDetected          bool
-	ExpressDetected     bool
-	RobotsDiscovered    bool
-	SitemapDiscovered   bool
 	DFSCount            int
 	BFSCount            int
 	EagerCount          int
@@ -64,6 +59,11 @@ type Manager struct {
 	MediumPriorityCount int
 	LowPriorityCount    int
 	entriesPerDir       int64
+}
+
+// SetAdaptiveEngine configures the unified AdaptiveEngine for recursion.
+func (m *Manager) SetAdaptiveEngine(eng *adaptive.Engine) {
+	m.adaptiveEngine = eng
 }
 
 // RemainingSubtreeWork returns the theoretical request count for unvisited descendant depths below currentDepth.
@@ -186,8 +186,26 @@ func (m *Manager) Run(
 		}
 
 		if len(seeds) > 0 {
-			robotsSitemaps := m.discoverRobots(ctx, seeds[0], frontier, visited)
-			m.discoverSitemaps(ctx, seeds[0], robotsSitemaps, frontier, visited)
+			if m.adaptiveEngine == nil || (m.adaptiveEngine.TargetURL != "" && m.adaptiveEngine.TargetURL != seeds[0]) {
+				m.adaptiveEngine = adaptive.NewEngine(seeds[0], m.client, m.fingerprintCache, true)
+			}
+		}
+
+		if m.adaptiveEngine != nil {
+			if m.adaptiveEngine.TargetURL == "" && len(seeds) > 0 {
+				m.adaptiveEngine.TargetURL = seeds[0]
+				m.adaptiveEngine.Collector.TargetURL = seeds[0]
+			}
+			_ = m.adaptiveEngine.Discover(ctx)
+			discovered := m.adaptiveEngine.GetDiscoveredJobs()
+			for _, job := range discovered {
+				key := normalizeURL(job.URL)
+				if _, seen := visited[key]; !seen {
+					visited[key] = struct{}{}
+					m.MediumPriorityCount++
+					frontier.PushFront(NewSliceGenerator([]engine.Job{job}))
+				}
+			}
 		}
 
 		jobs := make(chan engine.Job, workers)
@@ -412,110 +430,28 @@ func (m *Manager) handleResult(
 		parentURL = result.RedirectURL
 	}
 
-	// Technology detection and path injection (Laravel, WordPress, Express)
-	if m.fingerprintCache != nil {
+	if m.adaptiveEngine != nil {
 		parsed, err := url.Parse(parentURL)
 		if err == nil {
-			host := parsed.Host
-			fp := m.fingerprintCache.Get(host)
-			if fp != nil {
-				matcher := fingerprint.NewMatcher()
-				isLaravel := false
-				isWP := false
-				isExpress := false
-				for _, tech := range matcher.Match(fp) {
-					if tech.Name == "Laravel" {
-						isLaravel = true
-					}
-					if tech.Name == "WordPress" {
-						isWP = true
-					}
-				}
-				for _, sig := range fp.Signals() {
-					if strings.Contains(strings.ToLower(sig.Value), "express") {
-						isExpress = true
+			scheme := "http"
+			if parsed.Scheme != "" {
+				scheme = parsed.Scheme
+			}
+			hostRoot := fmt.Sprintf("%s://%s", scheme, parsed.Host)
+			newJobs := m.adaptiveEngine.CheckRuntimeTech(hostRoot, parsed.Host)
+			if len(newJobs) > 0 {
+				var jobsToPush []engine.Job
+				for _, j := range newJobs {
+					key := normalizeURL(j.URL)
+					if _, seen := visited[key]; !seen {
+						visited[key] = struct{}{}
+						m.HighPriorityCount++
+						j.Depth = result.Depth + 1
+						jobsToPush = append(jobsToPush, j)
 					}
 				}
-
-				scheme := "http"
-				if parsed.Scheme != "" {
-					scheme = parsed.Scheme
-				}
-				baseURL := fmt.Sprintf("%s://%s", scheme, host)
-
-				if isLaravel && !injectedLaravel[host] {
-					injectedLaravel[host] = true
-					m.LaravelDetected = true
-					laravelPaths := []string{".env", "artisan", "storage/", "bootstrap/", "vendor/"}
-					var jobs []engine.Job
-					for _, p := range laravelPaths {
-						childURL, err := wordlist.Join(baseURL, p)
-						if err == nil {
-							key := normalizeURL(childURL)
-							if _, seen := visited[key]; !seen {
-								visited[key] = struct{}{}
-								m.HighPriorityCount++
-								jobs = append(jobs, engine.Job{
-									URL:    childURL,
-									Depth:  result.Depth + 1,
-									Origin: "adaptive",
-								})
-							}
-						}
-					}
-					if len(jobs) > 0 {
-						frontier.PushFront(NewSliceGenerator(jobs))
-					}
-				}
-
-				if isWP && !injectedWordPress[host] {
-					injectedWordPress[host] = true
-					m.WPDetected = true
-					wpPaths := []string{"wp-admin/", "wp-content/", "wp-includes/", "wp-login.php", "xmlrpc.php"}
-					var jobs []engine.Job
-					for _, p := range wpPaths {
-						childURL, err := wordlist.Join(baseURL, p)
-						if err == nil {
-							key := normalizeURL(childURL)
-							if _, seen := visited[key]; !seen {
-								visited[key] = struct{}{}
-								m.HighPriorityCount++
-								jobs = append(jobs, engine.Job{
-									URL:    childURL,
-									Depth:  result.Depth + 1,
-									Origin: "adaptive",
-								})
-							}
-						}
-					}
-					if len(jobs) > 0 {
-						frontier.PushFront(NewSliceGenerator(jobs))
-					}
-				}
-
-				if isExpress && !injectedExpress[host] {
-					injectedExpress[host] = true
-					m.ExpressDetected = true
-					expressPaths := []string{"api/", "uploads/", "assets/", "static/"}
-					var jobs []engine.Job
-					for _, p := range expressPaths {
-						childURL, err := wordlist.Join(baseURL, p)
-						if err == nil {
-							key := normalizeURL(childURL)
-							if _, seen := visited[key]; !seen {
-								visited[key] = struct{}{}
-								m.HighPriorityCount++
-								jobs = append(jobs, engine.Job{
-									URL:    childURL,
-									Depth:  result.Depth + 1,
-									Origin: "adaptive",
-								})
-							}
-						}
-					}
-					if len(jobs) > 0 {
-						frontier.PushFront(NewSliceGenerator(jobs))
-					}
+				if len(jobsToPush) > 0 {
+					frontier.PushFront(NewSliceGenerator(jobsToPush))
 				}
 			}
 		}
@@ -677,155 +613,4 @@ func normalizeURL(u string) string {
 		}
 	}
 	return u
-}
-
-// discoverRobots downloads, parses, and enqueues robots.txt rules as high-priority seeds.
-// It returns any Sitemap URLs discovered in the robots.txt file.
-func (m *Manager) discoverRobots(ctx context.Context, targetURL string, frontier *Frontier, visited map[string]struct{}) []string {
-	var sitemaps []string
-
-	body, _, err := robots.Download(ctx, m.client, targetURL)
-	if err != nil {
-		return nil
-	}
-	defer body.Close()
-
-	m.RobotsDiscovered = true
-	directives, err := robots.Parse(body)
-	if err != nil {
-		return nil
-	}
-
-	u, err := url.Parse(targetURL)
-	if err != nil {
-		return nil
-	}
-	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
-	hostRootURL, _ := url.Parse(hostRoot)
-
-	var fp *fingerprint.Fingerprint
-	if m.fingerprintCache != nil {
-		fp = m.fingerprintCache.GetOrCreate(u.Host)
-	}
-
-	for _, dir := range directives {
-		if dir.Type == robots.Sitemap {
-			sitemapURL, err := url.Parse(dir.Path)
-			if err != nil {
-				continue
-			}
-			resolvedSitemap := hostRootURL.ResolveReference(sitemapURL).String()
-			sitemaps = append(sitemaps, resolvedSitemap)
-			continue
-		}
-
-		if fp != nil {
-			source := "robots:allow"
-			if dir.Type == robots.Disallow {
-				source = "robots:disallow"
-			}
-			fp.AddSignal(fingerprint.Signal{
-				Source: source,
-				Value:  dir.Path,
-			})
-		}
-
-		pathVal := strings.TrimSpace(dir.Path)
-		if idx := strings.IndexAny(pathVal, "*$"); idx != -1 {
-			pathVal = pathVal[:idx]
-		}
-		pathVal = strings.TrimSpace(pathVal)
-		if pathVal == "" {
-			continue
-		}
-		if !strings.HasPrefix(pathVal, "/") {
-			pathVal = "/" + pathVal
-		}
-
-		childURL, err := wordlist.Join(hostRoot, pathVal)
-		if err != nil {
-			continue
-		}
-
-		key := normalizeURL(childURL)
-		if _, seen := visited[key]; seen {
-			continue
-		}
-		visited[key] = struct{}{}
-		m.MediumPriorityCount++
-		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: engine.OriginRobots}}))
-	}
-
-	return sitemaps
-}
-
-// discoverSitemaps triggers sitemap crawling starting with default locations and sitemaps from robots.txt.
-func (m *Manager) discoverSitemaps(ctx context.Context, targetURL string, robotsSitemaps []string, frontier *Frontier, visited map[string]struct{}) {
-	u, err := url.Parse(targetURL)
-	if err != nil {
-		return
-	}
-	defaultSitemap := fmt.Sprintf("%s://%s/sitemap.xml", u.Scheme, u.Host)
-
-	// Build list of unique starting sitemap URLs
-	var startURLs []string
-	startURLs = append(startURLs, defaultSitemap)
-	for _, s := range robotsSitemaps {
-		sURL, err := url.Parse(s)
-		if err != nil {
-			continue
-		}
-		if sURL.Host != u.Host {
-			continue // SSRF prevention: ignore sitemaps located on foreign hosts
-		}
-		norm := strings.TrimRight(strings.ToLower(s), "/")
-		if norm != strings.TrimRight(strings.ToLower(defaultSitemap), "/") {
-			startURLs = append(startURLs, s)
-		}
-	}
-
-	disc, err := sitemap.NewDiscoverer(m.client, m.fingerprintCache, targetURL)
-	if err != nil {
-		return
-	}
-
-	hostRoot := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
-	hostRootURL, _ := url.Parse(hostRoot)
-
-	disc.Discover(ctx, startURLs, func(candidatePath string, origin string) {
-		m.SitemapDiscovered = true
-		parsedCand, err := url.Parse(candidatePath)
-		if err != nil {
-			return
-		}
-		parsedCand.Fragment = "" // Strip fragments to prevent double-scheduling
-		childURL := hostRootURL.ResolveReference(parsedCand).String()
-
-		key := normalizeURL(childURL)
-		if _, seen := visited[key]; seen {
-			return
-		}
-		visited[key] = struct{}{}
-		m.MediumPriorityCount++
-		frontier.PushFront(NewSliceGenerator([]engine.Job{{URL: childURL, Depth: 0, Origin: origin}}))
-	})
-}
-
-func (m *Manager) GetAdaptiveMetrics() (techs []string, discoveries []string, dfs, bfs, eager, high, med, low int) {
-	if m.LaravelDetected {
-		techs = append(techs, "Laravel")
-	}
-	if m.WPDetected {
-		techs = append(techs, "WordPress")
-	}
-	if m.ExpressDetected {
-		techs = append(techs, "Express")
-	}
-	if m.RobotsDiscovered {
-		discoveries = append(discoveries, "robots.txt")
-	}
-	if m.SitemapDiscovered {
-		discoveries = append(discoveries, "sitemap.xml")
-	}
-	return techs, discoveries, m.DFSCount, m.BFSCount, m.EagerCount, m.HighPriorityCount, m.MediumPriorityCount, m.LowPriorityCount
 }

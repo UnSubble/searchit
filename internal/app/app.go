@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/httpclient"
@@ -18,6 +19,7 @@ type App struct {
 	Config           config.Config
 	HTTPClient       *http.Client
 	FingerprintCache *fingerprint.Cache
+	AdaptiveEngine   *adaptive.Engine
 }
 
 type fingerprintRoundTripper struct {
@@ -88,9 +90,15 @@ func New(ctx context.Context, cfg config.Config) *App {
 	client := httpclient.NewWithHTTPVersion(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, cfg.MaxRedirects, cfg.Proxy, cfg.HTTPVersion)
 
 	var fpCache *fingerprint.Cache
+	var adaptiveEng *adaptive.Engine
 	if cfg.Adaptive {
 		fpCache = fingerprint.NewCache()
 		client.Transport = WrapTransport(client.Transport, fpCache)
+		var targetURL string
+		if len(cfg.URLs) > 0 {
+			targetURL = cfg.URLs[0]
+		}
+		adaptiveEng = adaptive.NewEngine(targetURL, client, fpCache, cfg.Quiet)
 	}
 
 	return &App{
@@ -98,5 +106,6 @@ func New(ctx context.Context, cfg config.Config) *App {
 		Config:           cfg,
 		HTTPClient:       client,
 		FingerprintCache: fpCache,
+		AdaptiveEngine:   adaptiveEng,
 	}
 }

@@ -834,6 +834,9 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						fpCache,
 						entriesPerDir,
 					)
+					if appState.AdaptiveEngine != nil {
+						manager.SetAdaptiveEngine(appState.AdaptiveEngine)
+					}
 					manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, cfg.Cookies)
 					manager.SetFilterSuite(fs)
 					manager.SetStats(collector)
@@ -880,6 +883,29 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					)
 
 					go func() {
+						var skipSet sync.Map
+
+						if appState.AdaptiveEngine != nil {
+							_ = appState.AdaptiveEngine.Discover(scanCtx)
+							discovered := appState.AdaptiveEngine.GetDiscoveredJobs()
+							for _, j := range discovered {
+								normKey := strings.TrimRight(strings.ToLower(j.URL), "/")
+								if _, loaded := skipSet.LoadOrStore(normKey, true); !loaded {
+									select {
+									case <-scanCtx.Done():
+										close(jobs)
+										return
+									case jobs <- j:
+										atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
+										if collector != nil {
+											collector.RecordJobProduced()
+											collector.AddTotalCandidates(1)
+										}
+									}
+								}
+							}
+						}
+
 						p := wordlist.Producer{
 							BaseURL:         targetURL,
 							Reader:          reader,
@@ -888,6 +914,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							Extensions:      cfg.Extensions,
 							Collector:       collector,
 							PauseBlocker:    stateMgr.WaitUntilRunning,
+							SkipSet:         &skipSet,
 						}
 						_ = p.Produce(scanCtx, jobs)
 					}()
@@ -968,18 +995,20 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					_ = tm.AcquireOwner(terminal.OwnerPipeline)
 
 					if flagDebug {
-						if cfg.Adaptive {
-							var techs, discoveries []string
-							var dfs, bfs, eager, high, med, low int
+						if appState.AdaptiveEngine != nil {
+							techs, discoveries, high, med, low := appState.AdaptiveEngine.GetMetrics()
+							dfsCount, bfsCount, eagerCount := 0, 0, 0
 							if manager != nil {
-								techs, discoveries, dfs, bfs, eager, high, med, low = manager.GetAdaptiveMetrics()
+								dfsCount = manager.DFSCount
+								bfsCount = manager.BFSCount
+								eagerCount = manager.EagerCount
 							}
 							telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
 								Technologies:        techs,
 								Discoveries:         discoveries,
-								DFSCount:            dfs,
-								BFSCount:            bfs,
-								EagerCount:          eager,
+								DFSCount:            dfsCount,
+								BFSCount:            bfsCount,
+								EagerCount:          eagerCount,
 								HighPriorityCount:   high,
 								MediumPriorityCount: med,
 								LowPriorityCount:    low,

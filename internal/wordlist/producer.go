@@ -2,6 +2,7 @@ package wordlist
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -25,6 +26,7 @@ type Producer struct {
 	Extensions      []string
 	Collector       *stats.Collector
 	PauseBlocker    func(context.Context) error
+	SkipSet         *sync.Map
 }
 
 func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
@@ -88,6 +90,13 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 								p.Collector.RecordInvalidWord()
 							}
 							continue
+						}
+
+						if p.SkipSet != nil {
+							normKey := strings.TrimRight(strings.ToLower(url), "/")
+							if _, skipped := p.SkipSet.Load(normKey); skipped {
+								continue
+							}
 						}
 
 						select {
