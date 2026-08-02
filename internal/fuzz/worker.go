@@ -300,14 +300,13 @@ func process(
 					recLen = 0
 				}
 				collector.RecordResponseReceived(resp.StatusCode, recLen)
-				collector.RecordRequestSucceeded()
-				collector.RecordDiscovered()
+				collector.RecordRequestFailed()
 			}
 			sendResult(results, item, Result{
 				URL:        item.Req.URL,
 				StatusCode: resp.StatusCode,
 				Length:     length,
-				Accepted:   true,
+				Accepted:   false,
 				Err:        err,
 				UserData:   item.Req.UserData,
 			})

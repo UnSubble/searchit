@@ -59,7 +59,8 @@ func CanonicalizeLocation(rawLoc string, reqURL *url.URL) string {
 
 // WorkerOptions defines capability-oriented configuration flags for execution workers.
 type WorkerOptions struct {
-	ExtractLinks bool
+	ExtractLinks              bool
+	DeferDiscoveredAccounting bool
 }
 
 // Worker executes the response pipeline for incoming jobs.
@@ -371,7 +372,9 @@ func process(
 	if collector != nil {
 		collector.RecordResponseReceived(resp.StatusCode, recLen)
 		collector.RecordRequestSucceeded()
-		collector.RecordDiscovered()
+		if !opts.DeferDiscoveredAccounting {
+			collector.RecordDiscovered()
+		}
 	}
 
 	var redirectURL string

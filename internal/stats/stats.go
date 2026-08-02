@@ -215,13 +215,11 @@ func (c *Collector) RecordDiscovered() {
 
 // RecordWildcardFiltered adjusts counters when a response is identified as a wildcard.
 func (c *Collector) RecordWildcardFiltered() {
-	atomic.AddInt64(&c.discovered, -1)
 	atomic.AddInt64(&c.requestsFiltered, 1)
 }
 
 // RecordDisplayFiltered adjusts counters when a response is filtered by the user display filter.
 func (c *Collector) RecordDisplayFiltered() {
-	atomic.AddInt64(&c.discovered, -1)
 	atomic.AddInt64(&c.requestsFiltered, 1)
 }
 

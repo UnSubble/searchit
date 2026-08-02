@@ -232,7 +232,7 @@ func (m *Manager) Run(
 			jobs,
 			m.stats,
 			m.PauseBlocker,
-			engine.WorkerOptions{ExtractLinks: true},
+			engine.WorkerOptions{ExtractLinks: true, DeferDiscoveredAccounting: true},
 		)
 
 		// pending counts jobs dispatched to workers but not yet returned.
@@ -400,7 +400,12 @@ func (m *Manager) handleResult(
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 
 	reported := result
-	if m.displayFS != nil {
+	if result.Err != nil {
+		reported.Accepted = false
+		if m.stats != nil {
+			m.stats.RecordDisplayFiltered()
+		}
+	} else if m.displayFS != nil {
 		contentType := ""
 		if result.Headers != nil {
 			contentType = result.Headers.Get("Content-Type")
@@ -410,6 +415,12 @@ func (m *Manager) handleResult(
 			if m.stats != nil {
 				m.stats.RecordDisplayFiltered()
 			}
+		}
+	}
+
+	if reported.Accepted {
+		if m.stats != nil {
+			m.stats.RecordDiscovered()
 		}
 	}
 	onResult(reported)
