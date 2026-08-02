@@ -140,6 +140,7 @@ type Runner struct {
 	HeaderTemplates http.Header
 	CookieTemplate  string
 
+	FuzzWords []string
 	FooWords  []string
 	BarWords  []string
 	BazWords  []string
@@ -302,7 +303,7 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 				}
 				mat = append(mat, word)
 			}
-			r.FooWords = mat
+			r.FuzzWords = mat
 			plan = r.buildTraversalPlan()
 		}
 		if stratLower == "dfs" {
@@ -318,6 +319,10 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 }
 
 func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan string, yield ResultCallback) error {
+	fooList := r.FooWords
+	if len(fooList) == 0 {
+		fooList = []string{""}
+	}
 	barList := r.BarWords
 	if len(barList) == 0 {
 		barList = []string{""}
@@ -368,11 +373,6 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			}
 		}
 
-		fuzzList := r.FooWords
-		if primaryChan != nil {
-			fuzzList = nil
-		}
-
 		if primaryChan != nil {
 			for word := range primaryChan {
 				select {
@@ -380,40 +380,51 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 					return
 				default:
 				}
-				vars := map[string]string{
-					"FUZZ": word,
-					"FOO":  word,
-				}
-				for _, barVal := range barList {
-					vars["BAR"] = barVal
-					for _, bazVal := range bazList {
-						vars["BAZ"] = bazVal
-						for _, buzzVal := range buzzList {
-							vars["BUZZ"] = buzzVal
-							if !pushCandidate(vars) {
-								return
+				for _, fooVal := range fooList {
+					for _, barVal := range barList {
+						for _, bazVal := range bazList {
+							for _, buzzVal := range buzzList {
+								vars := map[string]string{
+									"FUZZ": word,
+									"FOO":  fooVal,
+									"BAR":  barVal,
+									"BAZ":  bazVal,
+									"BUZZ": buzzVal,
+								}
+								if !pushCandidate(vars) {
+									return
+								}
 							}
 						}
 					}
 				}
 			}
 		} else {
+			fuzzList := r.FuzzWords
 			if len(fuzzList) == 0 {
-				fuzzList = []string{""}
+				// Fallback for legacy single-placeholder unit tests that set FooWords for FUZZ
+				hasFOO := strings.Contains(r.TargetURL, "FOO") || strings.Contains(r.BodyTemplate, "FOO") || strings.Contains(r.CookieTemplate, "FOO")
+				if !hasFOO && len(r.FooWords) > 0 {
+					fuzzList = r.FooWords
+				} else {
+					fuzzList = []string{""}
+				}
 			}
 			for _, fuzzVal := range fuzzList {
-				vars := map[string]string{
-					"FUZZ": fuzzVal,
-					"FOO":  fuzzVal,
-				}
-				for _, barVal := range barList {
-					vars["BAR"] = barVal
-					for _, bazVal := range bazList {
-						vars["BAZ"] = bazVal
-						for _, buzzVal := range buzzList {
-							vars["BUZZ"] = buzzVal
-							if !pushCandidate(vars) {
-								return
+				for _, fooVal := range fooList {
+					for _, barVal := range barList {
+						for _, bazVal := range bazList {
+							for _, buzzVal := range buzzList {
+								vars := map[string]string{
+									"FUZZ": fuzzVal,
+									"FOO":  fooVal,
+									"BAR":  barVal,
+									"BAZ":  bazVal,
+									"BUZZ": buzzVal,
+								}
+								if !pushCandidate(vars) {
+									return
+								}
 							}
 						}
 					}

@@ -99,18 +99,31 @@ func (r *Runner) buildTraversalPlan() TraversalPlan {
 	var plan TraversalPlan
 	plan.ActivePlaceholders = activePlaceholders
 
-	hasPrimary := false
 	for _, ph := range activePlaceholders {
 		switch ph {
-		case "FUZZ", "FOO":
-			if !hasPrimary {
-				words := r.FooWords
-				if len(words) == 0 {
+		case "FUZZ":
+			words := r.FuzzWords
+			if len(words) == 0 {
+				hasFOO := false
+				for _, ap := range activePlaceholders {
+					if ap == "FOO" {
+						hasFOO = true
+						break
+					}
+				}
+				if !hasFOO && len(r.FooWords) > 0 {
+					words = r.FooWords
+				} else {
 					words = []string{""}
 				}
-				plan.Levels = append(plan.Levels, TraversalLevel{Placeholder: ph, Words: words})
-				hasPrimary = true
 			}
+			plan.Levels = append(plan.Levels, TraversalLevel{Placeholder: ph, Words: words})
+		case "FOO":
+			words := r.FooWords
+			if len(words) == 0 {
+				words = []string{""}
+			}
+			plan.Levels = append(plan.Levels, TraversalLevel{Placeholder: ph, Words: words})
 		case "BAR":
 			words := r.BarWords
 			if len(words) == 0 {
