@@ -58,12 +58,12 @@ type DirectoryGenerator struct {
 	highPriorityCounter *int
 	lowPriorityCounter  *int
 
-	words   chan string
-	readErr chan error
+	words   []string
+	wordIdx int
 	buffer  []engine.Job
 }
 
-// NewDirectoryGenerator constructs a generator and begins reading the wordlist asynchronously.
+// NewDirectoryGenerator constructs a generator backed by a direct word iterator without channels or goroutines.
 func NewDirectoryGenerator(
 	ctx context.Context,
 	reader wordlist.Reader,
@@ -85,6 +85,8 @@ func NewDirectoryGenerator(
 	highPriorityCounter *int,
 	lowPriorityCounter *int,
 ) *DirectoryGenerator {
+	words, _ := wordlist.LoadWords(ctx, reader)
+
 	g := &DirectoryGenerator{
 		ctx:                  ctx,
 		parentURL:            parentURL,
@@ -104,14 +106,8 @@ func NewDirectoryGenerator(
 		statsCollector:       statsCollector,
 		highPriorityCounter:  highPriorityCounter,
 		lowPriorityCounter:   lowPriorityCounter,
-		words:                make(chan string, wordlist.DefaultWordBuffer),
-		readErr:              make(chan error, 1),
+		words:                words,
 	}
-
-	go func() {
-		defer close(g.words)
-		g.readErr <- reader.Read(ctx, g.words)
-	}()
 
 	return g
 }
@@ -128,12 +124,14 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 		return job, true
 	}
 
-	for word := range g.words {
-		select {
-		case <-g.ctx.Done():
+	for g.wordIdx < len(g.words) {
+		word := g.words[g.wordIdx]
+		g.wordIdx++
+
+		if g.ctx != nil && g.ctx.Err() != nil {
 			return engine.Job{}, false
-		default:
 		}
+
 		cleaned, ok := wordlist.CleanWord(word, g.normalizePaths, g.collapseSlashes)
 		if !ok {
 			continue
@@ -190,6 +188,5 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 		}
 	}
 
-	<-g.readErr
 	return engine.Job{}, false
 }

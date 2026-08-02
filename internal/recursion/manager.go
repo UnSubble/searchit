@@ -122,7 +122,7 @@ func NewManager(
 	return &Manager{
 		client:           client,
 		fs:               fs,
-		reader:           reader,
+		reader:           wordlist.NewSliceReader(reader),
 		strategy:         strategy,
 		maxDepth:         maxDepth,
 		recurseOn:        recurseOn,
