@@ -416,11 +416,17 @@ func (m *Manager) handleResult(
 		key := normalizeURL(result.RedirectURL)
 		parentKey := normalizeURL(result.URL)
 		if key != parentKey {
+			wasAlreadyFollowed := visited[key] != struct{}{} && (result.Length > 0 || (ctx != nil && ctx.Err() == nil))
 			if _, seen := visited[key]; !seen {
 				visited[key] = struct{}{}
-				frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
+				// If HTTP client already followed the redirect during client.Do, do not re-enqueue
+				if result.Length <= 0 {
+					frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
+					return
+				}
+			} else if !wasAlreadyFollowed {
+				return
 			}
-			return
 		}
 	}
 

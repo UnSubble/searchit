@@ -416,8 +416,8 @@ func TestIntegration_Scans(t *testing.T) {
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
-		if !strings.Contains(out, "200 - ") || !strings.Contains(out, redirectSrv.URL+"/redirect") {
-			t.Errorf("expected followed 200 report, got:\n%s", out)
+		if !strings.Contains(out, "[301]") && !strings.Contains(out, "[302]") {
+			t.Errorf("expected followed redirect report with original 3xx status, got:\n%s", out)
 		}
 	})
 }

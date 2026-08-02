@@ -233,23 +233,32 @@ func process(
 		collector.RecordLatency(time.Since(startTime))
 	}
 
+	statusCode := resp.StatusCode
+	if resp.Request != nil && resp.Request.Response != nil {
+		origResp := resp.Request.Response
+		for origResp.Request != nil && origResp.Request.Response != nil {
+			origResp = origResp.Request.Response
+		}
+		statusCode = origResp.StatusCode
+	}
+
 	contentType := resp.Header.Get("Content-Type")
 	length := httpclient.ContentLength(resp)
 
 	// Filter 1: Match Headers (Status, Content-Type, Size)
-	if !fs.MatchHeaders(resp.StatusCode, length, contentType) {
+	if !fs.MatchHeaders(statusCode, length, contentType) {
 		drained := drainAndClose(resp.Body)
 		if collector != nil {
 			recLen := length
 			if recLen < 0 {
 				recLen = drained
 			}
-			collector.RecordResponseReceived(resp.StatusCode, recLen)
+			collector.RecordResponseReceived(statusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, item, Result{
 			URL:        item.Req.URL,
-			StatusCode: resp.StatusCode,
+			StatusCode: statusCode,
 			Length:     length,
 			Accepted:   false,
 			UserData:   item.Req.UserData,
@@ -371,7 +380,7 @@ func process(
 
 	// Capture redirect destination for display (same-host only, like scan engine).
 	var redirectURL string
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+	if statusCode >= 300 && statusCode < 400 {
 		if resolvedLoc != "" {
 			if u, err := url.Parse(resolvedLoc); err == nil && resp.Request != nil && resp.Request.URL != nil {
 				if u.Host == resp.Request.URL.Host {
@@ -382,7 +391,7 @@ func process(
 	}
 
 	if collector != nil {
-		collector.RecordResponseReceived(resp.StatusCode, recLen)
+		collector.RecordResponseReceived(statusCode, recLen)
 		collector.RecordRequestSucceeded()
 		collector.RecordDiscovered()
 	}
@@ -390,7 +399,7 @@ func process(
 	sendResult(results, item, Result{
 		URL:         item.Req.URL,
 		RedirectURL: redirectURL,
-		StatusCode:  resp.StatusCode,
+		StatusCode:  statusCode,
 		Length:      length,
 		Accepted:    true,
 		Title:       title,
