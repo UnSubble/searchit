@@ -90,7 +90,11 @@ var aliasFlags = map[string]bool{
 // Identical for both scan and fuzz as they share the same overarching behavior for
 // these specific flags.
 var explicitRuntimeFlags = map[string]bool{
-	"output": true,
+	"output":      true,
+	"no-progress": true,
+	"foo":         true,
+	"bar":         true,
+	"buzz":        true,
 }
 
 // runtimeWarnMsgScan provides human-readable notes for scan flags that have

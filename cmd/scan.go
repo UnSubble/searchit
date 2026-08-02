@@ -30,7 +30,6 @@ import (
 	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/profile/resolver"
-	scanProfile "github.com/unsubble/searchit/internal/profile/scan"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/recursion"
 	"github.com/unsubble/searchit/internal/signals"
@@ -355,10 +354,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				cmd.SilenceUsage = false
 			}()
 
-			// 1. Start from defaults.
-			cfg := config.Default()
-
-			// 2. Apply profiles (left → right).
+			// 1. Resolve profiles (left → right).
+			var profileOverlays []config.ScanOverlay
 			var appliedProfiles []string
 			if len(opts.Profiles) > 0 {
 				store := profile.NewStore()
@@ -394,8 +391,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							}
 						}
 
-						// Decode into scan.Overlay
-						var overlay scanProfile.Overlay
+						// Decode into config.ScanOverlay
+						var overlay config.ScanOverlay
 						if err := p.Decode(&overlay); err != nil {
 							cmd.SilenceErrors = true
 							cmd.SilenceUsage = true
@@ -403,12 +400,21 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							return fmt.Errorf("decode failed")
 						}
 
-						// Apply
-						scanProfile.Apply(&cfg, overlay)
+						profileOverlays = append(profileOverlays, overlay)
 					}
 				}
 			}
 
+			// 2. Resolve baseline configuration (Defaults -> Global Config File -> Profiles).
+			cfg, err := config.ResolveScanConfig(cfgFile, profileOverlays)
+			if err != nil {
+				cmd.SilenceErrors = true
+				cmd.SilenceUsage = true
+				fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
+				return fmt.Errorf("config error")
+			}
+
+			// 3. Apply CLI flag overrides.
 			applyCLIOverrides(opts, cmd, &cfg)
 
 			// If no targets were resolved from CLI flags, attempt to populate them

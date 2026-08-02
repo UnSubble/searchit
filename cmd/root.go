@@ -54,7 +54,7 @@ func init() {
 		"config",
 		"c",
 		"",
-		"config file",
+		"config file (default: $XDG_CONFIG_HOME/searchit/config.yaml or ~/.config/searchit/config.yaml)",
 	)
 
 	rootCmd.PersistentFlags().BoolVarP(

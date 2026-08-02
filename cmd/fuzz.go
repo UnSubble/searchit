@@ -32,7 +32,6 @@ import (
 	"github.com/unsubble/searchit/internal/output/telemetry"
 	"github.com/unsubble/searchit/internal/output/terminal"
 	"github.com/unsubble/searchit/internal/profile"
-	fuzzProfile "github.com/unsubble/searchit/internal/profile/fuzz"
 	"github.com/unsubble/searchit/internal/profile/resolver"
 	"github.com/unsubble/searchit/internal/progress"
 	"github.com/unsubble/searchit/internal/signals"
@@ -340,47 +339,8 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				cancelDrain()
 			})
 
-			// Initialize default config and HTTP client options
-			cfg := config.Default()
-			cfg.Threads = opts.Threads
-			cfg.Timeout = time.Duration(opts.Timeout) * time.Second
-			cfg.Quiet = opts.Quiet
-			cfg.Proxy = opts.Proxy
-			cfg.ShowHeaders = opts.ShowHeaders
-			cfg.ShowTitle = opts.ShowTitle
-
-			if opts.MatchStatus != "" {
-				exclude, _ := status.Parse(opts.MatchStatus)
-				cfg.Status.Include = exclude
-			}
-			if opts.FilterStatus != "" {
-				exclude, _ := status.Parse(opts.FilterStatus)
-				cfg.Status.Exclude = exclude
-			} else if opts.ExcludeStatus != "" {
-				exclude, _ := status.Parse(opts.ExcludeStatus)
-				cfg.Status.Exclude = exclude
-			}
-
-			if opts.MatchSize != "" {
-				inc, _ := size.Parse(opts.MatchSize)
-				cfg.IncludeSize = inc
-			} else if opts.IncludeSize != "" {
-				inc, _ := size.Parse(opts.IncludeSize)
-				cfg.IncludeSize = inc
-			}
-			if opts.FilterSize != "" {
-				exc, _ := size.Parse(opts.FilterSize)
-				cfg.ExcludeSize = exc
-			} else if opts.ExcludeSize != "" {
-				exc, _ := size.Parse(opts.ExcludeSize)
-				cfg.ExcludeSize = exc
-			}
-			cfg.MatchRegex = opts.MatchRegex
-			cfg.FilterRegex = opts.FilterRegex
-			cfg.MatchContent = opts.MatchContent
-			cfg.FilterContent = opts.FilterContent
-
-			// Apply profiles if specified
+			// 1. Resolve profiles (left → right).
+			var profileOverlays []config.FuzzOverlay
 			if len(opts.Profiles) > 0 {
 				store := profile.NewStore()
 
@@ -412,20 +372,29 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							}
 						}
 
-						// Decode and Apply
-						var overlay fuzzProfile.Overlay
+						// Decode into config.FuzzOverlay
+						var overlay config.FuzzOverlay
 						if err := p.Decode(&overlay); err != nil {
 							cmd.SilenceErrors = true
 							cmd.SilenceUsage = true
 							fmt.Fprintf(cmd.ErrOrStderr(), "failed to load profile:\n%v\n", err)
 							return fmt.Errorf("decode failed")
 						}
-						fuzzProfile.Apply(&cfg, overlay)
+						profileOverlays = append(profileOverlays, overlay)
 					}
 				}
 			}
 
-			// Apply CLI overrides to ensure they take precedence
+			// 2. Resolve baseline configuration (Defaults -> Global Config File -> Profiles).
+			cfg, err := config.ResolveFuzzConfig(cfgFile, profileOverlays)
+			if err != nil {
+				cmd.SilenceErrors = true
+				cmd.SilenceUsage = true
+				fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
+				return fmt.Errorf("config error")
+			}
+
+			// 3. Apply CLI flag overrides to ensure they take precedence
 			applyFuzzCLIOverrides(opts, cmd, &cfg)
 
 			// If no CLI URL was given but a profile set one, propagate it now.
