@@ -26,7 +26,8 @@ import (
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
 	client           *http.Client
-	fs               *filter.FilterSuite
+	fs               *filter.FilterSuite // traversal filter — drives crawl decisions; never user-facing
+	displayFS        *filter.FilterSuite // user-facing display filter — only affects onResult reporting
 	reader           wordlist.Reader
 	extensions       []string
 	strategy         Strategy
@@ -83,9 +84,14 @@ func (m *Manager) SetRequestManipulation(method string, body []byte, headers htt
 	m.cookieStr = cookieStr
 }
 
-// SetFilterSuite configures response filters.
+// SetFilterSuite configures the user-facing display filter.
+//
+// The display filter determines which results are reported as findings via onResult.
+// It does NOT replace the traversal filter (m.fs) that drives crawl/recursion decisions.
+// This ensures that user-specified output filters (--fc, --mc, --fs, etc.) never prevent
+// the crawler from discovering and recursing into directories.
 func (m *Manager) SetFilterSuite(fs *filter.FilterSuite) {
-	m.fs = fs
+	m.displayFS = fs
 }
 
 // SetExtensions configures extension variants for recursion candidate generation.
@@ -394,8 +400,23 @@ func (m *Manager) handleResult(
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 
-	// Always deliver accepted result to the output callback.
-	onResult(result)
+	// Re-evaluate the result against the user-facing display filter (if configured) to
+	// determine what gets reported as a finding. This is separate from the crawl/traversal
+	// filter (m.fs) that drove the Accepted flag above — the display filter must NEVER
+	// influence recursion decisions. Only header-level filters (status, size, content-type)
+	// can be re-evaluated here because the response body is not stored in engine.Result.
+	// Body regex display filters (--mr/--fr) are a known limitation of recursive mode.
+	reported := result
+	if m.displayFS != nil {
+		contentType := ""
+		if result.Headers != nil {
+			contentType = result.Headers.Get("Content-Type")
+		}
+		if !m.displayFS.MatchHeaders(result.StatusCode, result.Length, contentType) {
+			reported.Accepted = false
+		}
+	}
+	onResult(reported)
 
 	if !m.recurseOn.Match(result.StatusCode) {
 		return
