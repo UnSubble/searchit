@@ -397,7 +397,12 @@ func (m *Manager) handleResult(
 	// Always deliver accepted result to the output callback.
 	onResult(result)
 
-	// If it's a redirect response (3xx), enqueue the destination URL to be scanned and return
+	if !m.recurseOn.Match(result.StatusCode) {
+		return
+	}
+
+	// If it's a redirect response (3xx) to a different URL path, enqueue the destination URL to be scanned and return.
+	// For trailing-slash self-redirects (e.g. /path -> /path/), continue down to generate directory candidates.
 	if result.RedirectURL != "" && result.StatusCode >= 300 && result.StatusCode < 400 {
 		if ctx.Err() != nil {
 			stats.GlobalInstrumentation.LogEvent("context cancellation")
@@ -409,11 +414,14 @@ func (m *Manager) handleResult(
 		}
 
 		key := normalizeURL(result.RedirectURL)
-		if _, seen := visited[key]; !seen {
-			visited[key] = struct{}{}
-			frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
+		parentKey := normalizeURL(result.URL)
+		if key != parentKey {
+			if _, seen := visited[key]; !seen {
+				visited[key] = struct{}{}
+				frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
+			}
+			return
 		}
-		return
 	}
 
 	if ctx.Err() != nil {
@@ -457,7 +465,7 @@ func (m *Manager) handleResult(
 		}
 	}
 
-	if m.recurseOn.Match(result.StatusCode) {
+	if result.Depth > 0 && m.recurseOn.Match(result.StatusCode) {
 		if m.stats != nil {
 			m.stats.RecordDirectoryDiscovered()
 		}
@@ -466,8 +474,6 @@ func (m *Manager) handleResult(
 		} else {
 			m.BFSCount++
 		}
-	} else {
-		return
 	}
 
 	// Process HTML-extracted links (same-host only) as high-priority jobs
