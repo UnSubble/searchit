@@ -438,7 +438,10 @@ func (r *Runner) runPriority(ctx context.Context, e *Executor, plan TraversalPla
 }
 
 func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPlan, yield ResultCallback) error {
-	engine := adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
+	if r.AdaptiveEngine == nil {
+		r.AdaptiveEngine = adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
+	}
+	engine := r.AdaptiveEngine
 	r.Summary = engine.Summary
 	if err := engine.Discover(ctx); err != nil {
 		return err

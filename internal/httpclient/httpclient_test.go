@@ -56,6 +56,29 @@ func TestNew_TransportSettings(t *testing.T) {
 	}
 }
 
+type dummyWrapper struct {
+	underlying http.RoundTripper
+}
+
+func (d *dummyWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return d.underlying.RoundTrip(req)
+}
+
+func (d *dummyWrapper) Unwrap() http.RoundTripper {
+	return d.underlying
+}
+
+func TestConfigureTransportForWorkers_Wrapped(t *testing.T) {
+	c := httpclient.New(10*time.Second, 3*time.Second, false, "")
+	origTr := c.Transport.(*http.Transport)
+	c.Transport = &dummyWrapper{underlying: c.Transport}
+
+	httpclient.ConfigureTransportForWorkers(c, 128)
+	if origTr.MaxIdleConnsPerHost != 256 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 256 for wrapped transport", origTr.MaxIdleConnsPerHost)
+	}
+}
+
 func TestContentLength_Present(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "42")

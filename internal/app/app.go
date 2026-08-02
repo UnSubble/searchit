@@ -27,6 +27,10 @@ type fingerprintRoundTripper struct {
 	cache      *fingerprint.Cache
 }
 
+func (f *fingerprintRoundTripper) Unwrap() http.RoundTripper {
+	return f.underlying
+}
+
 func (f *fingerprintRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := f.underlying.RoundTrip(req)
 	if err != nil {

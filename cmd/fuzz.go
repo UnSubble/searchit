@@ -19,6 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/app"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
@@ -597,6 +598,14 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				cancelSig := tCtx.Cancel
 				targetURL := resolvedURL
 
+				if cfg.Adaptive {
+					if appState.AdaptiveEngine == nil || appState.AdaptiveEngine.TargetURL == "" {
+						appState.AdaptiveEngine = adaptive.NewEngine(targetURL, appState.HTTPClient, appState.FingerprintCache, cfg.Quiet)
+					} else {
+						appState.AdaptiveEngine.TargetURL = targetURL
+					}
+				}
+
 				stateMgr := state.NewManager()
 				stateMgr.Transition(state.PhaseStarting)
 
@@ -887,6 +896,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					ShowHeaders:     cfg.ShowHeaders,
 					ShowTitle:       cfg.ShowTitle,
 					Adaptive:        cfg.Adaptive,
+					AdaptiveEngine:  appState.AdaptiveEngine,
 					Cache:           appState.FingerprintCache,
 					PauseBlocker:    stateMgr.WaitUntilRunning,
 				}

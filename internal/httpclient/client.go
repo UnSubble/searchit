@@ -241,14 +241,32 @@ func NewWithHTTPVersion(
 	}
 }
 
+func (p *protoTransport) Unwrap() http.RoundTripper {
+	return p.tr
+}
+
+func getUnderlyingTransport(rt http.RoundTripper) *http.Transport {
+	for rt != nil {
+		if tr, ok := rt.(*http.Transport); ok {
+			return tr
+		}
+		if u, ok := rt.(interface{ Unwrap() http.RoundTripper }); ok {
+			rt = u.Unwrap()
+		} else {
+			break
+		}
+	}
+	return nil
+}
+
 // ConfigureTransportForWorkers dynamically adjusts transport idle connection caps
 // based on the configured worker thread count: max(8, workers * 2).
 func ConfigureTransportForWorkers(client *http.Client, workers int) {
 	if client == nil {
 		return
 	}
-	tr, ok := client.Transport.(*http.Transport)
-	if !ok {
+	tr := getUnderlyingTransport(client.Transport)
+	if tr == nil {
 		return
 	}
 	maxHost := workers * 2

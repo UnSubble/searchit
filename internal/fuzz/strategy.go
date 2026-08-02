@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/adaptive/summary"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/filter"
@@ -155,9 +156,10 @@ type Runner struct {
 	ShowHeaders bool
 	ShowTitle   bool
 
-	Adaptive bool
-	Cache    *fingerprint.Cache
-	Summary  *summary.Summary
+	Adaptive       bool
+	AdaptiveEngine *adaptive.Engine
+	Cache          *fingerprint.Cache
+	Summary        *summary.Summary
 
 	PauseBlocker func(context.Context) error
 
@@ -269,6 +271,14 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 
 	if r.Collector != nil {
 		r.Collector.SetIsFinite(true)
+	}
+
+	if r.Adaptive {
+		if r.AdaptiveEngine == nil {
+			r.AdaptiveEngine = adaptive.NewEngine(r.TargetURL, r.Client, r.Cache, r.Quiet)
+		}
+		r.Summary = r.AdaptiveEngine.Summary
+		_ = r.AdaptiveEngine.Discover(ctx)
 	}
 
 	plan := r.buildTraversalPlan()
