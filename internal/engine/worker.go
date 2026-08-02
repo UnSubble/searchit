@@ -44,6 +44,19 @@ func drainAndClose(body io.ReadCloser) int64 {
 	return n
 }
 
+// CanonicalizeLocation resolves a raw Location header against the request URL.
+// If rawLoc is empty, unparseable, or reqURL is nil, it returns rawLoc unchanged.
+func CanonicalizeLocation(rawLoc string, reqURL *url.URL) string {
+	if rawLoc == "" || reqURL == nil {
+		return rawLoc
+	}
+	ref, err := url.Parse(rawLoc)
+	if err != nil {
+		return rawLoc
+	}
+	return reqURL.ResolveReference(ref).String()
+}
+
 // WorkerOptions defines capability-oriented configuration flags for execution workers.
 type WorkerOptions struct {
 	ExtractLinks bool
@@ -323,12 +336,22 @@ func process(
 		return
 	}
 
+	rawLoc := resp.Header.Get("Location")
+	var reqURL *url.URL
+	if resp.Request != nil {
+		reqURL = resp.Request.URL
+	}
+	resolvedLoc := CanonicalizeLocation(rawLoc, reqURL)
+
 	var resHeaders http.Header
 	if fs.ShowHeaders {
-		resHeaders = resp.Header
-	} else if loc := resp.Header.Get("Location"); loc != "" {
+		resHeaders = resp.Header.Clone()
+		if resolvedLoc != "" {
+			resHeaders.Set("Location", resolvedLoc)
+		}
+	} else if resolvedLoc != "" {
 		resHeaders = make(http.Header)
-		resHeaders.Set("Location", loc)
+		resHeaders.Set("Location", resolvedLoc)
 	}
 
 	var title string
@@ -350,11 +373,8 @@ func process(
 		}
 	}
 	if redirectURL == "" && resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		loc := resp.Header.Get("Location")
-		if loc != "" {
-			if u, err := url.Parse(loc); err == nil && resp.Request != nil && resp.Request.URL != nil {
-				redirectURL = resp.Request.URL.ResolveReference(u).String()
-			}
+		if resolvedLoc != "" {
+			redirectURL = resolvedLoc
 		}
 	}
 	if redirectURL != "" && resp.Request != nil && resp.Request.URL != nil {

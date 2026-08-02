@@ -40,7 +40,7 @@ func TestRedirectFormatting_ParityAcrossModes(t *testing.T) {
 
 			// Expected output fragment for text mode
 			expectedText := fmt.Sprintf("[%d] - ", code)
-			expectedArrow := "/test -> /dest/"
+			expectedArrow := fmt.Sprintf("/test -> %s/dest/", srv.URL)
 
 			modes := []struct {
 				name string

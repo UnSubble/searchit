@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/stats"
@@ -345,12 +346,22 @@ func process(
 		}
 	}
 
+	rawLoc := resp.Header.Get("Location")
+	var reqURL *url.URL
+	if resp.Request != nil {
+		reqURL = resp.Request.URL
+	}
+	resolvedLoc := engine.CanonicalizeLocation(rawLoc, reqURL)
+
 	var resHeaders http.Header
 	if fs.ShowHeaders {
-		resHeaders = resp.Header
-	} else if loc := resp.Header.Get("Location"); loc != "" {
+		resHeaders = resp.Header.Clone()
+		if resolvedLoc != "" {
+			resHeaders.Set("Location", resolvedLoc)
+		}
+	} else if resolvedLoc != "" {
 		resHeaders = make(http.Header)
-		resHeaders.Set("Location", loc)
+		resHeaders.Set("Location", resolvedLoc)
 	}
 
 	var title string
@@ -361,12 +372,10 @@ func process(
 	// Capture redirect destination for display (same-host only, like scan engine).
 	var redirectURL string
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		loc := resp.Header.Get("Location")
-		if loc != "" {
-			if u, err := url.Parse(loc); err == nil && resp.Request != nil && resp.Request.URL != nil {
-				resolved := resp.Request.URL.ResolveReference(u)
-				if resolved.Host == resp.Request.URL.Host {
-					redirectURL = resolved.String()
+		if resolvedLoc != "" {
+			if u, err := url.Parse(resolvedLoc); err == nil && resp.Request != nil && resp.Request.URL != nil {
+				if u.Host == resp.Request.URL.Host {
+					redirectURL = resolvedLoc
 				}
 			}
 		}
