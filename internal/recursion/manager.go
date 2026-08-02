@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,7 @@ type Manager struct {
 	PauseBlocker     func(context.Context) error
 	wildcardDetector *wildcard.Detector
 	disableWildcard  bool
+	warningHandler   func(string)
 
 	// Request manipulation fields
 	method    string
@@ -150,6 +152,11 @@ func (m *Manager) SetStats(c *stats.Collector) {
 // SetDisableWildcard enables or disables automatic wildcard detection.
 func (m *Manager) SetDisableWildcard(disable bool) {
 	m.disableWildcard = disable
+}
+
+// SetWarningHandler sets a custom warning handler function.
+func (m *Manager) SetWarningHandler(fn func(string)) {
+	m.warningHandler = fn
 }
 
 // Run performs a recursive scan starting from the given seed URLs.
@@ -426,6 +433,14 @@ func (m *Manager) handleResult(
 	onResult(reported)
 
 	if !m.recurseOn.Match(result.StatusCode) {
+		if result.Depth == 0 && result.Err == nil && ctx.Err() == nil {
+			msg := FormatRecurseWarning(result.StatusCode, m.recurseOn.String())
+			if m.warningHandler != nil {
+				m.warningHandler(msg)
+			} else {
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		}
 		return
 	}
 
@@ -653,4 +668,21 @@ func normalizeURL(u string) string {
 		}
 	}
 	return u
+}
+
+// FormatRecurseWarning constructs the user-facing warning message when
+// the root HTTP response does not satisfy the current recursion policy.
+func FormatRecurseWarning(statusCode int, policyStr string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("[!] The root URL returned HTTP %d.\r\n\r\n", statusCode))
+	sb.WriteString(fmt.Sprintf("    The current recursion policy (--recurse-on: %s)\r\n", policyStr))
+	sb.WriteString(fmt.Sprintf("    does not recurse into HTTP %d responses.\r\n\r\n", statusCode))
+	sb.WriteString("    No recursive scan was performed.\r\n\r\n")
+	sb.WriteString("    If this is intentional, include ")
+	sb.WriteString(fmt.Sprintf("%d in the recursion policy, for example:\r\n\r\n", statusCode))
+	sb.WriteString(fmt.Sprintf("        --recurse-on %s,%d\r\n\r\n", policyStr, statusCode))
+	sb.WriteString("    or\r\n\r\n")
+	sb.WriteString(fmt.Sprintf("        --recurse-on %d\r\n\r\n", statusCode))
+	sb.WriteString("    Also verify that the target URL is correct.")
+	return sb.String()
 }

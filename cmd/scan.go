@@ -849,6 +849,15 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					manager.SetStats(collector)
 					manager.SetExtensions(cfg.Extensions)
 					manager.PauseBlocker = stateMgr.WaitUntilRunning
+					manager.SetWarningHandler(func(msg string) {
+						if progMgr != nil {
+							progMgr.ExecuteAbove(func() {
+								fmt.Fprintln(os.Stderr, msg)
+							})
+						} else {
+							fmt.Fprintln(os.Stderr, msg)
+						}
+					})
 					manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
 							if outWriter == os.Stdout && progMgr != nil {
