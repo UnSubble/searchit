@@ -71,18 +71,9 @@ func (tr *ANSIRenderer) ResetLineCount() {
 // Must be called while the caller holds OwnerProgress on TM.
 func (tr *ANSIRenderer) Close(owner terminal.Owner) error {
 	return tr.TM.Emit(owner, func(w io.Writer) {
-		tr.mu.Lock()
-		progLines := tr.lastProgCount
-		tr.lastLineCount = 0
-		tr.lastProgCount = 0
-		tr.mu.Unlock()
-
-		if progLines > 0 && tr.frozen {
-			fmt.Fprintf(w, "\r\033[%dA\033[J", progLines)
-		}
-
-		// Emitting \n ensures the cursor is firmly at column 0 for subsequent blocks.
-		fmt.Fprint(w, "\033[?25h\n")
+		tr.ClearInto(w)
+		// Restore cursor visibility
+		fmt.Fprint(w, "\033[?25h")
 	})
 }
 

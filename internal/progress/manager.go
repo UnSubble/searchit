@@ -64,9 +64,11 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 	for {
 		select {
 		case <-ctx.Done():
-			// Final render before the goroutine exits.
+			m.mu.Lock()
+			m.isStatsActive = false
+			m.mu.Unlock()
 			_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
-				m.Renderer.RenderInto(w, m.Collector.Snapshot())
+				m.Renderer.ClearInto(w)
 			})
 			return
 
@@ -87,6 +89,7 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 				m.isStatsActive = false
 				m.mu.Unlock()
 				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+					m.Renderer.ClearInto(w)
 					m.Renderer.RenderInto(w, m.Collector.Snapshot())
 				})
 
@@ -95,6 +98,7 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 				m.isStatsActive = !m.isStatsActive
 				m.mu.Unlock()
 				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+					m.Renderer.ClearInto(w)
 					m.Renderer.RenderInto(w, m.Collector.Snapshot())
 				})
 			}

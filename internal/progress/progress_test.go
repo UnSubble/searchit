@@ -412,3 +412,41 @@ func TestManager_InPlaceStatisticsOverlay(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestManager_StatsViewCleanupOnShutdown(t *testing.T) {
+	c := stats.NewCollector()
+	var buf bytes.Buffer
+	var bufMu sync.Mutex
+	writer := &safeWriter{buf: &buf, mu: &bufMu}
+	tm := terminal.New(writer)
+	_ = tm.AcquireOwner(terminal.OwnerProgress)
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "fuzz")
+	m := progress.NewManager(tm, c, r, 10*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cmdChan := make(chan console.Command, 10)
+	done := make(chan struct{})
+	go func() {
+		m.Start(ctx, cmdChan)
+		close(done)
+	}()
+
+	// Enter Stats view
+	cmdChan <- console.CommandStats
+	time.Sleep(30 * time.Millisecond)
+
+	// Cancel context directly while stats view is active
+	cancel()
+	<-done
+
+	// Call Close to finalize renderer teardown
+	_ = r.Close(terminal.OwnerProgress)
+
+	bufMu.Lock()
+	out := buf.String()
+	bufMu.Unlock()
+
+	if !strings.Contains(out, "\033[J") {
+		t.Errorf("expected ANSI clear sequence \\033[J on shutdown from stats view, got:\n%s", out)
+	}
+}
