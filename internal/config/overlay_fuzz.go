@@ -32,6 +32,7 @@ type FuzzOverlay struct {
 
 	FollowRedirects *bool `yaml:"follow-redirects"`
 	MaxRedirects    *int  `yaml:"max-redirects"`
+	Insecure        *bool `yaml:"insecure"`
 
 	ExcludeStatus *string `yaml:"exclude-status"`
 	MatchStatus   *string `yaml:"match-status"`
@@ -84,6 +85,7 @@ func (o *FuzzOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 		FollowRedirects *bool `yaml:"follow-redirects"`
 		MaxRedirects    *int  `yaml:"max-redirects"`
+		Insecure        *bool `yaml:"insecure"`
 
 		ExcludeStatus *string `yaml:"exclude-status"`
 		MatchStatus   *string `yaml:"match-status"`
@@ -146,6 +148,7 @@ func (o *FuzzOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 	o.FollowRedirects = raw.FollowRedirects
 	o.MaxRedirects = raw.MaxRedirects
+	o.Insecure = raw.Insecure
 
 	o.ExcludeStatus = raw.ExcludeStatus
 	o.MatchStatus = raw.MatchStatus
@@ -288,6 +291,9 @@ func ApplyFuzzOverlay(cfg *Config, o FuzzOverlay) {
 	}
 	if o.MaxRedirects != nil {
 		cfg.MaxRedirects = *o.MaxRedirects
+	}
+	if o.Insecure != nil {
+		cfg.Insecure = *o.Insecure
 	}
 	if o.ExcludeStatus != nil {
 		if f, err := status.Parse(*o.ExcludeStatus); err == nil {

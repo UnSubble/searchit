@@ -81,6 +81,7 @@ type ScanOptions struct {
 	Headers     []string
 	Cookie      string
 	Proxy       string
+	Insecure    bool
 	UserAgent   string
 	RandomAgent bool
 
@@ -1274,6 +1275,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	cmd.Flags().StringSliceVarP(&opts.Headers, "header", "H", nil, "HTTP request headers to send (e.g. -H 'Authorization: Bearer X')")
 	cmd.Flags().StringVarP(&opts.Cookie, "cookie", "b", "", "HTTP request cookies to send (e.g. -b 'session=123')")
 	cmd.Flags().StringVar(&opts.Proxy, "proxy", "", "HTTP proxy URL to use for requests")
+	cmd.Flags().BoolVarP(&opts.Insecure, "insecure", "k", false, "skip TLS certificate verification")
 
 	cmd.Flags().StringVar(&opts.MatchStatus, "mc", "", "match status codes")
 	cmd.Flags().StringVar(&opts.FilterStatus, "fc", "", "filter status codes")
@@ -1480,6 +1482,9 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	}
 	if cmd.Flags().Changed("proxy") {
 		cfg.Proxy = opts.Proxy
+	}
+	if cmd.Flags().Changed("insecure") {
+		cfg.Insecure = opts.Insecure
 	}
 	if opts.Tech != "" {
 		if p, ok := lookupTech(opts.Tech); ok {

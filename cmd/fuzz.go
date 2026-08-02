@@ -86,6 +86,7 @@ type FuzzOptions struct {
 	Headers         []string
 	Cookie          string
 	Proxy           string
+	Insecure        bool
 	Request         string
 	UserAgent       string
 	Adaptive        bool
@@ -1056,6 +1057,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().BoolVar(&opts.NoProgress, "no-progress", false, "disable progress output")
 	cmd.Flags().StringVarP(&opts.Cookie, "cookie", "b", "", "HTTP request cookies with placeholders")
 	cmd.Flags().StringVar(&opts.Proxy, "proxy", "", "HTTP proxy URL to use for requests")
+	cmd.Flags().BoolVarP(&opts.Insecure, "insecure", "k", false, "skip TLS certificate verification")
 
 	cmd.Flags().StringVar(&opts.MatchStatus, "mc", "", "match status codes")
 	cmd.Flags().StringVar(&opts.FilterStatus, "fc", "", "filter status codes")
@@ -1248,6 +1250,9 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("max-redirects") {
 		cfg.MaxRedirects = opts.MaxRedirects
+	}
+	if cmd.Flags().Changed("insecure") {
+		cfg.Insecure = opts.Insecure
 	}
 	if cmd.Flags().Changed("wordlist") {
 		cfg.Wordlist = opts.Wordlist

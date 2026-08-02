@@ -25,13 +25,13 @@ func ValidateHTTPVersion(v string) error {
 }
 
 // New returns an *http.Client tuned for high-concurrency scanning.
-func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, proxyURL string) *http.Client {
-	return NewWithMaxRedirects(timeout, connectTimeout, followRedirects, 10, proxyURL)
+func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, proxyURL string, insecure ...bool) *http.Client {
+	return NewWithMaxRedirects(timeout, connectTimeout, followRedirects, 10, proxyURL, insecure...)
 }
 
 // NewWithMaxRedirects returns an *http.Client with specified redirect limit and default 'auto' HTTP version.
-func NewWithMaxRedirects(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, maxRedirects int, proxyURL string) *http.Client {
-	return NewWithHTTPVersion(timeout, connectTimeout, followRedirects, maxRedirects, proxyURL, "auto")
+func NewWithMaxRedirects(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, maxRedirects int, proxyURL string, insecure ...bool) *http.Client {
+	return NewWithHTTPVersion(timeout, connectTimeout, followRedirects, maxRedirects, proxyURL, "auto", insecure...)
 }
 
 type protoTransport struct {
@@ -147,9 +147,15 @@ func NewWithHTTPVersion(
 	maxRedirects int,
 	proxyURL string,
 	httpVersion string,
+	insecure ...bool,
 ) *http.Client {
 	if err := ValidateHTTPVersion(httpVersion); err != nil {
 		panic(err)
+	}
+
+	isInsecure := false
+	if len(insecure) > 0 {
+		isInsecure = insecure[0]
 	}
 
 	tr := &http.Transport{
@@ -158,6 +164,7 @@ func NewWithHTTPVersion(
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: timeout,
 		DisableCompression:    false,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: isInsecure},
 		DialContext: (&net.Dialer{
 			Timeout:   connectTimeout,
 			KeepAlive: 30 * time.Second,

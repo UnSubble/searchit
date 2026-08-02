@@ -91,7 +91,7 @@ func New(ctx context.Context, cfg config.Config) *App {
 		ctx = context.Background()
 	}
 
-	client := httpclient.NewWithHTTPVersion(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, cfg.MaxRedirects, cfg.Proxy, cfg.HTTPVersion)
+	client := httpclient.NewWithHTTPVersion(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, cfg.MaxRedirects, cfg.Proxy, cfg.HTTPVersion, cfg.Insecure)
 
 	var fpCache *fingerprint.Cache
 	var adaptiveEng *adaptive.Engine

@@ -58,6 +58,7 @@ type Config struct {
 	Headers     []string
 	Cookies     string
 	Proxy       string
+	Insecure    bool // Allow insecure TLS connections (skip TLS certificate verification)
 
 	// Response Filtering fields
 	MatchRegex    []string
