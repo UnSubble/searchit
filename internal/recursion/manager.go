@@ -366,7 +366,6 @@ func (m *Manager) handleResult(
 	injectedExpress map[string]bool,
 	onResult func(engine.Result),
 ) {
-
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
 		return
@@ -400,12 +399,6 @@ func (m *Manager) handleResult(
 
 	atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 
-	// Re-evaluate the result against the user-facing display filter (if configured) to
-	// determine what gets reported as a finding. This is separate from the crawl/traversal
-	// filter (m.fs) that drove the Accepted flag above — the display filter must NEVER
-	// influence recursion decisions. Only header-level filters (status, size, content-type)
-	// can be re-evaluated here because the response body is not stored in engine.Result.
-	// Body regex display filters (--mr/--fr) are a known limitation of recursive mode.
 	reported := result
 	if m.displayFS != nil {
 		contentType := ""
@@ -414,6 +407,9 @@ func (m *Manager) handleResult(
 		}
 		if !m.displayFS.MatchHeaders(result.StatusCode, result.Length, contentType) {
 			reported.Accepted = false
+			if m.stats != nil {
+				m.stats.RecordDisplayFiltered()
+			}
 		}
 	}
 	onResult(reported)

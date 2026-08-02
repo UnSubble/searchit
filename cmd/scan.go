@@ -825,7 +825,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					seeds := []string{targetURL}
 					manager = recursion.NewManager(
 						appState.HTTPClient,
-						appState.Config.Status.Exclude,
+						nil,
 						reader,
 						cfg.Strategy,
 						cfg.MaxDepth,
