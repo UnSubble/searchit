@@ -302,8 +302,9 @@ func process(
 	bodyRead = true
 	resp.Body.Close()
 
-	if length == -1 && readErr == nil {
-		length = int64(len(bodyBytes)) + extra
+	totalRead := int64(len(bodyBytes)) + extra
+	if length == -1 && readErr == nil && totalRead > 0 {
+		length = totalRead
 	}
 
 	// Late Size Filter Evaluation

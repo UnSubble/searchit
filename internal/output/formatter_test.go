@@ -32,7 +32,7 @@ func TestTextFormatter(t *testing.T) {
 		}
 
 		got := buf.String()
-		want := "[+] 200 -        - http://example.com/admin\n"
+		want := "[+] 200 - ? B - http://example.com/admin\n"
 		if got != want {
 			t.Errorf("got %q, want %q", got, want)
 		}

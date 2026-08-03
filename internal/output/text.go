@@ -161,6 +161,9 @@ func requestedPath(rawURL string) string {
 }
 
 func formatSize(length int64) string {
+	if length < 0 {
+		return "? B"
+	}
 	if length < 1024 {
 		return fmt.Sprintf("%d B", length)
 	}
@@ -182,34 +185,21 @@ func writeRedirectResult(w io.Writer, r engine.Result) error {
 	if loc == "" {
 		loc = r.RedirectURL
 	}
-	if r.Length >= 0 {
-		s := formatSize(r.Length)
-		_, err := fmt.Fprintf(w, "[%d] - %s - %s -> %s\n", r.StatusCode, s, reqPath, loc)
-		return err
-	}
-	_, err := fmt.Fprintf(w, "[%d] -        - %s -> %s\n", r.StatusCode, reqPath, loc)
+	s := formatSize(r.Length)
+	_, err := fmt.Fprintf(w, "[%d] - %s - %s -> %s\n", r.StatusCode, s, reqPath, loc)
 	return err
 }
 
 func writeNormalTextResult(w io.Writer, r engine.Result) error {
-	if r.Length >= 0 {
-		s := formatSize(r.Length)
-		_, err := fmt.Fprintf(w, "[+] %d - %s - %s\n", r.StatusCode, s, r.URL)
-		return err
-	}
-	_, err := fmt.Fprintf(w, "[+] %d -        - %s\n", r.StatusCode, r.URL)
+	s := formatSize(r.Length)
+	_, err := fmt.Fprintf(w, "[+] %d - %s - %s\n", r.StatusCode, s, r.URL)
 	return err
 }
 
 func writeVerboseTextResult(w io.Writer, r engine.Result, showHeaders, showTitle bool) error {
 	var sb strings.Builder
 
-	sizeStr := "0 B"
-	if r.Length >= 0 {
-		sizeStr = fmt.Sprintf("%d B", r.Length)
-	} else {
-		sizeStr = "-1 B"
-	}
+	sizeStr := formatSize(r.Length)
 
 	sb.WriteString(fmt.Sprintf("%d     %s\n\n%s\n", r.StatusCode, sizeStr, r.URL))
 

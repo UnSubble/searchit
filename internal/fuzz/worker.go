@@ -279,8 +279,9 @@ func process(
 		bodyRead = true
 		resp.Body.Close()
 
-		if length == -1 && readErr == nil {
-			length = int64(len(bodyBytes)) + extra
+		totalRead := int64(len(bodyBytes)) + extra
+		if length == -1 && readErr == nil && totalRead > 0 {
+			length = totalRead
 		}
 	} else {
 		// Fast path drainage to keep connection alive
@@ -290,7 +291,7 @@ func process(
 			extra += more
 		}
 		resp.Body.Close()
-		if length == -1 && err == nil {
+		if length == -1 && err == nil && extra > 0 {
 			length = extra
 		}
 		if err != nil {
