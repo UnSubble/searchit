@@ -542,32 +542,33 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}
 				defer f.Close()
 
-				fileFmt, err := output.Parse(cfg.OutputFormat)
-				if err != nil {
-					fileFmt = output.FormatText
+				fileFmt := output.FormatText
+				if cmd.Flags().Changed("format") {
+					if parsed, err := output.Parse(opts.Format); err == nil {
+						fileFmt = parsed
+					}
+				} else if cfg.OutputFile != "" {
+					fileFmt = output.FormatFromPath(cfg.OutputFile)
 				}
-				fileFmttr = output.New(fileFmt, f, false, cfg.ShowHeaders, cfg.ShowTitle)
+
+				fileQuiet := cfg.Quiet && !cmd.Flags().Changed("format") && fileFmt == output.FormatText
+				fileFmttr = output.New(fileFmt, f, fileQuiet, cfg.ShowHeaders, cfg.ShowTitle)
 				if fileFmttr != nil {
 					defer fileFmttr.Close()
 				}
 			}
 
-			// Terminal formatter setup
+			// Terminal formatter setup: always created; -q selects quiet (links-only) format
 			var termFmttr output.Formatter
-			fmt_, err := output.Parse(cfg.OutputFormat)
-			if err != nil {
-				fmt_ = output.FormatText
+			termFmt := output.FormatText
+			if cmd.Flags().Changed("format") {
+				if parsed, err := output.Parse(opts.Format); err == nil {
+					termFmt = parsed
+				}
 			}
-			if !cfg.Quiet {
-				termFmttr = output.New(fmt_, cmd.OutOrStdout(), false, cfg.ShowHeaders, cfg.ShowTitle)
-				if termFmttr != nil {
-					defer termFmttr.Close()
-				}
-			} else if cfg.OutputFile == "" {
-				termFmttr = output.New(fmt_, cmd.OutOrStdout(), true, cfg.ShowHeaders, cfg.ShowTitle)
-				if termFmttr != nil {
-					defer termFmttr.Close()
-				}
+			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			if termFmttr != nil {
+				defer termFmttr.Close()
 			}
 
 			httpclient.ConfigureTransportForWorkers(appState.HTTPClient, cfg.Threads)

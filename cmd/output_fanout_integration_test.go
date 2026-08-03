@@ -177,11 +177,11 @@ func TestOutputPipeline_FanOutScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("File Only (-q + -o)", func(t *testing.T) {
+	t.Run("Quiet Mode (-q + -o)", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		outFile := filepath.Join(tmpDir, "file_only.txt")
+		outFile := filepath.Join(tmpDir, "quiet_file.txt")
 
 		var outBuf bytes.Buffer
 		cmd, _ := NewScanCmd()
@@ -207,12 +207,19 @@ func TestOutputPipeline_FanOutScenarios(t *testing.T) {
 		}
 		fileStr := string(fileData)
 
-		if len(strings.TrimSpace(stdout)) > 0 {
-			t.Errorf("expected empty stdout for -q + -o, got:\n%s", stdout)
+		// Under new UX spec: -q outputs links-only to terminal stdout AND to file.
+		if !strings.Contains(stdout, "/found1") || !strings.Contains(stdout, "/found2") {
+			t.Errorf("expected links-only findings in stdout for -q + -o, got:\n%s", stdout)
+		}
+		if strings.Contains(stdout, "[+]") {
+			t.Errorf("expected no [+] formatting in stdout for -q + -o, got:\n%s", stdout)
 		}
 
 		if !strings.Contains(fileStr, "/found1") || !strings.Contains(fileStr, "/found2") {
 			t.Errorf("expected file output for -q + -o, got:\n%s", fileStr)
+		}
+		if strings.Contains(fileStr, "[+]") {
+			t.Errorf("expected no [+] formatting in file for -q + -o, got:\n%s", fileStr)
 		}
 	})
 

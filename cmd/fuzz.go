@@ -547,16 +547,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				return fmt.Errorf("placeholder BUZZ is used but no --buzz wordlist provided")
 			}
 
-			// Resolve output format
-			outFormat := output.FormatText
-			if opts.Output != "" {
-				outFormat = output.FormatFromPath(opts.Output)
-			}
-			if cmd.Flags().Changed("format") {
-				parsedFormat, _ := output.Parse(opts.Format)
-				outFormat = parsedFormat
-			}
-
 			// Determine output file and output formatters.
 			var fileFmttr output.Formatter
 			if opts.Output != "" {
@@ -566,24 +556,33 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 				defer f.Close()
 
-				fileFmttr = output.New(outFormat, f, false, cfg.ShowHeaders, cfg.ShowTitle)
+				fileFmt := output.FormatText
+				if cmd.Flags().Changed("format") {
+					if parsed, err := output.Parse(opts.Format); err == nil {
+						fileFmt = parsed
+					}
+				} else {
+					fileFmt = output.FormatFromPath(opts.Output)
+				}
+
+				fileQuiet := cfg.Quiet && !cmd.Flags().Changed("format") && fileFmt == output.FormatText
+				fileFmttr = output.New(fileFmt, f, fileQuiet, cfg.ShowHeaders, cfg.ShowTitle)
 				if fileFmttr != nil {
 					defer fileFmttr.Close()
 				}
 			}
 
-			// Terminal formatter setup
+			// Terminal formatter setup: always created; -q selects quiet (links-only) format
 			var termFmttr output.Formatter
-			if !cfg.Quiet {
-				termFmttr = output.New(outFormat, cmd.OutOrStdout(), false, cfg.ShowHeaders, cfg.ShowTitle)
-				if termFmttr != nil {
-					defer termFmttr.Close()
+			termFmt := output.FormatText
+			if cmd.Flags().Changed("format") {
+				if parsed, err := output.Parse(opts.Format); err == nil {
+					termFmt = parsed
 				}
-			} else if opts.Output == "" {
-				termFmttr = output.New(outFormat, cmd.OutOrStdout(), true, cfg.ShowHeaders, cfg.ShowTitle)
-				if termFmttr != nil {
-					defer termFmttr.Close()
-				}
+			}
+			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			if termFmttr != nil {
+				defer termFmttr.Close()
 			}
 
 			var baseCount int
