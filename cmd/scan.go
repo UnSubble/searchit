@@ -542,11 +542,11 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}
 				defer f.Close()
 
-				fmt_, err := output.Parse(cfg.OutputFormat)
+				fileFmt, err := output.Parse(cfg.OutputFormat)
 				if err != nil {
-					fmt_ = output.FormatText
+					fileFmt = output.FormatText
 				}
-				fileFmttr = output.New(fmt_, f, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+				fileFmttr = output.New(fileFmt, f, false, cfg.ShowHeaders, cfg.ShowTitle)
 				if fileFmttr != nil {
 					defer fileFmttr.Close()
 				}
@@ -558,13 +558,16 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			if err != nil {
 				fmt_ = output.FormatText
 			}
-			if cfg.OutputFile == "" {
-				termFmttr = output.New(fmt_, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-			} else if !cfg.Quiet {
-				termFmttr = output.New(output.FormatText, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-			}
-			if termFmttr != nil {
-				defer termFmttr.Close()
+			if !cfg.Quiet {
+				termFmttr = output.New(fmt_, cmd.OutOrStdout(), false, cfg.ShowHeaders, cfg.ShowTitle)
+				if termFmttr != nil {
+					defer termFmttr.Close()
+				}
+			} else if cfg.OutputFile == "" {
+				termFmttr = output.New(fmt_, cmd.OutOrStdout(), true, cfg.ShowHeaders, cfg.ShowTitle)
+				if termFmttr != nil {
+					defer termFmttr.Close()
+				}
 			}
 
 			httpclient.ConfigureTransportForWorkers(appState.HTTPClient, cfg.Threads)

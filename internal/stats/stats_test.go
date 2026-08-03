@@ -376,3 +376,207 @@ func TestCollector_BytesReceivedNegativeProtection(t *testing.T) {
 		t.Errorf("expected 500 bytes received, got %d", snap2.BytesReceived)
 	}
 }
+
+// TestAddTotalCandidates_IsRealIncrement verifies that AddTotalCandidates
+// is not a no-op and actually mutates totalWork/TotalCandidates.
+func TestAddTotalCandidates_IsRealIncrement(t *testing.T) {
+	c := stats.NewCollector()
+
+	if snap := c.Snapshot(); snap.TotalCandidates != 0 {
+		t.Fatalf("initial TotalCandidates should be 0, got %d", snap.TotalCandidates)
+	}
+
+	c.AddTotalCandidates(1)
+	if snap := c.Snapshot(); snap.TotalCandidates != 1 {
+		t.Errorf("after AddTotalCandidates(1): TotalCandidates=%d, want 1", snap.TotalCandidates)
+	}
+
+	c.AddTotalCandidates(99)
+	if snap := c.Snapshot(); snap.TotalCandidates != 100 {
+		t.Errorf("after AddTotalCandidates(99): TotalCandidates=%d, want 100", snap.TotalCandidates)
+	}
+
+	// TotalWork must mirror TotalCandidates
+	snap := c.Snapshot()
+	if snap.TotalWork != snap.TotalCandidates {
+		t.Errorf("TotalWork (%d) != TotalCandidates (%d)", snap.TotalWork, snap.TotalCandidates)
+	}
+}
+
+// TestStreamingWordlist_TotalNeverZeroAfterFirstJob verifies that a collector
+// that starts with TotalWork=0 (streaming mode) has TotalWork > 0 after the
+// first AddTotalCandidates call, so Progress never shows "N / 0".
+func TestStreamingWordlist_TotalNeverZeroAfterFirstJob(t *testing.T) {
+	c := stats.NewCollector()
+	c.SetIsFinite(true)
+
+	// Simulate streaming: baseCount==0, no SetTotalCandidates called at startup.
+	snap := c.Snapshot()
+	if snap.TotalCandidates != 0 {
+		t.Fatalf("pre-condition: TotalCandidates should be 0 before any job")
+	}
+
+	// First job arrives via AddTotalCandidates (streaming path).
+	c.AddTotalCandidates(1)
+	c.RecordTried()
+
+	snap = c.Snapshot()
+	if snap.TotalCandidates <= 0 {
+		t.Errorf("TotalCandidates should be > 0 after first job, got %d", snap.TotalCandidates)
+	}
+	if snap.Completed > snap.TotalWork {
+		t.Errorf("invariant violated: completed (%d) > totalWork (%d)", snap.Completed, snap.TotalWork)
+	}
+	if snap.Progress < 0 || snap.Progress > 100 {
+		t.Errorf("Progress %f out of [0,100] range", snap.Progress)
+	}
+}
+
+// TestPreCountedWordlist_NoDoubleCount verifies that when SetTotalCandidates is
+// called at startup (pre-counted wordlist), adding n jobs via RecordJobProduced
+// does NOT increase TotalCandidates — the count must stay at the pre-set value.
+func TestPreCountedWordlist_SetTotalCandidates_IsAbsolute(t *testing.T) {
+	c := stats.NewCollector()
+	c.SetIsFinite(true)
+	c.SetTotalCandidates(1000)
+
+	snap := c.Snapshot()
+	if snap.TotalCandidates != 1000 {
+		t.Fatalf("SetTotalCandidates(1000): got %d", snap.TotalCandidates)
+	}
+
+	// Simulate 5 jobs produced (NOT using AddTotalCandidates for pre-counted mode).
+	for i := 0; i < 5; i++ {
+		c.RecordJobProduced()
+		c.RecordTried()
+	}
+
+	snap = c.Snapshot()
+	// TotalCandidates must remain 1000 — no AddTotalCandidates was called.
+	if snap.TotalCandidates != 1000 {
+		t.Errorf("TotalCandidates after 5 jobs: got %d, want 1000 (SetTotalCandidates must not be overridden by RecordJobProduced)", snap.TotalCandidates)
+	}
+	if snap.Completed > snap.TotalWork {
+		t.Errorf("invariant violated: completed (%d) > totalWork (%d)", snap.Completed, snap.TotalWork)
+	}
+}
+
+// TestSetTotalCandidates_DoesNotAccumulate verifies that repeated calls to
+// SetTotalCandidates replace (not add to) the stored total.
+func TestSetTotalCandidates_ReplacesNotAccumulates(t *testing.T) {
+	c := stats.NewCollector()
+	c.SetTotalCandidates(500)
+	c.SetTotalCandidates(1000)
+
+	snap := c.Snapshot()
+	if snap.TotalCandidates != 1000 {
+		t.Errorf("SetTotalCandidates(1000) after 500: got %d, want 1000", snap.TotalCandidates)
+	}
+}
+
+// TestAddTotalCandidates_Concurrent verifies that concurrent AddTotalCandidates
+// calls are race-free and produce the expected total.
+func TestAddTotalCandidates_Concurrent(t *testing.T) {
+	c := stats.NewCollector()
+	const goroutines = 50
+	const callsEach = 100
+
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < callsEach; j++ {
+				c.AddTotalCandidates(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	snap := c.Snapshot()
+	want := int64(goroutines * callsEach)
+	if snap.TotalCandidates != want {
+		t.Errorf("TotalCandidates after concurrent adds: got %d, want %d", snap.TotalCandidates, want)
+	}
+}
+
+// TestProgressInvariant_CompletedNeverExceedsTotal verifies the invariant
+// processed ≤ total whenever totalWork is known.
+func TestProgressInvariant_CompletedNeverExceedsTotal(t *testing.T) {
+	c := stats.NewCollector()
+	c.SetIsFinite(true)
+
+	// Simulate 10 streaming jobs.
+	for i := 0; i < 10; i++ {
+		c.AddTotalCandidates(1) // add one more to total before dispatching
+		c.RecordTried()         // one job dispatched
+		snap := c.Snapshot()
+		if snap.Completed > snap.TotalWork {
+			t.Errorf("at step %d: completed (%d) > totalWork (%d)", i+1, snap.Completed, snap.TotalWork)
+		}
+		if snap.Progress < 0 || snap.Progress > 100 {
+			t.Errorf("at step %d: Progress %f out of [0,100]", i+1, snap.Progress)
+		}
+	}
+}
+
+// TestDiscoveredEqualsAcceptedFindings verifies that RecordDiscovered tracks
+// exactly the number of accepted findings, not total requests.
+func TestDiscoveredEqualsAcceptedFindings(t *testing.T) {
+	c := stats.NewCollector()
+
+	const totalRequests = 100
+	const acceptedFindings = 5
+
+	for i := 0; i < totalRequests; i++ {
+		c.RecordRequestSent()
+		c.RecordRequestSucceeded()
+		c.RecordResponseReceived(404, 0)
+	}
+	for i := 0; i < acceptedFindings; i++ {
+		c.RecordDiscovered()
+	}
+
+	snap := c.Snapshot()
+	if snap.Discovered != acceptedFindings {
+		t.Errorf("Discovered: got %d, want %d", snap.Discovered, acceptedFindings)
+	}
+	if snap.RequestsSent != totalRequests {
+		t.Errorf("RequestsSent: got %d, want %d", snap.RequestsSent, totalRequests)
+	}
+	// Discovered must never exceed RequestsSent
+	if snap.Discovered > snap.RequestsSent {
+		t.Errorf("Discovered (%d) > RequestsSent (%d) — impossible invariant violation", snap.Discovered, snap.RequestsSent)
+	}
+}
+
+// TestETAOnlyDashWhenUnknownOrComplete verifies ETA conditions.
+// ETA should be "-" when totalWork==0 (unknown) and should be computable
+// once totalWork>0 and progress is ongoing.
+func TestProgressSnapshot_ETAConditions(t *testing.T) {
+	c := stats.NewCollector()
+	c.SetIsFinite(true)
+
+	// Before any work: TotalWork==0 → progress==0, completed==0.
+	snap := c.Snapshot()
+	if snap.TotalWork != 0 {
+		t.Errorf("pre-condition: TotalWork should be 0, got %d", snap.TotalWork)
+	}
+	if snap.Progress != 0 {
+		t.Errorf("pre-condition: Progress should be 0, got %f", snap.Progress)
+	}
+
+	// Add 100 candidates, try 50 → progress = 50%.
+	c.SetTotalCandidates(100)
+	for i := 0; i < 50; i++ {
+		c.RecordTried()
+	}
+	snap = c.Snapshot()
+	if snap.Progress < 49.0 || snap.Progress > 51.0 {
+		t.Errorf("Progress at 50/100 should be ~50%%, got %f", snap.Progress)
+	}
+	remaining := snap.TotalWork - snap.Completed
+	if remaining <= 0 {
+		t.Errorf("remaining work should be > 0 mid-scan, got %d", remaining)
+	}
+}

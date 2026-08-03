@@ -414,9 +414,25 @@ func TestWordlist_Count(t *testing.T) {
 		t.Error("expected SliceReader to implement Countable interface")
 	}
 
-	// 3. FileReader does NOT implement Countable (streamed without pre-scanning file)
-	fr := wordlist.FileReader{Path: "words.txt"}
-	if _, ok := interface{}(fr).(wordlist.Countable); ok {
-		t.Error("expected FileReader NOT to implement Countable interface")
+	// 3. FileReader implements Countable. Count() returns the total number of
+	// physical lines — it is a progress estimator, not a filtered entry count.
+	// The file below has 5 physical lines (apple, banana, # comment, blank, orange).
+	// Count() returns 5 even though Read() would yield only 3 valid entries.
+	tmpDir := t.TempDir()
+	wlPath := filepath.Join(tmpDir, "words.txt")
+	_ = os.WriteFile(wlPath, []byte("apple\nbanana\n# comment\n\norange\n"), 0o644)
+	fr := wordlist.FileReader{Path: wlPath}
+	if c, ok := interface{}(fr).(wordlist.Countable); ok {
+		cnt, err = c.Count()
+		if err != nil {
+			t.Fatalf("FileReader.Count failed: %v", err)
+		}
+		// 5 physical lines: "apple", "banana", "# comment", "", "orange"
+		// (trailing newline does not produce an extra line with bufio.Scanner)
+		if cnt != 5 {
+			t.Errorf("FileReader.Count: expected 5 physical lines, got %d", cnt)
+		}
+	} else {
+		t.Error("expected FileReader to implement Countable interface")
 	}
 }

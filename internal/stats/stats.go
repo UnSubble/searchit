@@ -291,8 +291,13 @@ func (c *Collector) SetDirectories(discovered, queued int64) {
 	atomic.StoreInt64(&c.directoriesQueued, queued)
 }
 
-// AddTotalCandidates is deprecated under Total Work model and is a no-op to prevent mutating TotalWork after initialization.
+// AddTotalCandidates atomically increments totalWork and totalCandidates by candidates.
+// Use this when the candidate count grows incrementally during a streaming scan
+// (e.g. file-based wordlists whose size is not known before streaming starts).
+// For pre-counted wordlists use SetTotalCandidates instead.
 func (c *Collector) AddTotalCandidates(candidates int64) {
+	atomic.AddInt64(&c.totalWork, candidates)
+	atomic.AddInt64(&c.totalCandidates, candidates)
 }
 
 // RecordRetry increments the retries counter.
@@ -336,6 +341,9 @@ func (c *Collector) Snapshot() Snapshot {
 
 	var prog float64
 	if totWork > 0 {
+		if completed > totWork {
+			totWork = completed
+		}
 		prog = float64(completed) / float64(totWork) * 100.0
 		if prog > 100.0 {
 			prog = 100.0

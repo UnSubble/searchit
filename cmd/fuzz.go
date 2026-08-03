@@ -566,7 +566,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 				defer f.Close()
 
-				fileFmttr = output.New(outFormat, f, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+				fileFmttr = output.New(outFormat, f, false, cfg.ShowHeaders, cfg.ShowTitle)
 				if fileFmttr != nil {
 					defer fileFmttr.Close()
 				}
@@ -574,20 +574,31 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 			// Terminal formatter setup
 			var termFmttr output.Formatter
-			if opts.Output == "" {
-				termFmttr = output.New(outFormat, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-			} else if !cfg.Quiet {
-				termFmttr = output.New(output.FormatText, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-			}
-			if termFmttr != nil {
-				defer termFmttr.Close()
+			if !cfg.Quiet {
+				termFmttr = output.New(outFormat, cmd.OutOrStdout(), false, cfg.ShowHeaders, cfg.ShowTitle)
+				if termFmttr != nil {
+					defer termFmttr.Close()
+				}
+			} else if opts.Output == "" {
+				termFmttr = output.New(outFormat, cmd.OutOrStdout(), true, cfg.ShowHeaders, cfg.ShowTitle)
+				if termFmttr != nil {
+					defer termFmttr.Close()
+				}
 			}
 
 			var baseCount int
-			if opts.Wordlist == "" {
-				baseCount, _ = wordlist.EmbeddedReader{}.Count()
-				if len(cfg.Extensions) > 0 {
-					baseCount *= (1 + len(cfg.Extensions))
+			var primaryReader wordlist.Reader
+			if opts.Wordlist != "" {
+				primaryReader = wordlist.FileReader{Path: opts.Wordlist}
+			} else {
+				primaryReader = wordlist.EmbeddedReader{}
+			}
+			if countable, ok := primaryReader.(wordlist.Countable); ok {
+				if cnt, err := countable.Count(); err == nil {
+					baseCount = cnt
+					if len(cfg.Extensions) > 0 {
+						baseCount *= (1 + len(cfg.Extensions))
+					}
 				}
 			}
 
@@ -912,7 +923,14 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					PauseBlocker:    stateMgr.WaitUntilRunning,
 				}
 
-				collector.SetTotalCandidates(runner.EstimateCandidates(baseCount))
+				estCandidates := runner.EstimateCandidates(baseCount)
+				if estCandidates > 0 {
+					collector.SetTotalCandidates(estCandidates)
+				} else {
+					// Wordlist size is unknown (streaming FileReader); totalWork will
+					// accumulate incrementally via AddTotalCandidates in pushCandidate.
+					runner.StreamingMode = true
+				}
 
 				// Wire adaptive informational messages through the progress renderer
 				// so they don't overlap the live UI. PrintAbove writes through the
@@ -970,10 +988,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				if runErr != nil && !errors.Is(runErr, context.Canceled) {
 					return runErr
 				}
-
-				// Fuzzing has naturally completed, synchronize target candidate count
-				// with actual JobsProduced in case of BFS/DFS pruning.
-				collector.SetTotalCandidates(collector.Snapshot().JobsProduced)
 
 				// In case the target naturally completed, trigger shutdown done.
 				cancelSig()

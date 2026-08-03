@@ -46,3 +46,23 @@ func (r FileReader) Read(ctx context.Context, out chan<- string) error {
 	}
 	return scanner.Err()
 }
+
+// Count returns the total number of physical lines in the file.
+// It is an estimate for progress/ETA reporting only — it does not replicate
+// the filtering logic of Read() (no whitespace trimming, no blank-line or
+// comment skipping). Read() remains the single source of truth for which
+// entries are actually processed.
+func (r FileReader) Count() (int, error) {
+	file, err := os.Open(r.Path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	count := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		count++
+	}
+	return count, scanner.Err()
+}

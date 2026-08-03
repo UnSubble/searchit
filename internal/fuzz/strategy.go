@@ -167,6 +167,13 @@ type Runner struct {
 	PauseBlocker func(context.Context) error
 	InfoHandler  func(string) // optional hook for informational messages (progress-renderer-aware)
 
+	// StreamingMode is true when the primary wordlist is not pre-counted.
+	// When true, pushCandidate calls AddTotalCandidates(1) per job so that
+	// totalWork grows incrementally during the scan.
+	// When false (pre-counted wordlist), SetTotalCandidates was already called
+	// at startup; AddTotalCandidates must NOT be called to avoid double-counting.
+	StreamingMode bool
+
 	compiledReq *compiledRequest
 }
 
@@ -200,10 +207,19 @@ func (r *Runner) EstimateCandidates(primaryWordlistSize int) int64 {
 		}
 	}
 
-	total := int64(1)
-	if hasFUZZ && primaryWordlistSize > 0 {
-		total *= int64(primaryWordlistSize)
+	if primaryWordlistSize <= 0 && len(r.FuzzWords) > 0 {
+		primaryWordlistSize = len(r.FuzzWords)
 	}
+
+	total := int64(1)
+	if hasFUZZ {
+		if primaryWordlistSize > 0 {
+			total *= int64(primaryWordlistSize)
+		} else {
+			return 0
+		}
+	}
+
 	if len(r.FooWords) > 0 {
 		total *= int64(len(r.FooWords))
 	}
@@ -308,6 +324,9 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 				r.FuzzWords = append(r.FuzzWords, word)
 			}
 		}
+		if r.Collector != nil && len(r.FuzzWords) > 0 {
+			r.Collector.SetTotalCandidates(r.EstimateCandidates(len(r.FuzzWords)))
+		}
 	}
 
 	plan := r.buildTraversalPlan()
@@ -332,6 +351,9 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 				mat = append(mat, word)
 			}
 			r.FuzzWords = mat
+			if r.Collector != nil && len(r.FuzzWords) > 0 {
+				r.Collector.SetTotalCandidates(r.EstimateCandidates(len(r.FuzzWords)))
+			}
 			plan = r.buildTraversalPlan()
 		}
 		if stratLower == "dfs" {
@@ -388,6 +410,11 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 			if e.collector != nil {
 				e.collector.RecordJobProduced()
+				if r.StreamingMode {
+					// Pre-counted wordlists already called SetTotalCandidates at
+					// startup; only accumulate here for streaming (uncounted) wordlists.
+					e.collector.AddTotalCandidates(1)
+				}
 			}
 			asyncCh, err := e.ExecuteAsync(job)
 			if err != nil {
