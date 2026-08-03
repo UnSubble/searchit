@@ -31,6 +31,9 @@ func NewSliceReader(r Reader) Reader {
 }
 
 func (sr *SliceReader) Words(ctx context.Context) ([]string, error) {
+	if ctx != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	sr.once.Do(func() {
 		capacity := 1024
 		if c, ok := sr.reader.(Countable); ok {

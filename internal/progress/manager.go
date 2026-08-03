@@ -80,8 +80,13 @@ func (m *Manager) Start(ctx context.Context, cmdChan <-chan console.Command) {
 
 		case cmd, ok := <-cmdChan:
 			if !ok {
-				cmdChan = nil
-				break
+				m.mu.Lock()
+				m.isStatsActive = false
+				m.mu.Unlock()
+				_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+					m.Renderer.ClearInto(w)
+				})
+				return
 			}
 			switch cmd {
 			case console.CommandProgress:

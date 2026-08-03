@@ -197,6 +197,14 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}
 			}
 
+			if opts.Wordlist != "" {
+				file, err := os.Open(opts.Wordlist)
+				if err != nil {
+					return fmt.Errorf("failed to open wordlist:\n\n    %s\n\n%w", opts.Wordlist, err)
+				}
+				_ = file.Close()
+			}
+
 			// --output is a file path; validate that it is not an existing directory.
 			if opts.Output != "" {
 				if fi, err := os.Stat(opts.Output); err == nil && fi.IsDir() {
@@ -854,7 +862,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							fmt.Fprintln(os.Stderr, msg)
 						}
 					})
-					manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
+					if err := manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
 							if termFmttr != nil {
 								if progMgr != nil {
@@ -876,7 +884,9 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 								fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
 							}
 						}
-					})
+					}); err != nil {
+						return err
+					}
 				} else {
 					jobs := make(chan engine.Job, cfg.Threads)
 					results := engine.Start(

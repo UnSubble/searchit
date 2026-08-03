@@ -801,6 +801,9 @@ func (m *mockValidator) Validate(p *profile.Profile) error {
 
 func TestValidatorRegistry(t *testing.T) {
 	t.Run("successful registration and lookup", func(t *testing.T) {
+		profile.UnregisterForTest("mocktool")
+		defer profile.UnregisterForTest("mocktool")
+
 		mv := &mockValidator{tool: "mocktool"}
 		err := profile.Register(mv)
 		if err != nil {
@@ -817,6 +820,9 @@ func TestValidatorRegistry(t *testing.T) {
 	})
 
 	t.Run("duplicate registration fails", func(t *testing.T) {
+		profile.UnregisterForTest("dup")
+		defer profile.UnregisterForTest("dup")
+
 		mv1 := &mockValidator{tool: "dup"}
 		mv2 := &mockValidator{tool: "dup"}
 

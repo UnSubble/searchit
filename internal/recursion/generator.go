@@ -84,8 +84,11 @@ func NewDirectoryGenerator(
 	statsCollector *stats.Collector,
 	highPriorityCounter *int,
 	lowPriorityCounter *int,
-) *DirectoryGenerator {
-	words, _ := wordlist.LoadWords(ctx, reader)
+) (*DirectoryGenerator, error) {
+	words, err := wordlist.LoadWords(ctx, reader)
+	if err != nil {
+		return nil, err
+	}
 
 	g := &DirectoryGenerator{
 		ctx:                  ctx,
@@ -109,7 +112,7 @@ func NewDirectoryGenerator(
 		words:                words,
 	}
 
-	return g
+	return g, nil
 }
 
 // Next yields the next generated job from the wordlist stream.

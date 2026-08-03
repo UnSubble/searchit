@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,16 +26,17 @@ func TestFuzz_CancellationRendersSummary(t *testing.T) {
 	cxx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 
-	fuzzCmd, _ := cmd.NewFuzzCmd()
-
 	// Capture stderr where summary is printed
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
+	wlFile := filepath.Join(t.TempDir(), "words.txt")
+	_ = os.WriteFile(wlFile, []byte("test\n"), 0644)
 	os.Stderr = w
 
+	fuzzCmd, _ := cmd.NewFuzzCmd()
 	fuzzCmd.SetArgs([]string{
 		"-u", srv.URL + "/FUZZ",
-		"-w", "internal/wordlist/embedded.txt",
+		"-w", wlFile,
 		"-t", "2",
 		"--no-progress", // ensure test environment doesn't rely on TTY
 	})
@@ -62,22 +64,23 @@ func TestScan_CancellationRendersSummary(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
 	}))
 	defer srv.Close()
 
-	cxx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-	defer cancel()
-
-	scanCmd, _ := cmd.NewScanCmd()
-
-	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
+	oldStderr := os.Stderr
 	os.Stderr = w
 
+	cxx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	wlFile := filepath.Join(t.TempDir(), "words.txt")
+	_ = os.WriteFile(wlFile, []byte("test\n"), 0644)
+
+	scanCmd, _ := cmd.NewScanCmd()
 	scanCmd.SetArgs([]string{
 		"-u", srv.URL,
-		"-w", "internal/wordlist/embedded.txt",
+		"-w", wlFile,
 		"-t", "2",
 		"--no-progress",
 	})

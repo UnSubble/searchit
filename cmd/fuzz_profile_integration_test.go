@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,9 +12,19 @@ import (
 
 func runFuzzProfileTest(args []string, hook func(config.Config)) error {
 	cmd, opts := NewFuzzCmd()
+	opts.testHookConfigApplied = hook
 	_ = cmd
 	_ = opts
-	opts.URL = "http://localhost/FUZZ"
+	hasURLArg := false
+	for _, a := range args {
+		if a == "-u" || a == "--url" || a == "-r" || a == "--request" {
+			hasURLArg = true
+			break
+		}
+	}
+	if !hasURLArg {
+		opts.URL = "http://localhost/FUZZ"
+	}
 	opts.Wordlist = ""
 	opts.Foo = ""
 	opts.Bar = ""
@@ -51,7 +62,13 @@ func runFuzzProfileTest(args []string, hook func(config.Config)) error {
 	cmd.SilenceErrors = false
 	cmd.SilenceUsage = false
 
-	opts.testHookConfigApplied = hook
+	for i, a := range args {
+		if a == "go.mod" {
+			if _, err := os.Stat("go.mod"); err != nil {
+				args[i] = "../go.mod"
+			}
+		}
+	}
 
 	cmd.SetArgs(args)
 
@@ -161,6 +178,7 @@ func TestFuzz_StrategyFlag(t *testing.T) {
 	for _, strategy := range []string{"eager", "bfs", "dfs"} {
 		err = runFuzzProfileTest([]string{"fuzz", "-w", "go.mod", "--strategy", strategy}, func(cfg config.Config) {
 			captured = cfg
+			panic("STOP_EXECUTION")
 		})
 		if err != nil {
 			t.Fatalf("fuzz command failed for strategy %s: %v", strategy, err)
@@ -205,49 +223,47 @@ func TestFuzz_StrategyFlag(t *testing.T) {
 }
 
 func TestFuzz_PlaceholderValidation(t *testing.T) {
+	tmpWl := filepath.Join(t.TempDir(), "words.txt")
+	_ = os.WriteFile(tmpWl, []byte("test\n"), 0644)
+
 	// 1. No placeholders anywhere should fail
-	err := runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-w", "go.mod"}, func(cfg config.Config) {})
+	err := runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-w", tmpWl}, nil)
 	if err == nil {
 		t.Error("expected error for missing placeholders, got nil")
 	}
 
 	// 2. Placeholder in URL should succeed
-	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/FUZZ", "-w", "go.mod"}, func(cfg config.Config) {})
+	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/FUZZ", "-w", tmpWl}, nil)
 	if err != nil {
 		t.Errorf("expected success for placeholder in URL, got %v", err)
 	}
 
 	// 3. Placeholder in Header should succeed
-	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-H", "X-Header: FUZZ", "-w", "go.mod"}, func(cfg config.Config) {})
+	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-H", "X-Header: FUZZ", "-w", tmpWl}, nil)
 	if err != nil {
 		t.Errorf("expected success for placeholder in Header, got %v", err)
 	}
 
 	// 4. Placeholder in Cookie should succeed
-	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-b", "session=FUZZ", "-w", "go.mod"}, func(cfg config.Config) {})
+	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-b", "session=FUZZ", "-w", tmpWl}, nil)
 	if err != nil {
 		t.Errorf("expected success for placeholder in Cookie, got %v", err)
 	}
 
 	// 5. Placeholder in POST body should succeed
-	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-X", "POST", "-d", "id=FUZZ", "-w", "go.mod"}, func(cfg config.Config) {})
+	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "-X", "POST", "-d", "id=FUZZ", "-w", tmpWl}, nil)
 	if err != nil {
 		t.Errorf("expected success for placeholder in POST body, got %v", err)
 	}
 
 	// 6. Placeholder supplied entirely by a profile
-	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "--profile", "fuzz-extra/user-agent", "-w", "fuzz.go"}, func(cfg config.Config) {
-		panic("STOP_EXECUTION")
-	})
+	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "--profile", "fuzz-extra/user-agent", "-w", tmpWl}, nil)
 	if err != nil {
 		t.Errorf("expected success for placeholder supplied by profile, got %v", err)
 	}
 
 	// 7. CLI overriding profile values (remove placeholder) should fail
-	// fuzz-extra/user-agent adds User-Agent=FUZZ. If we override it with a CLI flag to something else, there is no placeholder.
-	// Actually, wait: -H User-Agent=NotFuzz appends or replaces?
-	// The profile merge process merges maps. If CLI has -H "User-Agent: NotFuzz", it overrides the profile's User-Agent.
-	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "--profile", "fuzz-extra/user-agent", "-H", "User-Agent: NotFuzz", "-w", "go.mod"}, func(cfg config.Config) {})
+	err = runFuzzProfileTest([]string{"fuzz", "-u", "http://localhost/", "--profile", "fuzz-extra/user-agent", "-H", "User-Agent: NotFuzz", "-w", tmpWl}, nil)
 	if err == nil {
 		t.Error("expected error when CLI overrides profile placeholder, got nil")
 	}

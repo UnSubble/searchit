@@ -203,6 +203,14 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			}
 			// else: profiles provided with no URL — defer target validation to RunE.
 
+			if opts.Wordlist != "" {
+				file, err := os.Open(opts.Wordlist)
+				if err != nil {
+					return fmt.Errorf("failed to open wordlist:\n\n    %s\n\n%w", opts.Wordlist, err)
+				}
+				_ = file.Close()
+			}
+
 			if opts.ExcludeStatus != "" {
 				if _, err := status.Parse(opts.ExcludeStatus); err != nil {
 					return fmt.Errorf("invalid exclude-status: %w", err)
@@ -1280,7 +1288,7 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 			cfg.Extensions = exts
 		}
 	}
-	if cmd.Flags().Changed("strategy") {
+	if opts.Strategy != "" {
 		cfg.FuzzStrategy = opts.Strategy
 	}
 	if cmd.Flags().Changed("adaptive") {

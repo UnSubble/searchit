@@ -38,6 +38,13 @@ func GetValidator(tool string) Validator {
 	return validators[tool]
 }
 
+// UnregisterForTest unregisters a validator for a tool (used in unit tests).
+func UnregisterForTest(tool string) {
+	validatorsMu.Lock()
+	defer validatorsMu.Unlock()
+	delete(validators, tool)
+}
+
 // Validate performs generic (tool-agnostic) validation on a profile.
 func Validate(p *Profile) error {
 	// - schema exists

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -171,7 +172,8 @@ func (m *Manager) Run(
 	seeds []string,
 	workers int,
 	onResult func(r engine.Result),
-) {
+) error {
+	var runErr error
 	func() {
 		defer func() {
 			atomic.AddInt64(&stats.GlobalInstrumentation.SchedulerExit, 1)
@@ -222,6 +224,15 @@ func (m *Manager) Run(
 		}
 
 		jobs := make(chan engine.Job, workers)
+		var jobsOnce sync.Once
+		closeJobs := func() {
+			jobsOnce.Do(func() {
+				stats.GlobalInstrumentation.LogEvent("jobs channel close")
+				close(jobs)
+			})
+		}
+		defer closeJobs()
+
 		results := engine.Start(
 			ctx,
 			drainCtx,
@@ -253,17 +264,15 @@ func (m *Manager) Run(
 
 		for (frontier.Len() > 0 || activeGenerator != nil || hasNextJob) || pending > 0 {
 			if m.stats != nil {
-				snap := m.stats.Snapshot()
-				m.stats.SetDirectories(snap.DirectoriesDiscovered, int64(frontier.Len()))
+				m.stats.SetFrontierPending(int64(frontier.Len()))
 			}
 
 			if ctx.Err() != nil {
 				stats.GlobalInstrumentation.LogEvent("context cancellation")
-				stats.GlobalInstrumentation.LogEvent("jobs channel close")
-				close(jobs)
+				closeJobs()
 				for result := range results {
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-					m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+					_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 				}
 				return
 			}
@@ -288,11 +297,10 @@ func (m *Manager) Run(
 					// Drain pending results before exiting so workers can finish
 					// and the results channel closes without goroutine leaks.
 					stats.GlobalInstrumentation.LogEvent("context cancellation")
-					stats.GlobalInstrumentation.LogEvent("jobs channel close")
-					close(jobs)
+					closeJobs()
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 					}
 					return
 
@@ -315,7 +323,10 @@ func (m *Manager) Run(
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult); err != nil {
+						runErr = err
+						return
+					}
 				}
 			} else {
 				// Frontier empty but workers still running; block until a result
@@ -323,11 +334,10 @@ func (m *Manager) Run(
 				select {
 				case <-ctx.Done():
 					stats.GlobalInstrumentation.LogEvent("context cancellation")
-					stats.GlobalInstrumentation.LogEvent("jobs channel close")
-					close(jobs)
+					closeJobs()
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
 					}
 					return
 				case result, ok := <-results:
@@ -336,19 +346,25 @@ func (m *Manager) Run(
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult); err != nil {
+						runErr = err
+						return
+					}
 				}
 			}
 		}
 
 		atomic.StoreInt64(&stats.GlobalInstrumentation.JobsRemaining, int64(frontier.Len()))
-		stats.GlobalInstrumentation.LogEvent("jobs channel close")
-		close(jobs)
+		closeJobs()
 
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+			if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult); err != nil {
+				if runErr == nil {
+					runErr = err
+				}
+			}
 		}
 
 		if ctx.Err() == nil && m.stats != nil {
@@ -358,6 +374,7 @@ func (m *Manager) Run(
 			}
 		}
 	}()
+	return runErr
 }
 
 // handleResult forwards the result to the output channel and, if the result
@@ -372,10 +389,10 @@ func (m *Manager) handleResult(
 	injectedWordPress map[string]bool,
 	injectedExpress map[string]bool,
 	onResult func(engine.Result),
-) {
+) error {
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
-		return
+		return nil
 	}
 
 	// Wildcard detection signature check
@@ -400,7 +417,7 @@ func (m *Manager) handleResult(
 			if m.stats != nil {
 				m.stats.RecordWildcardFiltered()
 			}
-			return
+			return nil
 		}
 	}
 
@@ -441,7 +458,7 @@ func (m *Manager) handleResult(
 				fmt.Fprintln(os.Stderr, msg)
 			}
 		}
-		return
+		return nil
 	}
 
 	// If it's a redirect response (3xx) to a different URL path, enqueue the destination URL to be scanned and return.
@@ -449,11 +466,11 @@ func (m *Manager) handleResult(
 	if result.RedirectURL != "" && result.StatusCode >= 300 && result.StatusCode < 400 {
 		if ctx.Err() != nil {
 			stats.GlobalInstrumentation.LogEvent("context cancellation")
-			return
+			return nil
 		}
 
 		if result.Depth >= m.maxDepth {
-			return
+			return nil
 		}
 
 		key := normalizeURL(result.RedirectURL)
@@ -465,21 +482,21 @@ func (m *Manager) handleResult(
 				// If HTTP client already followed the redirect during client.Do, do not re-enqueue
 				if result.Length <= 0 {
 					frontier.Push(NewSliceGenerator([]engine.Job{{URL: result.RedirectURL, Depth: result.Depth, Origin: "redirect"}}))
-					return
+					return nil
 				}
 			} else if !wasAlreadyFollowed {
-				return
+				return nil
 			}
 		}
 	}
 
 	if ctx.Err() != nil {
 		stats.GlobalInstrumentation.LogEvent("context cancellation")
-		return
+		return nil
 	}
 
 	if result.Depth >= m.maxDepth {
-		return
+		return nil
 	}
 
 	parentURL := result.URL
@@ -515,9 +532,6 @@ func (m *Manager) handleResult(
 	}
 
 	if result.Depth > 0 && m.recurseOn.Match(result.StatusCode) {
-		if m.stats != nil {
-			m.stats.RecordDirectoryDiscovered()
-		}
 		if m.strategy == DFS {
 			m.DFSCount++
 		} else {
@@ -608,7 +622,7 @@ func (m *Manager) handleResult(
 		}
 	}
 
-	gen := NewDirectoryGenerator(
+	gen, err := NewDirectoryGenerator(
 		ctx,
 		m.reader,
 		parentURL,
@@ -629,6 +643,17 @@ func (m *Manager) handleResult(
 		&m.HighPriorityCount,
 		&m.LowPriorityCount,
 	)
+	if err != nil {
+		if m.warningHandler != nil {
+			m.warningHandler(fmt.Sprintf("ERROR: failed to load wordlist: %v", err))
+		}
+		return err
+	}
+
+	if m.stats != nil {
+		m.stats.RecordDirectoryDiscovered()
+		m.stats.RecordDirectoryQueued()
+	}
 
 	if m.strategy == DFS || m.strategy == Priority {
 		if *activeGenerator != nil {
@@ -638,6 +663,7 @@ func (m *Manager) handleResult(
 	} else {
 		frontier.PushBack(gen)
 	}
+	return nil
 }
 
 // normalizeURL strips trailing slashes and fragments to normalize directory matches.

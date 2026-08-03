@@ -26,6 +26,7 @@ type Snapshot struct {
 	IsFinite              bool
 	DirectoriesDiscovered int64
 	DirectoriesQueued     int64
+	FrontierPending       int64
 
 	// Future metrics support
 	Retries                  int64

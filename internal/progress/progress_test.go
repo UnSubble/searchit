@@ -133,15 +133,8 @@ func TestManager_PrintStats(t *testing.T) {
 }
 
 func TestANSIRenderer_TerminalAndFrozen(t *testing.T) {
-	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		t.Skip("skipping /dev/tty test: controlling terminal not available")
-		return
-	}
-	defer f.Close()
-
-	// instantiate ANSIRenderer with real terminal file
-	tm := terminal.New(f)
+	var buf bytes.Buffer
+	tm := terminal.New(&buf)
 	_ = tm.AcquireOwner(terminal.OwnerProgress)
 	r := progress.NewANSIRenderer(tm, "http://localhost", []string{"base", "php"}, "Recursive")
 	defer r.Close(terminal.OwnerProgress)
@@ -153,7 +146,7 @@ func TestANSIRenderer_TerminalAndFrozen(t *testing.T) {
 	snap.RequestsPerSecond = 5.0
 	snap.CurrentRequestsPerSecond = 5.0
 
-	err = r.Render(snap)
+	err := r.Render(snap)
 	if err != nil {
 		t.Fatalf("unexpected Render error: %v", err)
 	}
@@ -325,6 +318,7 @@ func TestANSIRenderer_FiniteVsOpenEndedProgress(t *testing.T) {
 		c := stats.NewCollector()
 		c.SetIsFinite(false)
 		c.RecordDirectoryDiscovered()
+		c.SetFrontierPending(12)
 		c.SetDirectories(184, 12)
 
 		snap := c.Snapshot()
@@ -340,8 +334,8 @@ func TestANSIRenderer_FiniteVsOpenEndedProgress(t *testing.T) {
 		if !strings.Contains(out, "Requests Sent:") {
 			t.Errorf("expected 'Requests Sent:' header in open-ended scan output, got:\n%s", out)
 		}
-		if !strings.Contains(out, "Directories: Discovered: 184 │ Queued: 12") {
-			t.Errorf("expected exact directory activity metrics in output, got:\n%s", out)
+		if !strings.Contains(out, "Recursion: Expanded: 184 │ Pending: 12") {
+			t.Errorf("expected exact recursion activity metrics in output, got:\n%s", out)
 		}
 	})
 }
