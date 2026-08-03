@@ -18,12 +18,13 @@ import (
 
 // Engine is the central target awareness layer shared across searchit components.
 type Engine struct {
-	TargetURL string
-	Client    *http.Client
-	Cache     *fingerprint.Cache
-	Quiet     bool
-	Collector *Collector
-	Summary   *summary.Summary
+	TargetURL   string
+	Client      *http.Client
+	Cache       *fingerprint.Cache
+	Quiet       bool
+	Collector   *Collector
+	Summary     *summary.Summary
+	InfoHandler func(string) // optional hook for informational messages (progress-renderer-aware)
 
 	once    sync.Once
 	discErr error
@@ -42,12 +43,22 @@ func NewEngine(targetURL string, client *http.Client, cache *fingerprint.Cache, 
 	}
 }
 
+// printInfo emits an informational message via InfoHandler when set,
+// or falls back to writing directly to os.Stderr.
+func (e *Engine) printInfo(msg string) {
+	if e.InfoHandler != nil {
+		e.InfoHandler(msg)
+	} else {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
 // Discover executes target signal collection idempotently with a bounded timeout.
 func (e *Engine) Discover(ctx context.Context) error {
 	e.once.Do(func() {
 		if !e.Quiet {
-			fmt.Fprintln(os.Stderr, "[INFO] Adaptive mode enabled.")
-			fmt.Fprintln(os.Stderr, "[INFO] Discovering target...")
+			e.printInfo("[INFO] Adaptive mode enabled.")
+			e.printInfo("[INFO] Discovering target...")
 		}
 
 		discCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -83,19 +94,19 @@ func (e *Engine) Discover(ctx context.Context) error {
 		// Print discovery logging if !Quiet
 		if !e.Quiet {
 			if e.Collector.LaravelDetected {
-				fmt.Fprintln(os.Stderr, "[INFO] Laravel detected")
+				e.printInfo("[INFO] Laravel detected")
 			}
 			if e.Collector.WPDetected {
-				fmt.Fprintln(os.Stderr, "[INFO] WordPress detected")
+				e.printInfo("[INFO] WordPress detected")
 			}
 			if e.Collector.ExpressDetected {
-				fmt.Fprintln(os.Stderr, "[INFO] Express detected")
+				e.printInfo("[INFO] Express detected")
 			}
 			if e.Collector.RobotsDiscovered {
-				fmt.Fprintln(os.Stderr, "[INFO] robots.txt discovered")
+				e.printInfo("[INFO] robots.txt discovered")
 			}
 			if e.Collector.SitemapDiscovered {
-				fmt.Fprintln(os.Stderr, "[INFO] sitemap.xml discovered")
+				e.printInfo("[INFO] sitemap.xml discovered")
 			}
 		}
 	})

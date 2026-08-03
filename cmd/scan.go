@@ -851,9 +851,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					manager.PauseBlocker = stateMgr.WaitUntilRunning
 					manager.SetWarningHandler(func(msg string) {
 						if progMgr != nil {
-							progMgr.ExecuteAbove(func() {
-								fmt.Fprintln(os.Stderr, msg)
-							})
+							progMgr.PrintAbove(msg)
 						} else {
 							fmt.Fprintln(os.Stderr, msg)
 						}

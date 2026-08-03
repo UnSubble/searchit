@@ -2,7 +2,9 @@ package fuzz
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -163,8 +165,19 @@ type Runner struct {
 	Summary        *summary.Summary
 
 	PauseBlocker func(context.Context) error
+	InfoHandler  func(string) // optional hook for informational messages (progress-renderer-aware)
 
 	compiledReq *compiledRequest
+}
+
+// printInfo emits an informational message via InfoHandler when set,
+// or falls back to writing directly to os.Stderr.
+func (r *Runner) printInfo(msg string) {
+	if r.InfoHandler != nil {
+		r.InfoHandler(msg)
+	} else {
+		fmt.Fprintln(os.Stderr, msg)
+	}
 }
 
 // EstimateCandidates calculates the theoretical maximum search space based on
@@ -280,6 +293,21 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 		}
 		r.Summary = r.AdaptiveEngine.Summary
 		_ = r.AdaptiveEngine.Discover(ctx)
+		// Drain the primary wordlist channel into FuzzWords before building the
+		// traversal plan, so the full candidate list is available to adaptive
+		// scoring. DFS/BFS/Priority do this too; adaptive mode previously skipped it,
+		// causing buildTraversalPlan() to see FuzzWords==nil and fall back to
+		// words=[""] — yielding exactly one candidate regardless of wordlist size.
+		if primaryChan != nil {
+			for word := range primaryChan {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				r.FuzzWords = append(r.FuzzWords, word)
+			}
+		}
 	}
 
 	plan := r.buildTraversalPlan()

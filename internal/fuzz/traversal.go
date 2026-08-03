@@ -3,7 +3,6 @@ package fuzz
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -465,13 +464,6 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 		idx  int
 	}
 
-	type adaptResult struct {
-		res     Result
-		indices []int
-	}
-	var allResults []adaptResult
-	var resMutex sync.Mutex
-
 	var adaptVisit func(currentDepth int, vars map[string]string, parentPaths []string, parentIndices []int)
 
 	adaptVisit = func(currentDepth int, vars map[string]string, parentPaths []string, parentIndices []int) {
@@ -492,7 +484,6 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 		}
 
 		if currentDepth == 0 && !r.Quiet {
-			fmt.Fprint(os.Stdout, "\nPriority scores:\n\n")
 			type scoredItem struct {
 				word  string
 				score int
@@ -505,10 +496,24 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 			sort.Slice(scoredItems, func(i, j int) bool {
 				return scoredItems[i].score > scoredItems[j].score
 			})
+			var buf strings.Builder
+			buf.WriteString("\r\nPriority scores:\r\n\r\n")
+			printed := 0
 			for _, item := range scoredItems {
-				fmt.Fprintf(os.Stderr, "    %-15s %s\n", item.word, presentation.Number(int64(item.score)))
+				if item.score <= 0 {
+					break
+				}
+				buf.WriteString(fmt.Sprintf("    %-15s %s\r\n", item.word, presentation.Number(int64(item.score))))
+				printed++
+				if printed >= 15 {
+					break
+				}
 			}
-			fmt.Fprint(os.Stderr, "\nTraversal decisions:\n\n")
+			if printed == 0 {
+				buf.WriteString("    (no prioritized items)\r\n")
+			}
+			buf.WriteString("\r\nTraversal decisions:\r\n\r\n")
+			r.printInfo(buf.String())
 		}
 
 		sort.SliceStable(payloads, func(i, j int) bool {
@@ -517,6 +522,111 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 			return scoreI > scoreJ
 		})
 
+		if currentDepth < len(plan.Levels)-1 {
+			for _, p := range payloads {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				newVars := make(map[string]string)
+				for k, v := range vars {
+					newVars[k] = v
+				}
+				newVars[level.Placeholder] = p.word
+
+				reqs := []evaluateReq{{word: p.word, idx: p.idx, vars: newVars}}
+				pending := r.evaluateLevel(ctx, e, cTmpl, true, reqs)
+
+				for item := range pending {
+					if item.err != nil {
+						continue
+					}
+					res := <-item.ch
+					if ctx.Err() == nil {
+						if res.Accepted || res.Err != nil {
+							yield(res)
+						}
+						if res.Accepted {
+							parts := strings.Split(strings.TrimRight(res.URL, "/"), "/")
+							var val string
+							if len(parts) > 0 {
+								val = parts[len(parts)-1]
+							} else {
+								val = p.word
+							}
+
+							ct := res.Headers.Get("Content-Type")
+							sigs := engine.GetSignals(p.word, parentPaths, currentDepth+1, ct)
+							dec := engine.SelectTraversal(sigs)
+
+							engine.Summary.RecordTraversal(dec.Policy)
+
+							if !r.Quiet {
+								ruleDesc := fmt.Sprintf("%s (rule: %s)", dec.Policy, dec.Rule)
+								r.printInfo(fmt.Sprintf("    %-12s %s", "/"+val, ruleDesc))
+							}
+
+							newParentPaths := make([]string, len(parentPaths))
+							copy(newParentPaths, parentPaths)
+							newParentPaths = append(newParentPaths, p.word)
+
+							newParentIndices := make([]int, len(parentIndices))
+							copy(newParentIndices, parentIndices)
+							newParentIndices = append(newParentIndices, p.idx)
+
+							if dec.Policy == types.PolicyDFS || dec.Policy == types.PolicyBFS {
+								adaptVisit(currentDepth+1, newVars, newParentPaths, newParentIndices)
+							} else if dec.Policy == types.PolicyEager {
+								var eagerVisit func(d int, v map[string]string, indices []int)
+								var eagerWg sync.WaitGroup
+
+								eagerVisit = func(d int, v map[string]string, indices []int) {
+									if d == len(plan.Levels) {
+										eagerWg.Add(1)
+										go func(vCopy map[string]string, idxCopy []int) {
+											defer eagerWg.Done()
+											job, err := r.buildJob(r.compiledReq.targetURL, vCopy)
+											if err != nil {
+												return
+											}
+											res, err := e.Execute(job)
+											if err == nil {
+												if res.Accepted || res.Err != nil {
+													yield(res)
+												}
+											}
+										}(v, indices)
+										return
+									}
+
+									curLevel := plan.Levels[d]
+									for i, w := range curLevel.Words {
+										vCopy := make(map[string]string)
+										for k, val := range v {
+											vCopy[k] = val
+										}
+										vCopy[curLevel.Placeholder] = w
+
+										idxCopy := make([]int, len(indices))
+										copy(idxCopy, indices)
+										idxCopy = append(idxCopy, i)
+
+										eagerVisit(d+1, vCopy, idxCopy)
+									}
+								}
+								eagerVisit(currentDepth+1, newVars, newParentIndices)
+								eagerWg.Wait()
+							}
+						}
+					}
+				}
+			}
+			return
+		}
+
+		// Leaf level (currentDepth == len(plan.Levels)-1): evaluate all candidates in parallel and yield live.
 		var reqs []evaluateReq
 		for _, p := range payloads {
 			newVars := make(map[string]string)
@@ -527,15 +637,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 			reqs = append(reqs, evaluateReq{word: p.word, idx: p.idx, vars: newVars})
 		}
 
-		pending := r.evaluateLevel(ctx, e, cTmpl, currentDepth < len(plan.Levels)-1, reqs)
-
-		type acceptedRes struct {
-			word string
-			idx  int
-			res  Result
-		}
-		var accepted []acceptedRes
-
+		pending := r.evaluateLevel(ctx, e, cTmpl, false, reqs)
 		for p := range pending {
 			if p.err != nil {
 				continue
@@ -543,128 +645,12 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 			res := <-p.ch
 			if ctx.Err() == nil {
 				if res.Accepted || res.Err != nil {
-					newIndices := make([]int, len(parentIndices))
-					copy(newIndices, parentIndices)
-					newIndices = append(newIndices, p.idx)
-
-					resMutex.Lock()
-					allResults = append(allResults, adaptResult{res: res, indices: newIndices})
-					resMutex.Unlock()
+					yield(res)
 				}
-				if res.Accepted && currentDepth < len(plan.Levels)-1 {
-					accepted = append(accepted, acceptedRes{word: p.word, idx: p.idx, res: res})
-				}
-			}
-		}
-
-		if ctx.Err() != nil || currentDepth >= len(plan.Levels)-1 || len(accepted) == 0 {
-			return
-		}
-
-		for _, acc := range accepted {
-			parts := strings.Split(strings.TrimRight(acc.res.URL, "/"), "/")
-			var val string
-			if len(parts) > 0 {
-				val = parts[len(parts)-1]
-			} else {
-				val = acc.word
-			}
-
-			ct := acc.res.Headers.Get("Content-Type")
-			sigs := engine.GetSignals(acc.word, parentPaths, currentDepth+1, ct)
-			dec := engine.SelectTraversal(sigs)
-
-			engine.Summary.RecordTraversal(dec.Policy)
-
-			if !r.Quiet {
-				ruleDesc := fmt.Sprintf("%s (rule: %s)", dec.Policy, dec.Rule)
-				fmt.Fprintf(os.Stderr, "    %-12s %s\n", "/"+val, ruleDesc)
-			}
-
-			newParentPaths := make([]string, len(parentPaths))
-			copy(newParentPaths, parentPaths)
-			newParentPaths = append(newParentPaths, acc.word)
-
-			newParentIndices := make([]int, len(parentIndices))
-			copy(newParentIndices, parentIndices)
-			newParentIndices = append(newParentIndices, acc.idx)
-
-			newVars := make(map[string]string)
-			for k, v := range vars {
-				newVars[k] = v
-			}
-			newVars[level.Placeholder] = acc.word
-
-			if dec.Policy == types.PolicyDFS || dec.Policy == types.PolicyBFS {
-				adaptVisit(currentDepth+1, newVars, newParentPaths, newParentIndices)
-			} else if dec.Policy == types.PolicyEager {
-				var eagerVisit func(d int, v map[string]string, indices []int)
-				var eagerWg sync.WaitGroup
-
-				eagerVisit = func(d int, v map[string]string, indices []int) {
-					if d == len(plan.Levels) {
-						eagerWg.Add(1)
-						go func(vCopy map[string]string, idxCopy []int) {
-							defer eagerWg.Done()
-							job, err := r.buildJob(r.compiledReq.targetURL, vCopy)
-							if err != nil {
-								return
-							}
-							res, err := e.Execute(job)
-							if err == nil {
-								if res.Accepted || res.Err != nil {
-									resMutex.Lock()
-									allResults = append(allResults, adaptResult{res: res, indices: idxCopy})
-									resMutex.Unlock()
-								}
-							}
-						}(v, indices)
-						return
-					}
-
-					curLevel := plan.Levels[d]
-					for i, w := range curLevel.Words {
-						vCopy := make(map[string]string)
-						for k, val := range v {
-							vCopy[k] = val
-						}
-						vCopy[curLevel.Placeholder] = w
-
-						idxCopy := make([]int, len(indices))
-						copy(idxCopy, indices)
-						idxCopy = append(idxCopy, i)
-
-						eagerVisit(d+1, vCopy, idxCopy)
-					}
-				}
-				eagerVisit(currentDepth+1, newVars, newParentIndices)
-				eagerWg.Wait()
 			}
 		}
 	}
 
 	adaptVisit(0, make(map[string]string), nil, nil)
-
-	// Adaptive evaluates branches out-of-order based on priority scores.
-	// This sort strictly reconstructs the original wordlist index ordering
-	// so that the final output preserves the user's wordlist structure.
-	sort.Slice(allResults, func(i, j int) bool {
-		a := allResults[i].indices
-		b := allResults[j].indices
-		minLen := len(a)
-		if len(b) < minLen {
-			minLen = len(b)
-		}
-		for k := 0; k < minLen; k++ {
-			if a[k] != b[k] {
-				return a[k] < b[k]
-			}
-		}
-		return len(a) < len(b)
-	})
-	for _, aRes := range allResults {
-		yield(aRes.res)
-	}
-
 	return nil
 }

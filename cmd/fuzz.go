@@ -904,6 +904,24 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 				collector.SetTotalCandidates(runner.EstimateCandidates(baseCount))
 
+				// Wire adaptive informational messages through the progress renderer
+				// so they don't overlap the live UI. PrintAbove writes through the
+				// terminal manager's locked writer (w) — the same path used by all
+				// other progress output — so no raw os.Stderr bypass occurs.
+				// The same handler is shared by both the engine ([INFO] messages)
+				// and the runner (priority-score / traversal-decision blocks).
+				adaptiveInfoHandler := func(msg string) {
+					if progMgr != nil {
+						progMgr.PrintAbove(msg)
+					} else {
+						fmt.Fprintln(os.Stderr, msg)
+					}
+				}
+				runner.InfoHandler = adaptiveInfoHandler
+				if cfg.Adaptive && appState.AdaptiveEngine != nil {
+					appState.AdaptiveEngine.InfoHandler = adaptiveInfoHandler
+				}
+
 				runErr := runner.Run(fuzzCtx, drainCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
 					if r.Accepted {
 						engRes := engine.Result{

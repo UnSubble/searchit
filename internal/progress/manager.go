@@ -119,6 +119,24 @@ func (m *Manager) ExecuteAbove(fn func()) {
 	})
 }
 
+// PrintAbove clears the progress block, writes msg through the terminal
+// manager's locked writer (the same io.Writer used by all progress output),
+// then redraws the progress block. Use this for informational messages that
+// must not race with the live progress UI. Unlike ExecuteAbove, which hands a
+// raw func() to the caller, PrintAbove keeps the write inside the TM lock so
+// no direct os.Stderr write bypasses the terminal manager.
+func (m *Manager) PrintAbove(msg string) {
+	_ = m.TM.Emit(terminal.OwnerProgress, func(w io.Writer) {
+		m.Renderer.ClearInto(w)
+		fmt.Fprint(w, msg)
+		// Ensure the message ends with a clean CRLF before the redrawn block.
+		if len(msg) == 0 || msg[len(msg)-1] != '\n' {
+			fmt.Fprint(w, "\r\n")
+		}
+		m.Renderer.RenderInto(w, m.Collector.Snapshot())
+	})
+}
+
 // PrintStats renders the full-screen statistics report.
 // Exported for use by cmd layer in non-interactive mode.
 func (m *Manager) PrintStats() {
