@@ -139,14 +139,14 @@ func testFormatters(t *testing.T, w1Results, wNResults []engine.Result, wN int) 
 
 	for _, fmtName := range formats {
 		var buf1 bytes.Buffer
-		f1 := output.New(fmtName, &buf1, false, false, false)
+		f1 := output.New(fmtName, &buf1, false, false, false, false)
 		for _, r := range w1Results {
 			_ = f1.Print(r)
 		}
 		_ = f1.Close()
 
 		var bufN bytes.Buffer
-		fN := output.New(fmtName, &bufN, false, false, false)
+		fN := output.New(fmtName, &bufN, false, false, false, false)
 		for _, r := range wNResults {
 			_ = fN.Print(r)
 		}

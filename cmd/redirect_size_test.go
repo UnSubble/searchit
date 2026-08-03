@@ -34,7 +34,7 @@ func TestRedirectFinalSizeReporting(t *testing.T) {
 	wlPath := filepath.Join(tmpDir, "words.txt")
 	os.WriteFile(wlPath, []byte("admin\n"), 0644)
 
-	t.Run("Scenario 1 & 2: Single 302 redirect with --follow-redirects reports 302 and final body size (8.2 KB)", func(t *testing.T) {
+	t.Run("Scenario 1 & 2: Single 302 redirect with --follow-redirects reports 302 and final body size (8432 B)", func(t *testing.T) {
 		outFile := filepath.Join(tmpDir, "out1.txt")
 		scanCmd, _ := NewScanCmd()
 		scanCmd.SetArgs([]string{"-u", redir302Srv.URL, "-w", wlPath, "--follow-redirects", "-o", outFile})
@@ -46,8 +46,25 @@ func TestRedirectFinalSizeReporting(t *testing.T) {
 
 		content, _ := os.ReadFile(outFile)
 		outStr := string(content)
+		if !strings.Contains(outStr, "[302] - 8432 B") {
+			t.Errorf("expected '[302] - 8432 B' in output file, got: %s", outStr)
+		}
+	})
+
+	t.Run("Scenario 1 & 2 (Human Readable): Single 302 redirect with --follow-redirects -R reports 302 and final body size (8.2 KB)", func(t *testing.T) {
+		outFile := filepath.Join(tmpDir, "out1_hr.txt")
+		scanCmd, _ := NewScanCmd()
+		scanCmd.SetArgs([]string{"-u", redir302Srv.URL, "-w", wlPath, "--follow-redirects", "-R", "-o", outFile})
+
+		err := scanCmd.Execute()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		content, _ := os.ReadFile(outFile)
+		outStr := string(content)
 		if !strings.Contains(outStr, "[302] - 8.2 KB") {
-			t.Errorf("expected '[302] - 8.2 KB' in output file, got: %s", outStr)
+			t.Errorf("expected '[302] - 8.2 KB' in output file with -R, got: %s", outStr)
 		}
 	})
 
@@ -68,7 +85,7 @@ func TestRedirectFinalSizeReporting(t *testing.T) {
 		}
 	})
 
-	t.Run("Scenario 4: Redirect chain (301 -> 302 -> 200) reports initial 301 status and final body size (8.2 KB)", func(t *testing.T) {
+	t.Run("Scenario 4: Redirect chain (301 -> 302 -> 200) reports initial 301 status and final body size (8432 B)", func(t *testing.T) {
 		outFile := filepath.Join(tmpDir, "out3.txt")
 		scanCmd, _ := NewScanCmd()
 		scanCmd.SetArgs([]string{"-u", redir301Srv.URL, "-w", wlPath, "--follow-redirects", "-o", outFile})
@@ -80,8 +97,25 @@ func TestRedirectFinalSizeReporting(t *testing.T) {
 
 		content, _ := os.ReadFile(outFile)
 		outStr := string(content)
+		if !strings.Contains(outStr, "[301] - 8432 B") {
+			t.Errorf("expected '[301] - 8432 B' for redirect chain in output file, got: %s", outStr)
+		}
+	})
+
+	t.Run("Scenario 4 (Human Readable): Redirect chain (301 -> 302 -> 200) with --human-readable reports (8.2 KB)", func(t *testing.T) {
+		outFile := filepath.Join(tmpDir, "out3_hr.txt")
+		scanCmd, _ := NewScanCmd()
+		scanCmd.SetArgs([]string{"-u", redir301Srv.URL, "-w", wlPath, "--follow-redirects", "--human-readable", "-o", outFile})
+
+		err := scanCmd.Execute()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		content, _ := os.ReadFile(outFile)
+		outStr := string(content)
 		if !strings.Contains(outStr, "[301] - 8.2 KB") {
-			t.Errorf("expected '[301] - 8.2 KB' for redirect chain in output file, got: %s", outStr)
+			t.Errorf("expected '[301] - 8.2 KB' for redirect chain in output file with --human-readable, got: %s", outStr)
 		}
 	})
 }

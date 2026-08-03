@@ -74,8 +74,9 @@ type Config struct {
 	Adaptive bool
 
 	// Response Presentation fields
-	ShowHeaders bool
-	ShowTitle   bool
+	ShowHeaders        bool
+	ShowTitle          bool
+	HumanReadableSizes bool
 
 	// HTTP Request Templates
 	RequestFile string

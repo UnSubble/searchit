@@ -26,8 +26,8 @@ func TestOutputPipeline_SinkInvariants(t *testing.T) {
 		var termBuf bytes.Buffer
 		var fileBuf bytes.Buffer
 
-		termFmttr := output.NewTextFormatter(&termBuf, false, false, false)
-		fileFmttr := output.NewTextFormatter(&fileBuf, false, false, false)
+		termFmttr := output.NewTextFormatter(&termBuf, false, false, false, false)
+		fileFmttr := output.NewTextFormatter(&fileBuf, false, false, false, false)
 
 		emitResult := func(r engine.Result) {
 			if r.Accepted {

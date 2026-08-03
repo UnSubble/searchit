@@ -26,14 +26,21 @@ func TestGoldenOutputs(t *testing.T) {
 			name:       "Text formatter",
 			goldenFile: "text.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewTextFormatter(buf, false, false, false)
+				return output.NewTextFormatter(buf, false, false, false, false)
+			},
+		},
+		{
+			name:       "Text formatter (human-readable)",
+			goldenFile: "text_human_readable.golden",
+			setup: func(buf *bytes.Buffer) output.Formatter {
+				return output.NewTextFormatter(buf, false, false, false, true)
 			},
 		},
 		{
 			name:       "Quiet Text formatter",
 			goldenFile: "text_quiet.golden",
 			setup: func(buf *bytes.Buffer) output.Formatter {
-				return output.NewTextFormatter(buf, true, false, false)
+				return output.NewTextFormatter(buf, true, false, false, false)
 			},
 		},
 		{

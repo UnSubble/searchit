@@ -95,6 +95,7 @@ type ScanOptions struct {
 	FilterContent []string
 	ShowHeaders   bool
 	ShowTitle     bool
+	HumanReadable bool
 	Request       string
 	HelpAll       bool
 
@@ -552,7 +553,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}
 
 				fileQuiet := cfg.Quiet && !cmd.Flags().Changed("format") && fileFmt == output.FormatText
-				fileFmttr = output.New(fileFmt, f, fileQuiet, cfg.ShowHeaders, cfg.ShowTitle)
+				fileFmttr = output.New(fileFmt, f, fileQuiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes)
 				if fileFmttr != nil {
 					defer fileFmttr.Close()
 				}
@@ -566,7 +567,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					termFmt = parsed
 				}
 			}
-			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes)
 			if termFmttr != nil {
 				defer termFmttr.Close()
 			}
@@ -1312,6 +1313,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	cmd.Flags().StringSliceVar(&opts.FilterContent, "ft", nil, "filter content types")
 	cmd.Flags().BoolVar(&opts.ShowHeaders, "show-headers", false, "show response headers in output")
 	cmd.Flags().BoolVar(&opts.ShowTitle, "show-title", false, "show HTML titles in output")
+	cmd.Flags().BoolVarP(&opts.HumanReadable, "human-readable", "R", false, "Render response sizes using human-readable units (KB, MB, GB).")
 	cmd.Flags().StringVar(&opts.Request, "request", "", "load raw HTTP request template from file")
 	cmd.Flags().StringVar(&opts.UserAgent, "user-agent", "", "set a custom User-Agent for every request")
 	cmd.Flags().BoolVar(&opts.RandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
@@ -1349,7 +1351,7 @@ var scanHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Output",
-			Names: []string{"output", "quiet", "random-agent"},
+			Names: []string{"output", "quiet", "human-readable", "random-agent"},
 		},
 	},
 	HelpAllCmd: "searchit scan --help-all",
@@ -1524,6 +1526,9 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	}
 	if cmd.Flags().Changed("show-title") {
 		cfg.ShowTitle = opts.ShowTitle
+	}
+	if cmd.Flags().Changed("human-readable") {
+		cfg.HumanReadableSizes = opts.HumanReadable
 	}
 	if cmd.Flags().Changed("request") {
 		cfg.RequestFile = opts.Request

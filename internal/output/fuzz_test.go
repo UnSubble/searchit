@@ -24,13 +24,13 @@ func FuzzFormatters(f *testing.F) {
 
 		// Text Formatter
 		var textBuf bytes.Buffer
-		tf := output.NewTextFormatter(&textBuf, false, false, false)
+		tf := output.NewTextFormatter(&textBuf, false, false, false, false)
 		_ = tf.Print(res)
 		_ = tf.Close()
 
 		// Quiet Text Formatter
 		var quietBuf bytes.Buffer
-		qtf := output.NewTextFormatter(&quietBuf, true, false, false)
+		qtf := output.NewTextFormatter(&quietBuf, true, false, false, false)
 		_ = qtf.Print(res)
 		_ = qtf.Close()
 

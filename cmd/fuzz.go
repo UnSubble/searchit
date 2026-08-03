@@ -92,6 +92,7 @@ type FuzzOptions struct {
 	Adaptive        bool
 	ShowHeaders     bool
 	ShowTitle       bool
+	HumanReadable   bool
 	RandomAgent     bool
 	NoProgress      bool
 	HelpAll         bool
@@ -566,7 +567,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 
 				fileQuiet := cfg.Quiet && !cmd.Flags().Changed("format") && fileFmt == output.FormatText
-				fileFmttr = output.New(fileFmt, f, fileQuiet, cfg.ShowHeaders, cfg.ShowTitle)
+				fileFmttr = output.New(fileFmt, f, fileQuiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes)
 				if fileFmttr != nil {
 					defer fileFmttr.Close()
 				}
@@ -580,7 +581,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					termFmt = parsed
 				}
 			}
-			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes)
 			if termFmttr != nil {
 				defer termFmttr.Close()
 			}
@@ -1108,6 +1109,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringSliceVar(&opts.FilterContent, "ft", nil, "filter content types")
 	cmd.Flags().BoolVar(&opts.ShowHeaders, "show-headers", false, "show response headers in output")
 	cmd.Flags().BoolVar(&opts.ShowTitle, "show-title", false, "show HTML titles in output")
+	cmd.Flags().BoolVarP(&opts.HumanReadable, "human-readable", "R", false, "Render response sizes using human-readable units (KB, MB, GB).")
 	cmd.Flags().StringVar(&opts.Request, "request", "", "load raw HTTP request template from file")
 	cmd.Flags().StringVarP(&opts.RawProfile, "profile", "p", "", "apply one or more profiles (comma-separated)")
 	cmd.Flags().BoolVar(&opts.FollowRedirects, "follow-redirects", false, "follow HTTP redirects")
@@ -1148,7 +1150,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Output",
-			Names: []string{"output", "quiet"},
+			Names: []string{"output", "quiet", "human-readable"},
 		},
 		{
 			Title: "Performance",
@@ -1226,6 +1228,9 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("show-title") {
 		cfg.ShowTitle = opts.ShowTitle
+	}
+	if cmd.Flags().Changed("human-readable") {
+		cfg.HumanReadableSizes = opts.HumanReadable
 	}
 	if cmd.Flags().Changed("request") {
 		cfg.RequestFile = opts.Request

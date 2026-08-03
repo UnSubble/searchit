@@ -13,23 +13,30 @@ import (
 
 // TextFormatter writes clean text.
 type TextFormatter struct {
-	w           io.Writer
-	quiet       bool
-	showHeaders bool
-	showTitle   bool
+	w             io.Writer
+	quiet         bool
+	showHeaders   bool
+	showTitle     bool
+	humanReadable bool
 }
 
 // NewTextFormatter creates a Formatter writing to io.Writer.
-func NewTextFormatter(w io.Writer, quiet bool, showHeaders bool, showTitle bool) *TextFormatter {
-	return &TextFormatter{w: w, quiet: quiet, showHeaders: showHeaders, showTitle: showTitle}
+func NewTextFormatter(w io.Writer, quiet bool, showHeaders bool, showTitle bool, humanReadable bool) *TextFormatter {
+	return &TextFormatter{
+		w:             w,
+		quiet:         quiet,
+		showHeaders:   showHeaders,
+		showTitle:     showTitle,
+		humanReadable: humanReadable,
+	}
 }
 
 func (f *TextFormatter) Print(r engine.Result) error {
-	return writeTextResult(f.w, r, f.quiet, f.showHeaders, f.showTitle)
+	return writeTextResult(f.w, r, f.quiet, f.showHeaders, f.showTitle, f.humanReadable)
 }
 
 func (f *TextFormatter) PrintTo(w io.Writer, r engine.Result) error {
-	return writeTextResult(w, r, f.quiet, f.showHeaders, f.showTitle)
+	return writeTextResult(w, r, f.quiet, f.showHeaders, f.showTitle, f.humanReadable)
 }
 
 func (f *TextFormatter) Close() error {
@@ -38,32 +45,34 @@ func (f *TextFormatter) Close() error {
 
 // TerminalTextFormatter writes clean text through a TerminalManager.
 type TerminalTextFormatter struct {
-	tm          *terminal.Manager
-	owner       terminal.Owner
-	quiet       bool
-	showHeaders bool
-	showTitle   bool
+	tm            *terminal.Manager
+	owner         terminal.Owner
+	quiet         bool
+	showHeaders   bool
+	showTitle     bool
+	humanReadable bool
 }
 
 // NewTerminalTextFormatter creates a Formatter writing via a TerminalManager.
-func NewTerminalTextFormatter(tm *terminal.Manager, owner terminal.Owner, quiet bool, showHeaders bool, showTitle bool) *TerminalTextFormatter {
+func NewTerminalTextFormatter(tm *terminal.Manager, owner terminal.Owner, quiet bool, showHeaders bool, showTitle bool, humanReadable bool) *TerminalTextFormatter {
 	return &TerminalTextFormatter{
-		tm:          tm,
-		owner:       owner,
-		quiet:       quiet,
-		showHeaders: showHeaders,
-		showTitle:   showTitle,
+		tm:            tm,
+		owner:         owner,
+		quiet:         quiet,
+		showHeaders:   showHeaders,
+		showTitle:     showTitle,
+		humanReadable: humanReadable,
 	}
 }
 
 func (f *TerminalTextFormatter) Print(r engine.Result) error {
 	return f.tm.Emit(f.owner, func(w io.Writer) {
-		_ = writeTextResult(w, r, f.quiet, f.showHeaders, f.showTitle)
+		_ = writeTextResult(w, r, f.quiet, f.showHeaders, f.showTitle, f.humanReadable)
 	})
 }
 
 func (f *TerminalTextFormatter) PrintTo(w io.Writer, r engine.Result) error {
-	return writeTextResult(w, r, f.quiet, f.showHeaders, f.showTitle)
+	return writeTextResult(w, r, f.quiet, f.showHeaders, f.showTitle, f.humanReadable)
 }
 
 func (f *TerminalTextFormatter) Close() error {
@@ -71,7 +80,7 @@ func (f *TerminalTextFormatter) Close() error {
 }
 
 // writeTextResult is the shared rendering logic.
-func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle bool) error {
+func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle, humanReadable bool) error {
 	if quiet {
 		_, err := fmt.Fprintf(w, "%s\n", r.URL)
 		if err != nil {
@@ -81,20 +90,20 @@ func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle
 	}
 
 	if showHeaders || showTitle {
-		if err := writeVerboseTextResult(w, r, showHeaders, showTitle); err != nil {
+		if err := writeVerboseTextResult(w, r, showHeaders, showTitle, humanReadable); err != nil {
 			return err
 		}
 		return writeFuzzFieldsText(w, r.FuzzData)
 	}
 
 	if isRedirect(r) {
-		if err := writeRedirectResult(w, r); err != nil {
+		if err := writeRedirectResult(w, r, humanReadable); err != nil {
 			return err
 		}
 		return writeFuzzFieldsText(w, r.FuzzData)
 	}
 
-	if err := writeNormalTextResult(w, r); err != nil {
+	if err := writeNormalTextResult(w, r, humanReadable); err != nil {
 		return err
 	}
 	return writeFuzzFieldsText(w, r.FuzzData)
@@ -160,9 +169,17 @@ func requestedPath(rawURL string) string {
 	return reqURI
 }
 
-func formatSize(length int64) string {
+// FormatSize formats a byte length into a string representation.
+// When humanReadable is true, sizes are formatted in B, KB, MB, GB units (e.g. 9.6 KB, 1.0 MB).
+// When humanReadable is false (the default), sizes are formatted as raw byte counts (e.g. 9797 B, 1048576 B).
+// Unknown sizes (negative length) render as "? B" in both modes.
+// Zero-byte sizes render as "0 B" in both modes.
+func FormatSize(length int64, humanReadable bool) string {
 	if length < 0 {
 		return "? B"
+	}
+	if !humanReadable {
+		return fmt.Sprintf("%d B", length)
 	}
 	if length < 1024 {
 		return fmt.Sprintf("%d B", length)
@@ -176,7 +193,11 @@ func formatSize(length int64) string {
 	return fmt.Sprintf("%.1f GB", float64(length)/(1024.0*1024.0*1024.0))
 }
 
-func writeRedirectResult(w io.Writer, r engine.Result) error {
+func formatSize(length int64, humanReadable bool) string {
+	return FormatSize(length, humanReadable)
+}
+
+func writeRedirectResult(w io.Writer, r engine.Result, humanReadable bool) error {
 	reqPath := requestedPath(r.URL)
 	loc := ""
 	if r.Headers != nil {
@@ -185,21 +206,21 @@ func writeRedirectResult(w io.Writer, r engine.Result) error {
 	if loc == "" {
 		loc = r.RedirectURL
 	}
-	s := formatSize(r.Length)
+	s := formatSize(r.Length, humanReadable)
 	_, err := fmt.Fprintf(w, "[%d] - %s - %s -> %s\n", r.StatusCode, s, reqPath, loc)
 	return err
 }
 
-func writeNormalTextResult(w io.Writer, r engine.Result) error {
-	s := formatSize(r.Length)
+func writeNormalTextResult(w io.Writer, r engine.Result, humanReadable bool) error {
+	s := formatSize(r.Length, humanReadable)
 	_, err := fmt.Fprintf(w, "[+] %d - %s - %s\n", r.StatusCode, s, r.URL)
 	return err
 }
 
-func writeVerboseTextResult(w io.Writer, r engine.Result, showHeaders, showTitle bool) error {
+func writeVerboseTextResult(w io.Writer, r engine.Result, showHeaders, showTitle, humanReadable bool) error {
 	var sb strings.Builder
 
-	sizeStr := formatSize(r.Length)
+	sizeStr := formatSize(r.Length, humanReadable)
 
 	sb.WriteString(fmt.Sprintf("%d     %s\n\n%s\n", r.StatusCode, sizeStr, r.URL))
 

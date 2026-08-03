@@ -79,9 +79,10 @@ type ScanOverlay struct {
 	Request *string   `yaml:"request"`
 
 	// Adaptive & presentation
-	Adaptive    *bool `yaml:"adaptive"`
-	ShowHeaders *bool `yaml:"show-headers"`
-	ShowTitle   *bool `yaml:"show-title"`
+	Adaptive      *bool `yaml:"adaptive"`
+	ShowHeaders   *bool `yaml:"show-headers"`
+	ShowTitle     *bool `yaml:"show-title"`
+	HumanReadable *bool `yaml:"human-readable"`
 
 	// User-Agent
 	UserAgent   *string `yaml:"user-agent"`
@@ -144,9 +145,10 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 		Proxy   *string   `yaml:"proxy"`
 		Request *string   `yaml:"request"`
 
-		Adaptive    *bool `yaml:"adaptive"`
-		ShowHeaders *bool `yaml:"show-headers"`
-		ShowTitle   *bool `yaml:"show-title"`
+		Adaptive      *bool `yaml:"adaptive"`
+		ShowHeaders   *bool `yaml:"show-headers"`
+		ShowTitle     *bool `yaml:"show-title"`
+		HumanReadable *bool `yaml:"human-readable"`
 
 		UserAgent   *string `yaml:"user-agent"`
 		RandomAgent *bool   `yaml:"random-agent"`
@@ -214,6 +216,7 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 	o.Adaptive = raw.Adaptive
 	o.ShowHeaders = raw.ShowHeaders
 	o.ShowTitle = raw.ShowTitle
+	o.HumanReadable = raw.HumanReadable
 
 	o.UserAgent = raw.UserAgent
 	o.RandomAgent = raw.RandomAgent
@@ -433,6 +436,9 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 	}
 	if o.ShowTitle != nil {
 		cfg.ShowTitle = *o.ShowTitle
+	}
+	if o.HumanReadable != nil {
+		cfg.HumanReadableSizes = *o.HumanReadable
 	}
 	if o.UserAgent != nil {
 		cfg.UserAgent = *o.UserAgent

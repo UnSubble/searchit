@@ -16,7 +16,7 @@ import (
 func TestTextFormatter(t *testing.T) {
 	t.Run("identical output formatting", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, false, false)
+		f := output.NewTextFormatter(&buf, false, false, false, false)
 
 		r := engine.Result{
 			URL:        "http://example.com/admin",
@@ -40,7 +40,7 @@ func TestTextFormatter(t *testing.T) {
 
 	t.Run("empty output", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, false, false)
+		f := output.NewTextFormatter(&buf, false, false, false, false)
 		if err := f.Close(); err != nil {
 			t.Fatalf("Close failed: %v", err)
 		}
@@ -51,7 +51,7 @@ func TestTextFormatter(t *testing.T) {
 
 	t.Run("quiet mode prints only URL", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, true, false, false)
+		f := output.NewTextFormatter(&buf, true, false, false, false)
 
 		r := engine.Result{
 			URL:        "http://example.com/admin",
@@ -206,14 +206,14 @@ func TestFormatterErrors(t *testing.T) {
 	r := engine.Result{URL: "http://example.com", StatusCode: 200}
 
 	t.Run("TextFormatter write error", func(t *testing.T) {
-		f := output.NewTextFormatter(errorWriter{}, false, false, false)
+		f := output.NewTextFormatter(errorWriter{}, false, false, false, false)
 		if err := f.Print(r); err == nil {
 			t.Error("expected print error, got nil")
 		}
 	})
 
 	t.Run("TextFormatter quiet write error", func(t *testing.T) {
-		f := output.NewTextFormatter(errorWriter{}, true, false, false)
+		f := output.NewTextFormatter(errorWriter{}, true, false, false, false)
 		if err := f.Print(r); err == nil {
 			t.Error("expected print error, got nil")
 		}
@@ -463,7 +463,7 @@ func TestNew(t *testing.T) {
 	r := engine.Result{URL: "http://example.com", StatusCode: 200, Length: 1, Depth: 0}
 	for _, f := range []output.Format{output.FormatText, output.FormatJSON, output.FormatNDJSON, output.FormatCSV, output.FormatMarkdown} {
 		var buf bytes.Buffer
-		fmttr := output.New(f, &buf, false, false, false)
+		fmttr := output.New(f, &buf, false, false, false, false)
 		if fmttr == nil {
 			t.Errorf("New(%q) returned nil", f)
 			continue
@@ -493,7 +493,7 @@ func TestFormatters_ShowPresentation(t *testing.T) {
 
 	t.Run("TextFormatter with show-title and show-headers", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, true, true)
+		f := output.NewTextFormatter(&buf, false, true, true, false)
 		if err := f.Print(r); err != nil {
 			t.Fatalf("Print failed: %v", err)
 		}
@@ -555,7 +555,7 @@ func TestFormatters_ShowPresentation(t *testing.T) {
 func TestTextFormatter_Redirects(t *testing.T) {
 	t.Run("301 with absolute location", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, false, false)
+		f := output.NewTextFormatter(&buf, false, false, false, false)
 		headers := make(http.Header)
 		headers.Set("Location", "http://10.114.169.75/upload/")
 
@@ -578,7 +578,7 @@ func TestTextFormatter_Redirects(t *testing.T) {
 
 	t.Run("302 with relative location and query params", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, false, false)
+		f := output.NewTextFormatter(&buf, false, false, false, false)
 		headers := make(http.Header)
 		headers.Set("Location", "/signin")
 
@@ -603,7 +603,7 @@ func TestTextFormatter_Redirects(t *testing.T) {
 		codes := []int{300, 301, 302, 303, 307, 308}
 		for _, code := range codes {
 			var buf bytes.Buffer
-			f := output.NewTextFormatter(&buf, false, false, false)
+			f := output.NewTextFormatter(&buf, false, false, false, false)
 			headers := make(http.Header)
 			headers.Set("Location", "/dest")
 
@@ -627,7 +627,7 @@ func TestTextFormatter_Redirects(t *testing.T) {
 
 	t.Run("missing Location header falls back to normal formatter", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, false, false)
+		f := output.NewTextFormatter(&buf, false, false, false, false)
 
 		r := engine.Result{
 			URL:        "http://example.com/redirect-no-loc",
@@ -647,7 +647,7 @@ func TestTextFormatter_Redirects(t *testing.T) {
 
 	t.Run("quiet mode with redirect", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, true, false, false)
+		f := output.NewTextFormatter(&buf, true, false, false, false)
 		headers := make(http.Header)
 		headers.Set("Location", "http://example.com/dest")
 
@@ -670,7 +670,7 @@ func TestTextFormatter_Redirects(t *testing.T) {
 
 	t.Run("non-redirect status code with Location header falls back to normal", func(t *testing.T) {
 		var buf bytes.Buffer
-		f := output.NewTextFormatter(&buf, false, false, false)
+		f := output.NewTextFormatter(&buf, false, false, false, false)
 		headers := make(http.Header)
 		headers.Set("Location", "http://example.com/dest")
 

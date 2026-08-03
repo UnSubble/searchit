@@ -20,7 +20,7 @@ func TestFuzzOutput_URLOnly(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	tf := output.NewTextFormatter(&buf, false, false, false)
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
 	if err := tf.Print(res); err != nil {
 		t.Fatalf("Print failed: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestFuzzOutput_Header(t *testing.T) {
 
 	// Text format check
 	var textBuf bytes.Buffer
-	tf := output.NewTextFormatter(&textBuf, false, false, false)
+	tf := output.NewTextFormatter(&textBuf, false, false, false, false)
 	_ = tf.Print(res)
 	textOut := textBuf.String()
 
@@ -95,7 +95,7 @@ func TestFuzzOutput_Cookie(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	tf := output.NewTextFormatter(&buf, false, false, false)
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
 	_ = tf.Print(res)
 	out := buf.String()
 
@@ -118,7 +118,7 @@ func TestFuzzOutput_POSTBody(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	tf := output.NewTextFormatter(&buf, false, false, false)
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
 	_ = tf.Print(res)
 	out := buf.String()
 
@@ -141,7 +141,7 @@ func TestFuzzOutput_JSONBody(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	tf := output.NewTextFormatter(&buf, false, false, false)
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
 	_ = tf.Print(res)
 	out := buf.String()
 
@@ -165,7 +165,7 @@ func TestFuzzOutput_MultipleLocations(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	tf := output.NewTextFormatter(&buf, false, false, false)
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
 	_ = tf.Print(res)
 	out := buf.String()
 
@@ -191,7 +191,7 @@ func TestFuzzOutput_MultiplePlaceholdersInOneLocation(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	tf := output.NewTextFormatter(&buf, false, false, false)
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
 	_ = tf.Print(res)
 	out := buf.String()
 

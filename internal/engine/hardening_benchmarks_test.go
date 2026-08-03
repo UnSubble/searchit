@@ -51,7 +51,7 @@ func BenchmarkOutputFormatters(b *testing.B) {
 	b.Run("text", func(b *testing.B) {
 		b.ReportAllocs()
 		var buf bytes.Buffer
-		fmttr := output.New(output.FormatText, &buf, false, true, true)
+		fmttr := output.New(output.FormatText, &buf, false, true, true, false)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			buf.Reset()
@@ -62,7 +62,7 @@ func BenchmarkOutputFormatters(b *testing.B) {
 	b.Run("json", func(b *testing.B) {
 		b.ReportAllocs()
 		var buf bytes.Buffer
-		fmttr := output.New(output.FormatJSON, &buf, false, true, true)
+		fmttr := output.New(output.FormatJSON, &buf, false, true, true, false)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			buf.Reset()
@@ -73,7 +73,7 @@ func BenchmarkOutputFormatters(b *testing.B) {
 	b.Run("ndjson", func(b *testing.B) {
 		b.ReportAllocs()
 		var buf bytes.Buffer
-		fmttr := output.New(output.FormatNDJSON, &buf, false, true, true)
+		fmttr := output.New(output.FormatNDJSON, &buf, false, true, true, false)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			buf.Reset()
