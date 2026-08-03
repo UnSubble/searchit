@@ -55,11 +55,8 @@ func runIntegrationCommandStreams(args []string) (string, string, error) {
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
 	os.Stdout = wOut
-	os.Stderr = wErr
-
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
+	cmd.SetOut(wOut)
+	cmd.SetErr(wErr)
 
 	execErr := cmd.ExecuteContext(context.Background())
 

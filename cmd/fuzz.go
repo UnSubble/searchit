@@ -549,28 +549,37 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				outFormat = parsedFormat
 			}
 
-			var outWriter io.Writer = os.Stdout
+			// Determine output file and output formatters.
+			var fileFmttr output.Formatter
 			if opts.Output != "" {
 				f, err := os.OpenFile(opts.Output, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 				if err != nil {
 					return fmt.Errorf("cannot open output file: %w", err)
 				}
 				defer f.Close()
-				outWriter = f
+
+				fileFmttr = output.New(outFormat, f, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+				if fileFmttr != nil {
+					defer fileFmttr.Close()
+				}
 			}
 
-			baseCount := 4600 // Embedded list size
-			if opts.Wordlist != "" {
-				baseCount = countFileLines(opts.Wordlist)
+			// Terminal formatter setup
+			var termFmttr output.Formatter
+			if opts.Output == "" {
+				termFmttr = output.New(outFormat, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			} else if !cfg.Quiet {
+				termFmttr = output.New(output.FormatText, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 			}
-			if len(cfg.Extensions) > 0 {
-				baseCount *= (1 + len(cfg.Extensions))
+			if termFmttr != nil {
+				defer termFmttr.Close()
 			}
-			var globalFmttr output.Formatter
-			if outFormat != output.FormatText {
-				globalFmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-				if globalFmttr != nil {
-					defer globalFmttr.Close()
+
+			var baseCount int
+			if opts.Wordlist == "" {
+				baseCount, _ = wordlist.EmbeddedReader{}.Count()
+				if len(cfg.Extensions) > 0 {
+					baseCount *= (1 + len(cfg.Extensions))
 				}
 			}
 
@@ -611,18 +620,11 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				stateMgr.Transition(state.PhaseStarting)
 
 				// 1. Create a fresh TerminalManager for the fuzz lifecycle (writing to stderr).
-				tm := terminal.New(os.Stderr)
+				tm := terminal.New(cmd.ErrOrStderr())
 				if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
 					return err
 				}
 
-				// 2. Formatter setup.
-				var fmttr output.Formatter
-				if globalFmttr != nil {
-					fmttr = globalFmttr
-				} else {
-					fmttr = output.New(outFormat, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-				}
 				var totalCandidates int64
 				if !cfg.Quiet {
 					wordlistsCount := 0
@@ -936,12 +938,17 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							Headers:     r.Headers,
 							FuzzData:    r.FuzzData,
 						}
-						if outWriter == os.Stdout && progMgr != nil {
-							progMgr.ExecuteAbove(func() {
-								_ = fmttr.Print(engRes)
-							})
-						} else {
-							_ = fmttr.Print(engRes)
+						if termFmttr != nil {
+							if progMgr != nil {
+								progMgr.ExecuteAbove(func() {
+									_ = termFmttr.Print(engRes)
+								})
+							} else {
+								_ = termFmttr.Print(engRes)
+							}
+						}
+						if fileFmttr != nil {
+							_ = fileFmttr.Print(engRes)
 						}
 					} else if r.Err != nil {
 						errStr := r.Err.Error()
@@ -953,19 +960,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					}
 				})
 				if runErr != nil && !errors.Is(runErr, context.Canceled) {
-					if globalFmttr != nil {
-						_ = globalFmttr.Close()
-					}
 					return runErr
 				}
 
 				// Fuzzing has naturally completed, synchronize target candidate count
 				// with actual JobsProduced in case of BFS/DFS pruning.
 				collector.SetTotalCandidates(collector.Snapshot().JobsProduced)
-
-				if fmttr != nil && globalFmttr == nil {
-					_ = fmttr.Close()
-				}
 
 				// In case the target naturally completed, trigger shutdown done.
 				cancelSig()
@@ -1292,33 +1292,4 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = opts.RandomAgent
 	}
-}
-
-func countFileLines(path string) int {
-	if path == "" {
-		return 1
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return 1
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	count := 0
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		count++
-	}
-
-	// check for errors encountered by scanner
-	if err := scanner.Err(); err != nil {
-		return 1
-	}
-	if count == 0 {
-		return 1
-	}
-	return count
 }

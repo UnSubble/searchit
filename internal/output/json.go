@@ -10,9 +10,10 @@ import (
 
 type JSONFormatter struct {
 	w           io.Writer
-	results     []jsonResult
 	showHeaders bool
 	showTitle   bool
+	hasPrinted  bool
+	closed      bool
 }
 
 type jsonResult struct {
@@ -45,22 +46,40 @@ func (f *JSONFormatter) Print(r engine.Result) error {
 	if r.FuzzData != nil && len(r.FuzzData.Fields) > 0 {
 		jr.Fuzz = r.FuzzData.Fields
 	}
-	f.results = append(f.results, jr)
-	return nil
-}
 
-func (f *JSONFormatter) Close() error {
-	if len(f.results) == 0 {
-		_, err := io.WriteString(f.w, "[]\n")
+	data, err := json.MarshalIndent(jr, "  ", "  ")
+	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(f.results, "", "  ")
-	if err != nil {
+
+	var prefix string
+	if !f.hasPrinted {
+		prefix = "[\n  "
+		f.hasPrinted = true
+	} else {
+		prefix = ",\n  "
+	}
+
+	if _, err := io.WriteString(f.w, prefix); err != nil {
 		return err
 	}
 	if _, err := f.w.Write(data); err != nil {
 		return err
 	}
-	_, err = io.WriteString(f.w, "\n")
+	return nil
+}
+
+func (f *JSONFormatter) Close() error {
+	if f.closed {
+		return nil
+	}
+	f.closed = true
+
+	if !f.hasPrinted {
+		_, err := io.WriteString(f.w, "[]\n")
+		return err
+	}
+
+	_, err := io.WriteString(f.w, "\n]\n")
 	return err
 }

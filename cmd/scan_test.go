@@ -333,15 +333,13 @@ func TestCLI_StartupInformation(t *testing.T) {
 
 			cmd.SetArgs(tc.args)
 
-			buf := new(bytes.Buffer)
-			cmd.SetOut(buf)
-			cmd.SetErr(buf)
-
 			// Capture stdout and stderr using pipe
 			r, w, err := os.Pipe()
 			if err != nil {
 				t.Fatalf("os.Pipe: %v", err)
 			}
+			cmd.SetOut(w)
+			cmd.SetErr(w)
 			oldStdout := os.Stdout
 			oldStderr := os.Stderr
 			os.Stdout = w

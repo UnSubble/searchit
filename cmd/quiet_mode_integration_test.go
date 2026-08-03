@@ -172,7 +172,6 @@ func runIntegrationCommandWithStderr(args []string) (string, string, error) {
 
 	// Set buffers for cobra command error/out
 	errBuf := new(bytes.Buffer)
-	cmd.SetOut(errBuf)
 	cmd.SetErr(errBuf)
 
 	// Run command

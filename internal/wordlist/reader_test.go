@@ -390,7 +390,7 @@ func (r customBlockReader) Read(ctx context.Context, out chan<- string) error {
 }
 
 func TestWordlist_Count(t *testing.T) {
-	// 1. EmbeddedReader
+	// 1. EmbeddedReader implements Countable (O(1) in-memory)
 	er := wordlist.EmbeddedReader{}
 	cnt, err := er.Count()
 	if err != nil {
@@ -400,27 +400,23 @@ func TestWordlist_Count(t *testing.T) {
 		t.Errorf("expected count > 0, got %d", cnt)
 	}
 
-	// 2. FileReader success
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "words.txt")
-	content := "admin\n# comment\n\nuser\n"
-	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
-		t.Fatalf("failed to write temp file: %v", err)
+	// 2. SliceReader implements Countable (O(1) in-memory)
+	sr := wordlist.NewSliceReader(wordlist.EmbeddedReader{})
+	if c, ok := sr.(wordlist.Countable); ok {
+		cnt, err = c.Count()
+		if err != nil {
+			t.Fatalf("SliceReader.Count failed: %v", err)
+		}
+		if cnt <= 0 {
+			t.Errorf("expected count > 0, got %d", cnt)
+		}
+	} else {
+		t.Error("expected SliceReader to implement Countable interface")
 	}
 
-	fr := wordlist.FileReader{Path: filePath}
-	cnt, err = fr.Count()
-	if err != nil {
-		t.Fatalf("FileReader.Count failed: %v", err)
-	}
-	if cnt != 2 {
-		t.Errorf("expected count 2, got %d", cnt)
-	}
-
-	// 3. FileReader error (missing file)
-	frMissing := wordlist.FileReader{Path: filePath + "-non-existent"}
-	_, err = frMissing.Count()
-	if err == nil {
-		t.Error("expected FileReader.Count error for missing file, got nil")
+	// 3. FileReader does NOT implement Countable (streamed without pre-scanning file)
+	fr := wordlist.FileReader{Path: "words.txt"}
+	if _, ok := interface{}(fr).(wordlist.Countable); ok {
+		t.Error("expected FileReader NOT to implement Countable interface")
 	}
 }

@@ -525,25 +525,41 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}
 			}
 
-			// Determine the output writer (file or stdout) for the formatter.
-			var outWriter io.Writer = os.Stdout
+			// Determine output file and output formatters.
+			var fileFmttr output.Formatter
 			if cfg.OutputFile != "" {
 				f, err := os.OpenFile(cfg.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 				if err != nil {
 					return fmt.Errorf("cannot open output file: %w", err)
 				}
 				defer f.Close()
-				outWriter = f
+
+				fmt_, err := output.Parse(cfg.OutputFormat)
+				if err != nil {
+					fmt_ = output.FormatText
+				}
+				fileFmttr = output.New(fmt_, f, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+				if fileFmttr != nil {
+					defer fileFmttr.Close()
+				}
+			}
+
+			// Terminal formatter setup
+			var termFmttr output.Formatter
+			fmt_, err := output.Parse(cfg.OutputFormat)
+			if err != nil {
+				fmt_ = output.FormatText
+			}
+			if cfg.OutputFile == "" {
+				termFmttr = output.New(fmt_, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			} else if !cfg.Quiet {
+				termFmttr = output.New(output.FormatText, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
+			}
+			if termFmttr != nil {
+				defer termFmttr.Close()
 			}
 
 			httpclient.ConfigureTransportForWorkers(appState.HTTPClient, cfg.Threads)
-
-			// Construct the formatter from the resolved format name.
-			fmt_, err := output.Parse(cfg.OutputFormat)
-			if err != nil {
-				// Fallback — should not happen after validation, but be safe.
-				fmt_ = output.FormatText
-			}
 
 			var limiter *rate.Limiter
 			if cfg.Rate > 0 {
@@ -555,8 +571,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				return err
 			}
 
-			// Resolve and inject User-Agent once before any request is made.
-			// Resolution order: -H "User-Agent=..." > --user-agent > profile/--random-agent.
 			var randomUA string
 			if cfg.RandomAgent {
 				randomUA = useragent.Random()
@@ -580,14 +594,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			}
 			fs.ShowHeaders = cfg.ShowHeaders
 			fs.ShowTitle = cfg.ShowTitle
-
-			var globalFmttr output.Formatter
-			if cfg.OutputFormat != "text" {
-				globalFmttr = output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
-				if globalFmttr != nil {
-					defer globalFmttr.Close()
-				}
-			}
 
 			targetManager := targets.NewManager(opts.resolvedTargets)
 			globalSummary := targets.NewGlobalSummary(len(opts.resolvedTargets))
@@ -613,17 +619,9 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				defer scanCancel()
 
 				// 1. Create a fresh TerminalManager for this target's lifecycle (writing to stderr).
-				tm := terminal.New(os.Stderr)
+				tm := terminal.New(cmd.ErrOrStderr())
 				if err := tm.AcquireOwner(terminal.OwnerConfiguration); err != nil {
 					return err
-				}
-
-				// 2. Formatter setup.
-				var fmttr output.Formatter
-				if globalFmttr != nil {
-					fmttr = globalFmttr
-				} else {
-					fmttr = output.New(fmt_, outWriter, cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle)
 				}
 
 				if !cfg.Quiet {
@@ -858,12 +856,17 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					})
 					manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
-							if outWriter == os.Stdout && progMgr != nil {
-								progMgr.ExecuteAbove(func() {
-									_ = fmttr.Print(r)
-								})
-							} else {
-								_ = fmttr.Print(r)
+							if termFmttr != nil {
+								if progMgr != nil {
+									progMgr.ExecuteAbove(func() {
+										_ = termFmttr.Print(r)
+									})
+								} else {
+									_ = termFmttr.Print(r)
+								}
+							}
+							if fileFmttr != nil {
+								_ = fileFmttr.Print(r)
 							}
 						} else if r.Err != nil {
 							errStr := r.Err.Error()
@@ -937,12 +940,17 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 						if r.Accepted {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
-							if outWriter == os.Stdout && progMgr != nil {
-								progMgr.ExecuteAbove(func() {
-									_ = fmttr.Print(r)
-								})
-							} else {
-								_ = fmttr.Print(r)
+							if termFmttr != nil {
+								if progMgr != nil {
+									progMgr.ExecuteAbove(func() {
+										_ = termFmttr.Print(r)
+									})
+								} else {
+									_ = termFmttr.Print(r)
+								}
+							}
+							if fileFmttr != nil {
+								_ = fileFmttr.Print(r)
 							}
 						} else {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
@@ -956,10 +964,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							}
 						}
 					}
-				}
-
-				if fmttr != nil && globalFmttr == nil {
-					_ = fmttr.Close()
 				}
 
 				// In case the target naturally completed, trigger shutdown done.
