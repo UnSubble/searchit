@@ -3,6 +3,7 @@ package progress_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -442,5 +443,135 @@ func TestManager_StatsViewCleanupOnShutdown(t *testing.T) {
 
 	if !strings.Contains(out, "\033[J") {
 		t.Errorf("expected ANSI clear sequence \\033[J on shutdown from stats view, got:\n%s", out)
+	}
+}
+
+func TestProgressBar_ConstantWidth(t *testing.T) {
+	testCases := []struct {
+		name       string
+		percentage float64
+		width      int
+	}{
+		{"zero percent", 0.0, progress.ProgressBarWidth},
+		{"ten percent", 10.0, progress.ProgressBarWidth},
+		{"twenty five percent", 25.0, progress.ProgressBarWidth},
+		{"fifty percent", 50.0, progress.ProgressBarWidth},
+		{"seventy five percent", 75.0, progress.ProgressBarWidth},
+		{"one hundred percent", 100.0, progress.ProgressBarWidth},
+		{"negative clamped", -15.0, progress.ProgressBarWidth},
+		{"over hundred clamped", 125.0, progress.ProgressBarWidth},
+		{"custom width 10", 50.0, 10},
+		{"custom width 30", 50.0, 30},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			bar := progress.ProgressBar(tc.percentage, tc.width)
+			expectedRuneCount := tc.width + 2 // '[' + width characters + ']'
+			runes := []rune(bar)
+			if len(runes) != expectedRuneCount {
+				t.Fatalf("expected bar %q to have rune count %d, got %d", bar, expectedRuneCount, len(runes))
+			}
+			if !strings.HasPrefix(bar, "[") || !strings.HasSuffix(bar, "]") {
+				t.Fatalf("expected bar %q to be enclosed in brackets", bar)
+			}
+		})
+	}
+}
+
+func TestProgressBar_VariousCounters_ConstantWidth(t *testing.T) {
+	cases := []struct {
+		completed int64
+		total     int64
+	}{
+		{completed: 1, total: 10},
+		{completed: 10, total: 100},
+		{completed: 100, total: 1000},
+		{completed: 10000, total: 500000},
+	}
+
+	var extractedBars []string
+	for _, tc := range cases {
+		c := stats.NewCollector()
+		c.SetIsFinite(true)
+		c.SetTotalWork(tc.total)
+		for i := int64(0); i < tc.completed; i++ {
+			c.RecordTried()
+		}
+
+		var buf bytes.Buffer
+		tm := terminal.New(&buf)
+		_ = tm.AcquireOwner(terminal.OwnerProgress)
+		r := progress.NewANSIRenderer(tm, "http://localhost", nil, "Standard")
+
+		err := r.Render(c.Snapshot())
+		if err != nil {
+			t.Fatalf("unexpected render error: %v", err)
+		}
+
+		out := buf.String()
+		// Find the progress bar within the rendered output: between '[' and ']'
+		start := strings.Index(out, "Progress: [")
+		if start == -1 {
+			t.Fatalf("could not find 'Progress: [' in output:\n%s", out)
+		}
+		barStart := start + len("Progress: ")
+		barEnd := strings.Index(out[barStart:], "]")
+		if barEnd == -1 {
+			t.Fatalf("could not find closing ']' in output:\n%s", out)
+		}
+		bar := out[barStart : barStart+barEnd+1]
+		extractedBars = append(extractedBars, bar)
+	}
+
+	firstBarRunes := len([]rune(extractedBars[0]))
+	if firstBarRunes != progress.ProgressBarWidth+2 {
+		t.Fatalf("expected initial bar width to be %d, got %d for bar %q", progress.ProgressBarWidth+2, firstBarRunes, extractedBars[0])
+	}
+
+	for i, bar := range extractedBars {
+		runeCount := len([]rune(bar))
+		if runeCount != firstBarRunes {
+			t.Errorf("case %d (%d/%d): expected bar length %d, got %d (%q)",
+				i, cases[i].completed, cases[i].total, firstBarRunes, runeCount, bar)
+		}
+	}
+}
+
+// TestProgressBar_ConstantDenominatorThroughoutScan verifies that during execution,
+// as jobs are produced and tried, the progress line denominator remains strictly constant (e.g. X / 57005).
+func TestProgressBar_ConstantDenominatorThroughoutScan(t *testing.T) {
+	const total = int64(57005)
+	c := stats.NewCollector()
+	c.SetIsFinite(true)
+	c.SetTotalWork(total)
+
+	var buf bytes.Buffer
+	tm := terminal.New(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerProgress)
+	r := progress.NewANSIRenderer(tm, "http://localhost", nil, "Standard")
+
+	checkpoints := []int64{1, 50, 100, 504, 1364, 2410, 12453, 57005}
+	lastTried := int64(0)
+
+	for _, cp := range checkpoints {
+		for i := lastTried; i < cp; i++ {
+			c.RecordJobProduced()
+			c.AddTotalCandidates(1) // Legacy call simulation — must be ignored and not mutate total
+			c.RecordTried()
+		}
+		lastTried = cp
+
+		buf.Reset()
+		err := r.Render(c.Snapshot())
+		if err != nil {
+			t.Fatalf("render error at %d: %v", cp, err)
+		}
+
+		out := buf.String()
+		expectedPattern := fmt.Sprintf("%d / %d", cp, total)
+		if !strings.Contains(out, expectedPattern) {
+			t.Errorf("rendered progress at completed=%d does not contain expected pattern %q. Rendered output:\n%s", cp, expectedPattern, out)
+		}
 	}
 }

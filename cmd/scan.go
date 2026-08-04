@@ -931,7 +931,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 										atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 										if collector != nil {
 											collector.RecordJobProduced()
-											collector.AddTotalCandidates(1)
 										}
 									}
 								}

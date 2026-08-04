@@ -15,6 +15,7 @@ import (
 
 const (
 	ProgressPanelHeight = 5
+	ProgressBarWidth    = 20
 )
 
 // ANSIRenderer renders statistics snapshots using live ANSI updates in the terminal.
@@ -207,7 +208,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 			remainingWork = 0
 		}
 
-		bar := progressBar(p, 20)
+		bar := ProgressBar(p, ProgressBarWidth)
 
 		eta := "-"
 		if elapsedSec > 2.0 && completed > 0 && remainingWork > 0 {
@@ -252,7 +253,17 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 	}
 }
 
-func progressBar(p float64, width int) string {
+// ProgressBar returns a fixed-width graphical progress bar representation, e.g. "[████████░░░░░░░░░░]".
+// The width of the graphical bar is constant and does not change dynamically with progress counters or text.
+func ProgressBar(p float64, width int) string {
+	if width <= 0 {
+		width = ProgressBarWidth
+	}
+	if math.IsNaN(p) || p < 0.0 {
+		p = 0.0
+	} else if p > 100.0 {
+		p = 100.0
+	}
 	filled := int((p / 100.0) * float64(width))
 	if filled < 0 {
 		filled = 0

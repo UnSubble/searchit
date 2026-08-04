@@ -377,23 +377,24 @@ func TestCollector_BytesReceivedNegativeProtection(t *testing.T) {
 	}
 }
 
-// TestAddTotalCandidates_IsRealIncrement verifies that AddTotalCandidates
-// is not a no-op and actually mutates totalWork/TotalCandidates.
-func TestAddTotalCandidates_IsRealIncrement(t *testing.T) {
+// TestAddTotalCandidates_IsNoOp verifies that AddTotalCandidates is a no-op
+// and cannot mutate TotalCandidates / TotalWork once initialized.
+func TestAddTotalCandidates_IsNoOp(t *testing.T) {
 	c := stats.NewCollector()
+	c.SetTotalCandidates(100)
 
-	if snap := c.Snapshot(); snap.TotalCandidates != 0 {
-		t.Fatalf("initial TotalCandidates should be 0, got %d", snap.TotalCandidates)
+	if snap := c.Snapshot(); snap.TotalCandidates != 100 {
+		t.Fatalf("initial TotalCandidates should be 100, got %d", snap.TotalCandidates)
 	}
 
 	c.AddTotalCandidates(1)
-	if snap := c.Snapshot(); snap.TotalCandidates != 1 {
-		t.Errorf("after AddTotalCandidates(1): TotalCandidates=%d, want 1", snap.TotalCandidates)
+	if snap := c.Snapshot(); snap.TotalCandidates != 100 {
+		t.Errorf("after AddTotalCandidates(1): TotalCandidates=%d, want 100 (must not mutate)", snap.TotalCandidates)
 	}
 
 	c.AddTotalCandidates(99)
 	if snap := c.Snapshot(); snap.TotalCandidates != 100 {
-		t.Errorf("after AddTotalCandidates(99): TotalCandidates=%d, want 100", snap.TotalCandidates)
+		t.Errorf("after AddTotalCandidates(99): TotalCandidates=%d, want 100 (must not mutate)", snap.TotalCandidates)
 	}
 
 	// TotalWork must mirror TotalCandidates
@@ -403,32 +404,29 @@ func TestAddTotalCandidates_IsRealIncrement(t *testing.T) {
 	}
 }
 
-// TestStreamingWordlist_TotalNeverZeroAfterFirstJob verifies that a collector
-// that starts with TotalWork=0 (streaming mode) has TotalWork > 0 after the
-// first AddTotalCandidates call, so Progress never shows "N / 0".
-func TestStreamingWordlist_TotalNeverZeroAfterFirstJob(t *testing.T) {
+// TestDenominator_RemainsConstantDuringExecution verifies that as jobs are
+// produced and processed, the total denominator stays strictly fixed.
+func TestDenominator_RemainsConstantDuringExecution(t *testing.T) {
+	const total = int64(57005)
 	c := stats.NewCollector()
 	c.SetIsFinite(true)
+	c.SetTotalCandidates(total)
 
-	// Simulate streaming: baseCount==0, no SetTotalCandidates called at startup.
-	snap := c.Snapshot()
-	if snap.TotalCandidates != 0 {
-		t.Fatalf("pre-condition: TotalCandidates should be 0 before any job")
-	}
+	// Simulate jobs being produced and tried in parallel.
+	for i := int64(1); i <= 1000; i++ {
+		c.RecordJobProduced()
+		c.RecordTried()
 
-	// First job arrives via AddTotalCandidates (streaming path).
-	c.AddTotalCandidates(1)
-	c.RecordTried()
-
-	snap = c.Snapshot()
-	if snap.TotalCandidates <= 0 {
-		t.Errorf("TotalCandidates should be > 0 after first job, got %d", snap.TotalCandidates)
-	}
-	if snap.Completed > snap.TotalWork {
-		t.Errorf("invariant violated: completed (%d) > totalWork (%d)", snap.Completed, snap.TotalWork)
-	}
-	if snap.Progress < 0 || snap.Progress > 100 {
-		t.Errorf("Progress %f out of [0,100] range", snap.Progress)
+		snap := c.Snapshot()
+		if snap.TotalWork != total {
+			t.Fatalf("step %d: TotalWork mutated to %d, want constant %d", i, snap.TotalWork, total)
+		}
+		if snap.TotalCandidates != total {
+			t.Fatalf("step %d: TotalCandidates mutated to %d, want constant %d", i, snap.TotalCandidates, total)
+		}
+		if snap.Completed != i {
+			t.Fatalf("step %d: Completed = %d, want %d", i, snap.Completed, i)
+		}
 	}
 }
 
@@ -474,42 +472,17 @@ func TestSetTotalCandidates_ReplacesNotAccumulates(t *testing.T) {
 	}
 }
 
-// TestAddTotalCandidates_Concurrent verifies that concurrent AddTotalCandidates
-// calls are race-free and produce the expected total.
-func TestAddTotalCandidates_Concurrent(t *testing.T) {
-	c := stats.NewCollector()
-	const goroutines = 50
-	const callsEach = 100
-
-	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < callsEach; j++ {
-				c.AddTotalCandidates(1)
-			}
-		}()
-	}
-	wg.Wait()
-
-	snap := c.Snapshot()
-	want := int64(goroutines * callsEach)
-	if snap.TotalCandidates != want {
-		t.Errorf("TotalCandidates after concurrent adds: got %d, want %d", snap.TotalCandidates, want)
-	}
-}
-
 // TestProgressInvariant_CompletedNeverExceedsTotal verifies the invariant
-// processed ≤ total whenever totalWork is known.
+// processed <= total whenever totalWork is known.
 func TestProgressInvariant_CompletedNeverExceedsTotal(t *testing.T) {
+	const total = int64(10)
 	c := stats.NewCollector()
 	c.SetIsFinite(true)
+	c.SetTotalCandidates(total)
 
-	// Simulate 10 streaming jobs.
 	for i := 0; i < 10; i++ {
-		c.AddTotalCandidates(1) // add one more to total before dispatching
-		c.RecordTried()         // one job dispatched
+		c.RecordJobProduced()
+		c.RecordTried() // one job dispatched
 		snap := c.Snapshot()
 		if snap.Completed > snap.TotalWork {
 			t.Errorf("at step %d: completed (%d) > totalWork (%d)", i+1, snap.Completed, snap.TotalWork)

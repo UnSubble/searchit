@@ -926,10 +926,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				estCandidates := runner.EstimateCandidates(baseCount)
 				if estCandidates > 0 {
 					collector.SetTotalCandidates(estCandidates)
-				} else {
-					// Wordlist size is unknown (streaming FileReader); totalWork will
-					// accumulate incrementally via AddTotalCandidates in pushCandidate.
-					runner.StreamingMode = true
 				}
 
 				// Wire adaptive informational messages through the progress renderer

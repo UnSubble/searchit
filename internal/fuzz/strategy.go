@@ -410,11 +410,6 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 			if e.collector != nil {
 				e.collector.RecordJobProduced()
-				if r.StreamingMode {
-					// Pre-counted wordlists already called SetTotalCandidates at
-					// startup; only accumulate here for streaming (uncounted) wordlists.
-					e.collector.AddTotalCandidates(1)
-				}
 			}
 			asyncCh, err := e.ExecuteAsync(job)
 			if err != nil {

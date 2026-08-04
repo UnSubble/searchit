@@ -108,7 +108,6 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 							atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 							if p.Collector != nil {
 								p.Collector.RecordJobProduced()
-								p.Collector.AddTotalCandidates(1)
 							}
 						}
 					}
