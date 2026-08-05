@@ -1066,7 +1066,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				return nil
 			})
 
-			if err != nil && !errors.Is(err, context.Canceled) {
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
 

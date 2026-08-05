@@ -981,7 +981,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						}
 					}
 				})
-				if runErr != nil && !errors.Is(runErr, context.Canceled) {
+				if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, context.DeadlineExceeded) {
 					return runErr
 				}
 
@@ -1055,7 +1055,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				return nil
 			})
 
-			if errExecute != nil && !errors.Is(errExecute, context.Canceled) {
+			if errExecute != nil && !errors.Is(errExecute, context.Canceled) && !errors.Is(errExecute, context.DeadlineExceeded) {
 				return errExecute
 			}
 
