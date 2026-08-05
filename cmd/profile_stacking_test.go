@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -12,6 +11,8 @@ import (
 )
 
 func TestProfileStacking_ScanMultipleProfilesPrecedence(t *testing.T) {
+	setupTestHome(t)
+
 	p1 := profile.Profile{
 		Schema: 1,
 		Name:   "scan/stack1",
@@ -45,10 +46,6 @@ func TestProfileStacking_ScanMultipleProfilesPrecedence(t *testing.T) {
 	store.Create(p1)
 	store.Create(p2)
 
-	home, _ := os.UserHomeDir()
-	defer os.RemoveAll(home + "/.config/searchit/profiles/scan/stack1.yaml")
-	defer os.RemoveAll(home + "/.config/searchit/profiles/scan/stack2.yaml")
-
 	var captured config.Config
 	cmd, opts := NewScanCmd()
 	opts.URL = "http://localhost"
@@ -73,6 +70,8 @@ func TestProfileStacking_ScanMultipleProfilesPrecedence(t *testing.T) {
 }
 
 func TestProfileStacking_CLIOverridesPrecedence(t *testing.T) {
+	setupTestHome(t)
+
 	p1 := profile.Profile{
 		Schema: 1,
 		Name:   "scan/stack_cli",
@@ -87,9 +86,6 @@ func TestProfileStacking_CLIOverridesPrecedence(t *testing.T) {
 	}
 	store := profile.NewStore()
 	store.Create(p1)
-
-	home, _ := os.UserHomeDir()
-	defer os.RemoveAll(home + "/.config/searchit/profiles/scan/stack_cli.yaml")
 
 	var captured config.Config
 	cmd, opts := NewScanCmd()

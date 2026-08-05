@@ -406,11 +406,6 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 				}
 				return true
 			}
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
-			atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
-			if e.collector != nil {
-				e.collector.RecordJobProduced()
-			}
 			asyncCh, err := e.ExecuteAsync(job)
 			if err != nil {
 				return false
