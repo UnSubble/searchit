@@ -1,6 +1,7 @@
 package diagnostics
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"runtime"
@@ -18,8 +19,20 @@ type GoRoutine struct {
 	Blocking string
 }
 
+func isTest() bool {
+	arg0 := strings.ToLower(os.Args[0])
+	arg0 = strings.TrimSuffix(arg0, ".exe")
+	if strings.HasSuffix(arg0, ".test") || strings.Contains(arg0, ".test.") {
+		return true
+	}
+	if flag.Lookup("test.v") != nil {
+		return true
+	}
+	return false
+}
+
 func RunDiagnostics(timeout time.Duration, scanCtxErr, drainCtxErr error) {
-	if strings.HasSuffix(os.Args[0], ".test") {
+	if isTest() {
 		return
 	}
 

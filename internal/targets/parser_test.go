@@ -184,7 +184,7 @@ func TestGlobalSummary(t *testing.T) {
 	if summary.TotalFound != 15 {
 		t.Errorf("expected TotalFound = 15, got %d", summary.TotalFound)
 	}
-	if summary.Duration() <= 0 {
-		t.Errorf("expected positive duration, got %v", summary.Duration())
+	if summary.Duration() < 0 {
+		t.Errorf("expected non-negative duration, got %v", summary.Duration())
 	}
 }

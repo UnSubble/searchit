@@ -2,7 +2,6 @@ package stats_test
 
 import (
 	"bytes"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -244,58 +243,51 @@ func TestInstrumentation_LogEvent(t *testing.T) {
 }
 
 func TestInstrumentation_PrintReconciliation(t *testing.T) {
-	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
 	inst := &stats.Instrumentation{}
 	inst.Enabled = 1
 	inst.Trace = 1
+	inst.Events = []string{"Event 1"}
 
-	// Setup mismatches to cover all pipeline stages
+	var buf bytes.Buffer
+
+	// Test all mismatch branches
 	inst.JobsProduced = 10
 	inst.JobsSubmitted = 9
-	inst.PrintReconciliation() // Mismatch in Producer
+	inst.PrintReconciliation(&buf) // Mismatch in Producer
 
 	inst.JobsSubmitted = 10
 	inst.WorkerJobsRecv = 9
-	inst.PrintReconciliation() // Mismatch in Channel
+	inst.PrintReconciliation(&buf) // Mismatch in Channel
 
 	inst.WorkerJobsRecv = 10
 	inst.WorkerJobsComp = 9
-	inst.PrintReconciliation() // Mismatch in Workers
+	inst.PrintReconciliation(&buf) // Mismatch in Workers
 
 	inst.WorkerJobsComp = 10
 	inst.RequestsBuilt = 9
-	inst.PrintReconciliation() // Mismatch in Request Builder
+	inst.PrintReconciliation(&buf) // Mismatch in Request Builder
 
 	inst.RequestsBuilt = 10
 	inst.RequestsSent = 9
-	inst.PrintReconciliation() // Mismatch in HTTP Transmission
+	inst.PrintReconciliation(&buf) // Mismatch in HTTP Transmission
 
 	inst.RequestsSent = 10
 	inst.ResponsesReceived = 9
-	inst.PrintReconciliation() // Mismatch in HTTP Response
+	inst.PrintReconciliation(&buf) // Mismatch in HTTP Response
 
 	inst.ResponsesReceived = 10
 	inst.ResultsProduced = 9
-	inst.PrintReconciliation() // Mismatch in Worker Output
+	inst.PrintReconciliation(&buf) // Mismatch in Worker Output
 
 	inst.ResultsProduced = 10
 	inst.ResultsConsumed = 9
-	inst.PrintReconciliation() // Mismatch in Scheduler
+	inst.PrintReconciliation(&buf) // Mismatch in Scheduler
 
-	// Reconciled
+	// Test Reconciled
 	inst.ResultsConsumed = 10
-	inst.PrintReconciliation()
+	inst.PrintReconciliation(&buf)
 
-	w.Close()
-	os.Stderr = oldStderr
-
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
 	out := buf.String()
-
 	if !strings.Contains(out, "MISMATCH DETECTED") {
 		t.Errorf("expected reconciliation output to contain mismatches")
 	}

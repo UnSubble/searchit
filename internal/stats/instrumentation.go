@@ -2,6 +2,7 @@ package stats
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -71,9 +72,12 @@ func (i *Instrumentation) LogEvent(event string) {
 	i.EventsMu.Unlock()
 }
 
-func (i *Instrumentation) PrintReconciliation() {
+func (i *Instrumentation) PrintReconciliation(w io.Writer) {
 	if atomic.LoadInt32(&i.Enabled) == 0 {
 		return
+	}
+	if w == nil {
+		w = os.Stderr
 	}
 
 	wordsRead := atomic.LoadInt64(&i.WordsRead)
@@ -119,47 +123,47 @@ func (i *Instrumentation) PrintReconciliation() {
 		mismatchStage = "Scheduler / Draining (Results Consumed != Results Produced)"
 	}
 
-	fmt.Fprintf(os.Stderr, "\n--- PIPELINE RECONCILIATION ---\n")
-	fmt.Fprintf(os.Stderr, "Words Read          : %d\n", wordsRead)
-	fmt.Fprintf(os.Stderr, "Invalid Words       : %d\n", atomic.LoadInt64(&i.InvalidWords))
-	fmt.Fprintf(os.Stderr, "Jobs Produced       : %d\n", jobsProduced)
-	fmt.Fprintf(os.Stderr, "Jobs Submitted      : %d\n", jobsSubmitted)
-	fmt.Fprintf(os.Stderr, "Jobs Received       : %d\n", jobsRecv)
-	fmt.Fprintf(os.Stderr, "Jobs Completed      : %d\n", jobsComp)
-	fmt.Fprintf(os.Stderr, "Requests Built      : %d\n", reqsBuilt)
-	fmt.Fprintf(os.Stderr, "Requests Sent       : %d\n", reqsSent)
-	fmt.Fprintf(os.Stderr, "Responses Received  : %d\n", respsRecv)
-	fmt.Fprintf(os.Stderr, "Results Produced    : %d\n", resultsProd)
-	fmt.Fprintf(os.Stderr, "Results Consumed    : %d\n", resultsCons)
+	fmt.Fprintf(w, "\n--- PIPELINE RECONCILIATION ---\n")
+	fmt.Fprintf(w, "Words Read          : %d\n", wordsRead)
+	fmt.Fprintf(w, "Invalid Words       : %d\n", atomic.LoadInt64(&i.InvalidWords))
+	fmt.Fprintf(w, "Jobs Produced       : %d\n", jobsProduced)
+	fmt.Fprintf(w, "Jobs Submitted      : %d\n", jobsSubmitted)
+	fmt.Fprintf(w, "Jobs Received       : %d\n", jobsRecv)
+	fmt.Fprintf(w, "Jobs Completed      : %d\n", jobsComp)
+	fmt.Fprintf(w, "Requests Built      : %d\n", reqsBuilt)
+	fmt.Fprintf(w, "Requests Sent       : %d\n", reqsSent)
+	fmt.Fprintf(w, "Responses Received  : %d\n", respsRecv)
+	fmt.Fprintf(w, "Results Produced    : %d\n", resultsProd)
+	fmt.Fprintf(w, "Results Consumed    : %d\n", resultsCons)
 	if mismatch {
-		fmt.Fprintf(os.Stderr, "Status              : ❌ MISMATCH DETECTED (First lost work stage: %s)\n", mismatchStage)
+		fmt.Fprintf(w, "Status              : ❌ MISMATCH DETECTED (First lost work stage: %s)\n", mismatchStage)
 	} else {
-		fmt.Fprintf(os.Stderr, "Status              :  Reconciled\n")
+		fmt.Fprintf(w, "Status              :  Reconciled\n")
 	}
 
 	if atomic.LoadInt32(&i.Trace) != 0 {
-		fmt.Fprintf(os.Stderr, "\n--- DETAILED COUNTERS ---\n")
-		fmt.Fprintf(os.Stderr, "Reader EOF Reached  : %d\n", atomic.LoadInt64(&i.ReaderEOF))
-		fmt.Fprintf(os.Stderr, "Reader Exited       : %d\n", atomic.LoadInt64(&i.ReaderExit))
-		fmt.Fprintf(os.Stderr, "Producer Exited     : %d\n", atomic.LoadInt64(&i.ProducerExit))
-		fmt.Fprintf(os.Stderr, "Scheduler Accepted  : %d\n", atomic.LoadInt64(&i.JobsAccepted))
-		fmt.Fprintf(os.Stderr, "Scheduler Dispatched: %d\n", atomic.LoadInt64(&i.JobsDispatched))
-		fmt.Fprintf(os.Stderr, "Scheduler Remaining : %d\n", atomic.LoadInt64(&i.JobsRemaining))
-		fmt.Fprintf(os.Stderr, "Scheduler Discarded : %d\n", atomic.LoadInt64(&i.JobsDiscarded))
-		fmt.Fprintf(os.Stderr, "Scheduler Exited    : %d\n", atomic.LoadInt64(&i.SchedulerExit))
-		fmt.Fprintf(os.Stderr, "Workers Started     : %d\n", atomic.LoadInt64(&i.WorkersStarted))
-		fmt.Fprintf(os.Stderr, "Workers Exited      : %d\n", atomic.LoadInt64(&i.WorkersExited))
-		fmt.Fprintf(os.Stderr, "Worker Jobs Rejected: %d\n", atomic.LoadInt64(&i.WorkerJobsRej))
-		fmt.Fprintf(os.Stderr, "Results Accepted    : %d\n", atomic.LoadInt64(&i.ResultsAccepted))
-		fmt.Fprintf(os.Stderr, "Results Rejected    : %d\n", atomic.LoadInt64(&i.ResultsRejected))
-		fmt.Fprintf(os.Stderr, "\n--- SHUTDOWN ORDER ---\n")
+		fmt.Fprintf(w, "\n--- DETAILED COUNTERS ---\n")
+		fmt.Fprintf(w, "Reader EOF Reached  : %d\n", atomic.LoadInt64(&i.ReaderEOF))
+		fmt.Fprintf(w, "Reader Exited       : %d\n", atomic.LoadInt64(&i.ReaderExit))
+		fmt.Fprintf(w, "Producer Exited     : %d\n", atomic.LoadInt64(&i.ProducerExit))
+		fmt.Fprintf(w, "Scheduler Accepted  : %d\n", atomic.LoadInt64(&i.JobsAccepted))
+		fmt.Fprintf(w, "Scheduler Dispatched: %d\n", atomic.LoadInt64(&i.JobsDispatched))
+		fmt.Fprintf(w, "Scheduler Remaining : %d\n", atomic.LoadInt64(&i.JobsRemaining))
+		fmt.Fprintf(w, "Scheduler Discarded : %d\n", atomic.LoadInt64(&i.JobsDiscarded))
+		fmt.Fprintf(w, "Scheduler Exited    : %d\n", atomic.LoadInt64(&i.SchedulerExit))
+		fmt.Fprintf(w, "Workers Started     : %d\n", atomic.LoadInt64(&i.WorkersStarted))
+		fmt.Fprintf(w, "Workers Exited      : %d\n", atomic.LoadInt64(&i.WorkersExited))
+		fmt.Fprintf(w, "Worker Jobs Rejected: %d\n", atomic.LoadInt64(&i.WorkerJobsRej))
+		fmt.Fprintf(w, "Results Accepted    : %d\n", atomic.LoadInt64(&i.ResultsAccepted))
+		fmt.Fprintf(w, "Results Rejected    : %d\n", atomic.LoadInt64(&i.ResultsRejected))
+		fmt.Fprintf(w, "\n--- SHUTDOWN ORDER ---\n")
 		i.EventsMu.Lock()
 		for idx, ev := range i.Events {
-			fmt.Fprintf(os.Stderr, "  %d. %s\n", idx+1, ev)
+			fmt.Fprintf(w, "  %d. %s\n", idx+1, ev)
 		}
 		i.EventsMu.Unlock()
 	}
-	fmt.Fprintf(os.Stderr, "-------------------------------\n\n")
+	fmt.Fprintf(w, "-------------------------------\n\n")
 }
 
 func (i *Instrumentation) Reset() {
