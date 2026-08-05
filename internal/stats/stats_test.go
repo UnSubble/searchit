@@ -1,6 +1,9 @@
 package stats_test
 
 import (
+	"bytes"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -241,6 +244,10 @@ func TestInstrumentation_LogEvent(t *testing.T) {
 }
 
 func TestInstrumentation_PrintReconciliation(t *testing.T) {
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
 	inst := &stats.Instrumentation{}
 	inst.Enabled = 1
 	inst.Trace = 1
@@ -281,6 +288,20 @@ func TestInstrumentation_PrintReconciliation(t *testing.T) {
 	// Reconciled
 	inst.ResultsConsumed = 10
 	inst.PrintReconciliation()
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	out := buf.String()
+
+	if !strings.Contains(out, "MISMATCH DETECTED") {
+		t.Errorf("expected reconciliation output to contain mismatches")
+	}
+	if !strings.Contains(out, "Reconciled") {
+		t.Errorf("expected reconciliation output to contain Reconciled")
+	}
 }
 
 func TestCollector_CurrentReqPerSec_UpdatesContinuously(t *testing.T) {

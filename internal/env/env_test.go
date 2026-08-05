@@ -4,7 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/unsubble/searchit/internal/testutil/command"
 )
+
+func TestHelperProcess(t *testing.T) {
+	command.HandleHelperProcess()
+}
 
 func TestCheckMultipleInstallations(t *testing.T) {
 	tempDir := t.TempDir()
@@ -32,6 +38,14 @@ func TestCheckMultipleInstallations(t *testing.T) {
 	// Set PATH to contain all three directories
 	originalPath := os.Getenv("PATH")
 	defer os.Setenv("PATH", originalPath)
+
+	t.Run("Empty PATH", func(t *testing.T) {
+		os.Setenv("PATH", "")
+		res := CheckMultipleInstallations(nil)
+		if res.HasMultiple || len(res.UniquePaths) != 0 {
+			t.Errorf("expected empty result on empty PATH, got %+v", res)
+		}
+	})
 
 	t.Run("Duplicate path elimination via symlink canonicalization", func(t *testing.T) {
 		os.Setenv("PATH", bin1+string(os.PathListSeparator)+bin2)
@@ -66,6 +80,26 @@ func TestCheckMultipleInstallations(t *testing.T) {
 		}
 		if len(res.UniquePaths) != 2 {
 			t.Errorf("Expected exactly 2 unique paths (deduplicated symlink + distinct), got %d: %v", len(res.UniquePaths), res.UniquePaths)
+		}
+	})
+}
+
+func TestResolveInstallContext(t *testing.T) {
+	t.Run("Default / Nil Executor", func(t *testing.T) {
+		ctx := ResolveInstallContext(nil)
+		if ctx.ActiveExecutable == "" {
+			t.Errorf("expected non-empty active executable")
+		}
+	})
+
+	t.Run("Mock Go Path", func(t *testing.T) {
+		mock := &command.MockExecutor{
+			MockOutput: "/home/user/go/bin\n",
+			ExitCode:   0,
+		}
+		ctx := ResolveInstallContext(mock)
+		if ctx.InstalledExecutable != "/home/user/go/bin/searchit" {
+			t.Errorf("expected /home/user/go/bin/searchit, got %q", ctx.InstalledExecutable)
 		}
 	})
 }

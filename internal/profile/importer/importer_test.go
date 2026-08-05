@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 // ─── Tokenize ────────────────────────────────────────────────────────────────
@@ -184,5 +186,65 @@ func TestParseCommand_MalformedCommand_UnterminatedQuote(t *testing.T) {
 	_, _, err := ParseCommand("scan", `scan --user-agent "Unclosed`, nil)
 	if err == nil {
 		t.Fatal("expected error for unterminated quote")
+	}
+}
+
+func mockScanFlags() *pflag.FlagSet {
+	fs := pflag.NewFlagSet("scan", pflag.ContinueOnError)
+	fs.IntP("threads", "t", 32, "")
+	fs.Bool("adaptive", false, "")
+	fs.Float64("rate", 0, "")
+	fs.String("user-agent", "", "")
+	fs.StringSliceP("header", "H", nil, "")
+	fs.StringSliceP("cookie", "b", nil, "")
+	fs.String("mc", "", "")
+	fs.String("exclude-status", "", "")
+	fs.String("fc", "", "")
+	fs.String("include-size", "", "")
+	fs.String("ms", "", "")
+	fs.String("exclude-size", "", "")
+	fs.String("fs", "", "")
+	fs.Bool("no-progress", false, "")
+	fs.StringP("output", "o", "", "")
+	fs.String("profile", "", "")
+	return fs
+}
+
+func mockFuzzFlags() *pflag.FlagSet {
+	fs := pflag.NewFlagSet("fuzz", pflag.ContinueOnError)
+	fs.IntP("threads", "t", 32, "")
+	fs.String("strategy", "eager", "")
+	fs.Bool("no-progress", false, "")
+	fs.String("foo", "", "")
+	return fs
+}
+
+func TestParseCommand_Scan_Success(t *testing.T) {
+	node, warns, err := ParseCommand("scan", "scan -t 128 --adaptive --rate 50.5 --user-agent TestBot --header 'X-Key: 123' --mc 200,301 --exclude-status 404 --fc 500 -o out.txt --no-progress", mockScanFlags)
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+
+	if len(warns) < 2 {
+		t.Errorf("expected warnings for --output and --no-progress, got %v", warns)
+	}
+
+	if node.Kind != 4 { // yaml.MappingNode
+		t.Fatalf("expected MappingNode, got %v", node.Kind)
+	}
+}
+
+func TestParseCommand_Fuzz_Success(t *testing.T) {
+	node, warns, err := ParseCommand("fuzz", "searchit fuzz --threads 64 --strategy bfs --foo test.txt --no-progress", mockFuzzFlags)
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+
+	if len(warns) < 2 {
+		t.Errorf("expected warnings for --foo and --no-progress, got %v", warns)
+	}
+
+	if node.Kind != 4 {
+		t.Fatalf("expected MappingNode, got %v", node.Kind)
 	}
 }
