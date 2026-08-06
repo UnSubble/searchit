@@ -436,23 +436,68 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				limiter = rate.NewLimiter(rate.Limit(cfg.Rate), 1)
 			}
 
-			// Load auxiliary wordlists
-			fooWords, err := loadLines(opts.Foo)
+			// Validate and resolve secondary placeholder aliases before loading any wordlist.
+			// An alias like "=fuzz" means: reuse the FUZZ wordlist without reopening the file.
+			aliasMap := map[string]string{
+				"FOO":  opts.Foo,
+				"BAR":  opts.Bar,
+				"BAZ":  opts.Baz,
+				"BUZZ": opts.Buzz,
+			}
+			if err := validatePlaceholderAliases(aliasMap); err != nil {
+				return err
+			}
+
+			// Load auxiliary wordlists. Order matters: aliases reference previously-loaded slices.
+			// The loaded map is keyed by canonical placeholder name (upper-case).
+			loadedWords := map[string][]string{}
+			// FUZZ is the primary; it will be loaded later via primaryReader.
+			// Pre-populate with an empty sentinel so aliases to FUZZ are valid.
+			// The actual slice will be filled in at runtime by the Runner's primary channel.
+			// For alias resolution we need the file slice only for secondary placeholders;
+			// FUZZ is the only one that may be aliased without having a pre-loaded slice.
+			// We handle that case specially: if a secondary aliases =fuzz we will load
+			// FUZZ's file upfront so the slice is available.
+			var fuzzFileWords []string // non-nil only when a secondary aliases =fuzz
+
+			// Determine if any secondary aliases =fuzz so we can pre-load the FUZZ file.
+			for _, raw := range []string{opts.Foo, opts.Bar, opts.Baz, opts.Buzz} {
+				if isAlias(raw) && strings.EqualFold(strings.TrimPrefix(raw, "="), "fuzz") {
+					// Pre-load the FUZZ file once.
+					if fuzzFileWords == nil {
+						fuzzFileWords, err = loadLines(opts.Wordlist)
+						if err != nil {
+							return fmt.Errorf("failed to pre-load FUZZ wordlist for alias: %w", err)
+						}
+						loadedWords["FUZZ"] = fuzzFileWords
+					}
+					break
+				}
+			}
+
+			fooWords, err := resolveSecondaryWordlist(opts.Foo, "FOO", loadedWords)
 			if err != nil {
 				return fmt.Errorf("failed to load FOO wordlist: %w", err)
 			}
-			barWords, err := loadLines(opts.Bar)
+			loadedWords["FOO"] = fooWords
+
+			barWords, err := resolveSecondaryWordlist(opts.Bar, "BAR", loadedWords)
 			if err != nil {
 				return fmt.Errorf("failed to load BAR wordlist: %w", err)
 			}
-			bazWords, err := loadLines(opts.Baz)
+			loadedWords["BAR"] = barWords
+
+			bazWords, err := resolveSecondaryWordlist(opts.Baz, "BAZ", loadedWords)
 			if err != nil {
 				return fmt.Errorf("failed to load BAZ wordlist: %w", err)
 			}
-			buzzWords, err := loadLines(opts.Buzz)
+			loadedWords["BAZ"] = bazWords
+
+			buzzWords, err := resolveSecondaryWordlist(opts.Buzz, "BUZZ", loadedWords)
 			if err != nil {
 				return fmt.Errorf("failed to load BUZZ wordlist: %w", err)
 			}
+			loadedWords["BUZZ"] = buzzWords
 
 			var headers http.Header
 			if opts.Request != "" && len(opts.resolvedFuzzTargets) > 0 {
@@ -1314,4 +1359,80 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = opts.RandomAgent
 	}
+}
+
+// isAlias reports whether a secondary placeholder flag value is an alias
+// (i.e. starts with '=' to reference another placeholder's wordlist).
+func isAlias(raw string) bool {
+	return strings.HasPrefix(raw, "=")
+}
+
+// validatePlaceholderAliases checks that alias values (=<name>) are valid:
+//   - the referenced name must be a known placeholder (fuzz, foo, bar, baz, buzz)
+//   - no self-aliases (e.g. --foo =foo)
+//   - no circular chains (e.g. --foo =bar && --bar =foo)
+func validatePlaceholderAliases(secondaryMap map[string]string) error {
+	known := map[string]bool{"fuzz": true, "foo": true, "bar": true, "baz": true, "buzz": true}
+
+	// Build a directed alias graph: src -> target (both lower-case)
+	aliasGraph := map[string]string{}
+	for placeholder, raw := range secondaryMap {
+		if !isAlias(raw) {
+			continue
+		}
+		src := strings.ToLower(placeholder)
+		dst := strings.ToLower(strings.TrimPrefix(raw, "="))
+		if !known[dst] {
+			return fmt.Errorf("alias %q for --%s references unknown placeholder %q; valid targets: fuzz, foo, bar, baz, buzz",
+				raw, strings.ToLower(placeholder), dst)
+		}
+		if src == dst {
+			return fmt.Errorf("alias %q for --%s is a self-alias; a placeholder cannot reference itself",
+				raw, strings.ToLower(placeholder))
+		}
+		aliasGraph[src] = dst
+	}
+
+	// Detect circular chains via DFS.
+	for start := range aliasGraph {
+		visited := map[string]bool{}
+		cur := start
+		for {
+			if visited[cur] {
+				return fmt.Errorf("circular alias detected: chain starting at --%s loops back to %q", start, cur)
+			}
+			visited[cur] = true
+			next, ok := aliasGraph[cur]
+			if !ok {
+				break
+			}
+			cur = next
+		}
+	}
+	return nil
+}
+
+// resolveSecondaryWordlist loads or aliases a secondary placeholder wordlist.
+// If raw starts with '=', it is an alias to an already-resolved placeholder's words.
+// loaded contains words indexed by upper-case placeholder name (e.g. "FUZZ", "FOO").
+func resolveSecondaryWordlist(raw, placeholderName string, loaded map[string][]string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	if isAlias(raw) {
+		target := strings.ToUpper(strings.TrimPrefix(raw, "="))
+		words, ok := loaded[target]
+		if !ok {
+			// This should have been caught by validatePlaceholderAliases, but be defensive.
+			return nil, fmt.Errorf("--%s alias %q references %q which has no loaded wordlist",
+				strings.ToLower(placeholderName), raw, target)
+		}
+		// Return a copy of the slice so the caller gets an independent
+		// view over the same content — the Runner/Generator will
+		// iterate it independently for Cartesian products.
+		result := make([]string, len(words))
+		copy(result, words)
+		return result, nil
+	}
+	return loadLines(raw)
 }
