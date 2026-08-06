@@ -36,15 +36,6 @@ func sendResult(results chan<- Result, item WorkItem, res Result) {
 	}
 }
 
-func drainAndClose(body io.ReadCloser) int64 {
-	if body == nil {
-		return 0
-	}
-	n, _ := io.Copy(io.Discard, io.LimitReader(body, 2048))
-	body.Close()
-	return n
-}
-
 // Worker processes incoming fuzzed jobs from the channel.
 func Worker(
 	targetCtx context.Context,
@@ -247,7 +238,7 @@ func process(
 
 	// Filter 1: Match Headers (Status, Content-Type, Size)
 	if !fs.MatchHeaders(statusCode, length, contentType) {
-		drained := drainAndClose(resp.Body)
+		drained := httpclient.DrainAndClose(resp.Body, length)
 		if collector != nil {
 			recLen := length
 			if recLen < 0 {

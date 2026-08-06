@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/fingerprint"
+	"github.com/unsubble/searchit/internal/httpclient"
 	"github.com/unsubble/searchit/internal/robots"
 	"github.com/unsubble/searchit/internal/sitemap"
 	"github.com/unsubble/searchit/internal/wordlist"
@@ -114,7 +115,7 @@ func (c *Collector) Execute(ctx context.Context) error {
 				}
 			}
 		}
-		_ = robotsBody.Close()
+		_ = httpclient.DrainAndClose(robotsBody, -1)
 	}
 
 	// 2. Discover & Parse sitemaps

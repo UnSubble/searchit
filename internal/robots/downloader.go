@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/unsubble/searchit/internal/httpclient"
 )
 
 // Download fetches the robots.txt file for the given target URL.
@@ -30,7 +32,7 @@ func Download(ctx context.Context, client *http.Client, targetURL string) (io.Re
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		httpclient.DrainAndCloseResponse(resp)
 		return nil, "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 

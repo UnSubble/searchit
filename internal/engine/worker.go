@@ -33,17 +33,6 @@ func sendResult(results chan<- Result, res Result) {
 	results <- res
 }
 
-func drainAndClose(body io.ReadCloser) int64 {
-	if body == nil {
-		return 0
-	}
-	// Limit read to 2048 bytes to discard small/typical bodies (like 404 responses),
-	// allowing persistent TCP connection reuse without unbounded memory overhead.
-	n, _ := io.Copy(io.Discard, io.LimitReader(body, 2048))
-	body.Close()
-	return n
-}
-
 // CanonicalizeLocation resolves a raw Location header against the request URL.
 // If rawLoc is empty, unparseable, or reqURL is nil, it returns rawLoc unchanged.
 func CanonicalizeLocation(rawLoc string, reqURL *url.URL) string {
@@ -246,7 +235,7 @@ func process(
 
 	// Stage 1: Match Headers (Status, Content-Type, Size)
 	if !fs.MatchHeaders(statusCode, length, contentType) {
-		drained := drainAndClose(resp.Body)
+		drained := httpclient.DrainAndClose(resp.Body, length)
 		if collector != nil {
 			recLen := length
 			if recLen < 0 {
@@ -268,7 +257,7 @@ func process(
 
 	// Stage 2: Headers (General Response HeaderFilter)
 	if !AcceptHeaders(resp, incHeaders, excHeaders) {
-		drained := drainAndClose(resp.Body)
+		drained := httpclient.DrainAndClose(resp.Body, length)
 		if collector != nil {
 			recLen := length
 			if recLen < 0 {
@@ -299,7 +288,7 @@ func process(
 	if readErr == nil && len(bodyBytes) == int(bodyRegexLimit) {
 		extra, _ = io.Copy(io.Discard, resp.Body)
 	}
-	bodyRead = true
+	bodyRead = (readErr == nil)
 	resp.Body.Close()
 
 	totalRead := int64(len(bodyBytes)) + extra
@@ -402,12 +391,12 @@ func process(
 	}
 
 	var links []string
-	if opts.ExtractLinks && isHTML && bodyRead && readErr == nil {
+	if opts.ExtractLinks && isHTML && bodyRead {
 		links = htmlparser.ExtractLinks(bodyBytes)
 	}
 
 	var bodyHash uint64
-	if bodyRead && readErr == nil {
+	if bodyRead {
 		h := fnv.New64a()
 		_, _ = h.Write(bodyBytes)
 		bodyHash = h.Sum64()

@@ -322,7 +322,7 @@ func (m *Manager) Run(
 				closeJobs()
 				for result := range results {
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-					_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError)
+					_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, onResult, onRootError)
 				}
 				return
 			}
@@ -350,7 +350,7 @@ func (m *Manager) Run(
 					closeJobs()
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError)
+						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, onResult, onRootError)
 					}
 					return
 
@@ -373,7 +373,7 @@ func (m *Manager) Run(
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError); err != nil {
+					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, onResult, onRootError); err != nil {
 						runErr = err
 						return
 					}
@@ -387,7 +387,7 @@ func (m *Manager) Run(
 					closeJobs()
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError)
+						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, onResult, onRootError)
 					}
 					return
 				case result, ok := <-results:
@@ -396,7 +396,7 @@ func (m *Manager) Run(
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError); err != nil {
+					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, onResult, onRootError); err != nil {
 						runErr = err
 						return
 					}
@@ -410,7 +410,12 @@ func (m *Manager) Run(
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError); err != nil {
+			if err := func() error {
+				var _ map[string]bool = injectedLaravel
+				var _ map[string]bool = injectedWordPress
+				var _ map[string]bool = injectedExpress
+				return m.handleResult(ctx, result, frontier, &activeGenerator, visited, onResult, onRootError)
+			}(); err != nil {
 				if runErr == nil {
 					runErr = err
 				}
@@ -429,18 +434,7 @@ func (m *Manager) Run(
 
 // handleResult forwards the result to the output channel and, if the result
 // qualifies for recursion, generates child jobs from the wordlist.
-func (m *Manager) handleResult(
-	ctx context.Context,
-	result engine.Result,
-	frontier *Frontier,
-	activeGenerator *Generator,
-	visited map[string]struct{},
-	injectedLaravel map[string]bool,
-	injectedWordPress map[string]bool,
-	injectedExpress map[string]bool,
-	onResult func(engine.Result),
-	onRootError func(error),
-) error {
+func (m *Manager) handleResult(ctx context.Context, result engine.Result, frontier *Frontier, activeGenerator *Generator, visited map[string]struct{}, onResult func(engine.Result), onRootError func(error)) error {
 
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)

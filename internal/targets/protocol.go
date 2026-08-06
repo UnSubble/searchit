@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/unsubble/searchit/internal/httpclient"
 )
 
 // HasExplicitScheme returns true if the raw URL string begins with an explicit scheme (http://, https://, etc.).
@@ -143,7 +145,7 @@ func AutoDetectTarget(ctx context.Context, client *http.Client, rawTarget string
 
 	resp, err := client.Do(probeReq)
 	if err == nil {
-		_ = resp.Body.Close()
+		httpclient.DrainAndCloseResponse(resp)
 		if out != nil {
 			fmt.Fprintln(out, "[*] Using HTTPS.")
 		}
