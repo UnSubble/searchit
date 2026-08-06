@@ -263,9 +263,6 @@ func (m *Manager) Run(
 		var hasNextJob bool
 
 		for (frontier.Len() > 0 || activeGenerator != nil || hasNextJob) || pending > 0 {
-			if m.stats != nil {
-				m.stats.SetFrontierPending(int64(frontier.Len()))
-			}
 
 			if ctx.Err() != nil {
 				stats.GlobalInstrumentation.LogEvent("context cancellation")

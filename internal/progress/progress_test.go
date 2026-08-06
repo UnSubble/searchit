@@ -319,7 +319,6 @@ func TestANSIRenderer_FiniteVsOpenEndedProgress(t *testing.T) {
 		c := stats.NewCollector()
 		c.SetIsFinite(false)
 		c.RecordDirectoryDiscovered()
-		c.SetFrontierPending(12)
 		c.SetDirectories(184, 12)
 
 		snap := c.Snapshot()
@@ -335,7 +334,7 @@ func TestANSIRenderer_FiniteVsOpenEndedProgress(t *testing.T) {
 		if !strings.Contains(out, "Requests Sent:") {
 			t.Errorf("expected 'Requests Sent:' header in open-ended scan output, got:\n%s", out)
 		}
-		if !strings.Contains(out, "Recursion: Expanded: 184 │ Pending: 12") {
+		if !strings.Contains(out, "Recursion: Expanded: 184") {
 			t.Errorf("expected exact recursion activity metrics in output, got:\n%s", out)
 		}
 	})

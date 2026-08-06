@@ -42,7 +42,6 @@ type Collector struct {
 	isFinite              int64 // 1 if finite, 0 if infinite/open-ended
 	directoriesDiscovered int64
 	directoriesQueued     int64
-	frontierPending       int64
 	startTime             int64 // Unix nano timestamp
 
 	// Future metrics support
@@ -280,11 +279,6 @@ func (c *Collector) RecordDirectoryQueued() {
 	atomic.AddInt64(&c.directoriesQueued, 1)
 }
 
-// SetFrontierPending updates the instantaneous count of pending generators in the frontier.
-func (c *Collector) SetFrontierPending(pending int64) {
-	atomic.StoreInt64(&c.frontierPending, pending)
-}
-
 // SetDirectories sets discovered and queued directory counts directly.
 func (c *Collector) SetDirectories(discovered, queued int64) {
 	atomic.StoreInt64(&c.directoriesDiscovered, discovered)
@@ -427,7 +421,6 @@ func (c *Collector) Snapshot() Snapshot {
 	isFinite := atomic.LoadInt64(&c.isFinite) != 0
 	dirsDisc := atomic.LoadInt64(&c.directoriesDiscovered)
 	dirsQueued := atomic.LoadInt64(&c.directoriesQueued)
-	frontPending := atomic.LoadInt64(&c.frontierPending)
 
 	return Snapshot{
 		RequestsSent:             sent,
@@ -452,7 +445,6 @@ func (c *Collector) Snapshot() Snapshot {
 		IsFinite:                 isFinite,
 		DirectoriesDiscovered:    dirsDisc,
 		DirectoriesQueued:        dirsQueued,
-		FrontierPending:          frontPending,
 		Retries:                  retries,
 		Redirects:                redirects,
 		BodyInspected:            inspected,

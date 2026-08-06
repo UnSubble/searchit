@@ -93,7 +93,6 @@ func TestANSIRenderer_FiniteAndOpenEnded_Invariants(t *testing.T) {
 		IsFinite:              false,
 		RequestsSent:          500,
 		DirectoriesDiscovered: 12,
-		FrontierPending:       4,
 		ActiveWorkers:         4,
 	}
 
@@ -103,7 +102,7 @@ func TestANSIRenderer_FiniteAndOpenEnded_Invariants(t *testing.T) {
 	}
 
 	outOpen := buf.String()
-	if !strings.Contains(outOpen, "Recursion: Expanded: 12") || !strings.Contains(outOpen, "Pending: 4") {
+	if !strings.Contains(outOpen, "Recursion: Expanded: 12") {
 		t.Errorf("expected recursive metrics in output, got:\n%s", outOpen)
 	}
 }

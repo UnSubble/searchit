@@ -246,7 +246,7 @@ func (tr *ANSIRenderer) renderCompactProgress(snap stats.Snapshot) []string {
 
 	return []string{
 		fmt.Sprintf("Requests Sent: %s (%d Workers)", presentation.Number(snap.RequestsSent), snap.ActiveWorkers),
-		fmt.Sprintf("Recursion: Expanded: %s │ Pending: %s", presentation.Number(snap.DirectoriesDiscovered), presentation.Number(snap.FrontierPending)),
+		fmt.Sprintf("Recursion: Expanded: %s", presentation.Number(snap.DirectoriesDiscovered)),
 		metrics,
 		fmt.Sprintf("Results: %s Findings • %s Errors • %s Retries", presentation.Number(snap.Discovered), presentation.Number(snap.RequestsFailed), presentation.Number(snap.Retries)),
 		controls,
