@@ -648,7 +648,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			}
 
 			appState := app.New(ctx, cfg)
-			httpclient.ConfigureTransportForWorkers(appState.HTTPClient, cfg.Threads)
+			defer appState.Close()
 
 			targetManager := targets.NewManager(opts.resolvedFuzzTargets)
 			globalSummary := targets.NewGlobalSummary(len(opts.resolvedFuzzTargets))

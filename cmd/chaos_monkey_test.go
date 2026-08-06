@@ -180,7 +180,12 @@ func TestMonkey_RandomScans(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 			defer cancel()
 
-			client := httpclient.NewWithMaxRedirects(10*time.Second, 10*time.Second, followRedirects, maxRedirects, "")
+			client := httpclient.New(httpclient.Options{
+				Timeout:         10 * time.Second,
+				ConnectTimeout:  10 * time.Second,
+				FollowRedirects: followRedirects,
+				MaxRedirects:    maxRedirects,
+			})
 			fs, _ := filter.NewFilterSuite("", "404", "", "", nil, nil, nil, nil)
 
 			if recursive {

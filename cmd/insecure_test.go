@@ -31,7 +31,11 @@ func TestInsecureFlag_Cases(t *testing.T) {
 	os.WriteFile(wlPath, []byte("admin\nlogin\nsecret\n"), 0644)
 
 	t.Run("Case 1 & 2: HTTPClient without insecure parameter rejects untrusted TLS certs", func(t *testing.T) {
-		client := httpclient.NewWithHTTPVersion(5*time.Second, 2*time.Second, false, 10, "", "auto", false)
+		client := httpclient.New(httpclient.Options{
+			Timeout:        5 * time.Second,
+			ConnectTimeout: 2 * time.Second,
+			Insecure:       false,
+		})
 		req, _ := http.NewRequestWithContext(context.Background(), "GET", untrustedHTTPS.URL, nil)
 		_, err := client.Do(req)
 		if err == nil {
@@ -40,7 +44,11 @@ func TestInsecureFlag_Cases(t *testing.T) {
 	})
 
 	t.Run("Case 3: HTTPClient with insecure parameter accepts untrusted TLS certs", func(t *testing.T) {
-		client := httpclient.NewWithHTTPVersion(5*time.Second, 2*time.Second, false, 10, "", "auto", true)
+		client := httpclient.New(httpclient.Options{
+			Timeout:        5 * time.Second,
+			ConnectTimeout: 2 * time.Second,
+			Insecure:       true,
+		})
 		req, _ := http.NewRequestWithContext(context.Background(), "GET", untrustedHTTPS.URL, nil)
 		resp, err := client.Do(req)
 		if err != nil {

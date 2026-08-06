@@ -24,14 +24,48 @@ func ValidateHTTPVersion(v string) error {
 	}
 }
 
-// New returns an *http.Client tuned for high-concurrency scanning.
-func New(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, proxyURL string, insecure ...bool) *http.Client {
-	return NewWithMaxRedirects(timeout, connectTimeout, followRedirects, 10, proxyURL, insecure...)
+const (
+	// DefaultIdleTimeout is the duration idle connections wait in the pool before being closed.
+	DefaultIdleTimeout = 90 * time.Second
+	// DefaultConnectTimeout is the timeout for establishing new TCP connections.
+	DefaultConnectTimeout = 30 * time.Second
+	// MinConnsPerHost guarantees a minimum pool size even for low-thread scans.
+	MinConnsPerHost = 8
+	// IdleConnectionMultiplier ensures the global idle pool is large enough to absorb bursty worker completion.
+	IdleConnectionMultiplier = 10
+	// HostConnectionMultiplier provides headroom for simultaneous connections per host.
+	HostConnectionMultiplier = 2
+)
+
+// VersionAuto represents the default auto-negotiation HTTP version.
+const VersionAuto = "auto"
+
+// Options represents the configuration for the HTTP client transport.
+type Options struct {
+	Timeout         time.Duration
+	ConnectTimeout  time.Duration
+	FollowRedirects bool
+	MaxRedirects    int
+	ProxyURL        string
+	HTTPVersion     string
+	Insecure        bool
+	MaxWorkers      int
 }
 
-// NewWithMaxRedirects returns an *http.Client with specified redirect limit and default 'auto' HTTP version.
-func NewWithMaxRedirects(timeout time.Duration, connectTimeout time.Duration, followRedirects bool, maxRedirects int, proxyURL string, insecure ...bool) *http.Client {
-	return NewWithHTTPVersion(timeout, connectTimeout, followRedirects, maxRedirects, proxyURL, "auto", insecure...)
+// applyDefaults applies sane default values for any zero-valued options.
+func (o *Options) applyDefaults() {
+	if o.ConnectTimeout == 0 {
+		o.ConnectTimeout = DefaultConnectTimeout
+	}
+	if o.MaxRedirects == 0 && o.FollowRedirects {
+		o.MaxRedirects = 10
+	}
+	if o.HTTPVersion == "" {
+		o.HTTPVersion = VersionAuto
+	}
+	if o.MaxWorkers == 0 {
+		o.MaxWorkers = 1
+	}
 }
 
 type protoTransport struct {
@@ -139,49 +173,45 @@ func (c *connCloser) Close() error {
 	return err2
 }
 
-// NewWithHTTPVersion creates an *http.Client configured for a specific HTTP protocol version.
-func NewWithHTTPVersion(
-	timeout time.Duration,
-	connectTimeout time.Duration,
-	followRedirects bool,
-	maxRedirects int,
-	proxyURL string,
-	httpVersion string,
-	insecure ...bool,
-) *http.Client {
-	if err := ValidateHTTPVersion(httpVersion); err != nil {
+// New creates an *http.Client configured for a specific HTTP protocol version.
+func New(opts Options) *http.Client {
+	opts.applyDefaults()
+
+	if err := ValidateHTTPVersion(opts.HTTPVersion); err != nil {
 		panic(err)
 	}
 
-	isInsecure := false
-	if len(insecure) > 0 {
-		isInsecure = insecure[0]
+	maxHost := opts.MaxWorkers * HostConnectionMultiplier
+	if maxHost < MinConnsPerHost {
+		maxHost = MinConnsPerHost
 	}
+	maxIdle := maxHost * IdleConnectionMultiplier
 
 	tr := &http.Transport{
-		MaxIdleConns:          1000,
-		MaxIdleConnsPerHost:   100,
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: timeout,
+		MaxIdleConns:          maxIdle,
+		MaxIdleConnsPerHost:   maxHost,
+		MaxConnsPerHost:       maxHost,
+		IdleConnTimeout:       DefaultIdleTimeout,
+		ResponseHeaderTimeout: opts.Timeout,
 		DisableCompression:    false,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: isInsecure},
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: opts.Insecure},
 		DialContext: (&net.Dialer{
-			Timeout:   connectTimeout,
+			Timeout:   opts.ConnectTimeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 	}
 
-	if proxyURL != "" {
-		pURL, err := url.Parse(proxyURL)
+	if opts.ProxyURL != "" {
+		pURL, err := url.Parse(opts.ProxyURL)
 		if err != nil {
-			panic(fmt.Sprintf("invalid proxy URL %q: %v", proxyURL, err))
+			panic(fmt.Sprintf("invalid proxy URL %q: %v", opts.ProxyURL, err))
 		}
 		tr.Proxy = http.ProxyURL(pURL)
 	} else {
 		tr.Proxy = http.ProxyFromEnvironment
 	}
 
-	version := strings.ToLower(strings.TrimSpace(httpVersion))
+	version := strings.ToLower(strings.TrimSpace(opts.HTTPVersion))
 	if version == "" {
 		version = "auto"
 	}
@@ -223,13 +253,13 @@ func NewWithHTTPVersion(
 	}
 
 	var checkRedirect func(req *http.Request, via []*http.Request) error
-	if !followRedirects {
+	if !opts.FollowRedirects {
 		checkRedirect = func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		}
 	} else {
 		checkRedirect = func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
+			if len(via) >= opts.MaxRedirects {
 				return fmt.Errorf("maximum redirect limit exceeded")
 			}
 			for _, prev := range via {
@@ -243,45 +273,11 @@ func NewWithHTTPVersion(
 
 	return &http.Client{
 		Transport:     baseTransport,
-		Timeout:       timeout,
+		Timeout:       opts.Timeout,
 		CheckRedirect: checkRedirect,
 	}
 }
 
 func (p *protoTransport) Unwrap() http.RoundTripper {
 	return p.tr
-}
-
-func getUnderlyingTransport(rt http.RoundTripper) *http.Transport {
-	for rt != nil {
-		if tr, ok := rt.(*http.Transport); ok {
-			return tr
-		}
-		if u, ok := rt.(interface{ Unwrap() http.RoundTripper }); ok {
-			rt = u.Unwrap()
-		} else {
-			break
-		}
-	}
-	return nil
-}
-
-// ConfigureTransportForWorkers dynamically adjusts transport idle connection caps
-// based on the configured worker thread count: max(8, workers * 2).
-func ConfigureTransportForWorkers(client *http.Client, workers int) {
-	if client == nil {
-		return
-	}
-	tr := getUnderlyingTransport(client.Transport)
-	if tr == nil {
-		return
-	}
-	maxHost := workers * 2
-	if maxHost < 8 {
-		maxHost = 8
-	}
-	tr.MaxIdleConnsPerHost = maxHost
-	if tr.MaxIdleConns < maxHost*10 {
-		tr.MaxIdleConns = maxHost * 10
-	}
 }

@@ -103,7 +103,12 @@ func BenchmarkRedirectClientOverhead(b *testing.B) {
 
 	b.Run("redirect-client", func(b *testing.B) {
 		b.ReportAllocs()
-		c := httpclient.NewWithMaxRedirects(10*time.Second, 10*time.Second, true, 10, "")
+		c := httpclient.New(httpclient.Options{
+			Timeout:         10 * time.Second,
+			ConnectTimeout:  10 * time.Second,
+			FollowRedirects: true,
+			MaxRedirects:    10,
+		})
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			resp, err := c.Get(srv.URL)
@@ -139,7 +144,12 @@ func BenchmarkRedirectChain(b *testing.B) {
 	}))
 	defer srv.Close()
 
-	c := httpclient.NewWithMaxRedirects(10*time.Second, 10*time.Second, true, 10, "")
+	c := httpclient.New(httpclient.Options{
+		Timeout:         10 * time.Second,
+		ConnectTimeout:  10 * time.Second,
+		FollowRedirects: true,
+		MaxRedirects:    10,
+	})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		resp, err := c.Get(srv.URL + "/1")
@@ -163,7 +173,12 @@ func BenchmarkRedirectLoop(b *testing.B) {
 	}))
 	defer srv.Close()
 
-	c := httpclient.NewWithMaxRedirects(10*time.Second, 10*time.Second, true, 10, "")
+	c := httpclient.New(httpclient.Options{
+		Timeout:         10 * time.Second,
+		ConnectTimeout:  10 * time.Second,
+		FollowRedirects: true,
+		MaxRedirects:    10,
+	})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		resp, err := c.Get(srv.URL + "/a")

@@ -161,10 +161,13 @@ func TestVerification3_TransportScaling(t *testing.T) {
 	threadCounts := []int{1, 8, 32, 64, 128}
 
 	for _, tc := range threadCounts {
-		client := httpclient.New(5*time.Second, 2*time.Second, false, "")
+		client := httpclient.New(httpclient.Options{
+			Timeout:        5 * time.Second,
+			ConnectTimeout: 2 * time.Second,
+			MaxWorkers:     tc,
+		})
 
 		// 1. Standard client scaling
-		httpclient.ConfigureTransportForWorkers(client, tc)
 
 		tr := client.Transport.(*http.Transport)
 		expectedMaxHost := tc * 2
@@ -181,9 +184,11 @@ func TestVerification3_TransportScaling(t *testing.T) {
 		cfg.Timeout = 5 * time.Second
 		cfg.ConnectTimeout = 2 * time.Second
 
-		adaptClient := httpclient.New(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, "")
-
-		httpclient.ConfigureTransportForWorkers(adaptClient, tc)
+		_ = httpclient.New(httpclient.Options{
+			Timeout:        cfg.Timeout,
+			ConnectTimeout: cfg.ConnectTimeout,
+			MaxWorkers:     tc,
+		})
 	}
 }
 

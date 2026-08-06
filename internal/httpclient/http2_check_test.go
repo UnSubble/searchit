@@ -31,7 +31,10 @@ func TestHTTP2Check(t *testing.T) {
 	t.Logf("Server running on: %s", srv.URL)
 
 	// Now check if our New client automatically negotiates HTTP/2
-	client := New(10*time.Second, 2*time.Second, false, "")
+	client := New(Options{
+		Timeout:        10 * time.Second,
+		ConnectTimeout: 2 * time.Second,
+	})
 
 	// Set insecure skip verify
 	if tr, ok := client.Transport.(*http.Transport); ok {
@@ -59,7 +62,11 @@ func TestHTTPClient_HTTPVersion_ForcedHTTP11_OnH2Server(t *testing.T) {
 	defer srv.Close()
 
 	// Client with httpVersion = "1.1"
-	client := NewWithHTTPVersion(5*time.Second, 2*time.Second, false, 10, "", "1.1")
+	client := New(Options{
+		Timeout:        5 * time.Second,
+		ConnectTimeout: 2 * time.Second,
+		HTTPVersion:    "1.1",
+	})
 	if tr, ok := client.Transport.(*http.Transport); ok {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}

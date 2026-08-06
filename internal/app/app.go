@@ -22,6 +22,14 @@ type App struct {
 	AdaptiveEngine   *adaptive.Engine
 }
 
+// Close gracefully shuts down the application and releases underlying resources,
+// such as idle HTTP connections in the connection pool.
+func (a *App) Close() {
+	if a.HTTPClient != nil {
+		a.HTTPClient.CloseIdleConnections()
+	}
+}
+
 type fingerprintRoundTripper struct {
 	underlying http.RoundTripper
 	cache      *fingerprint.Cache
@@ -91,7 +99,17 @@ func New(ctx context.Context, cfg config.Config) *App {
 		ctx = context.Background()
 	}
 
-	client := httpclient.NewWithHTTPVersion(cfg.Timeout, cfg.ConnectTimeout, cfg.FollowRedirects, cfg.MaxRedirects, cfg.Proxy, cfg.HTTPVersion, cfg.Insecure)
+	opts := httpclient.Options{
+		Timeout:         cfg.Timeout,
+		ConnectTimeout:  cfg.ConnectTimeout,
+		FollowRedirects: cfg.FollowRedirects,
+		MaxRedirects:    cfg.MaxRedirects,
+		ProxyURL:        cfg.Proxy,
+		HTTPVersion:     cfg.HTTPVersion,
+		Insecure:        cfg.Insecure,
+		MaxWorkers:      cfg.Threads,
+	}
+	client := httpclient.New(opts)
 
 	var fpCache *fingerprint.Cache
 	var adaptiveEng *adaptive.Engine

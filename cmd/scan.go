@@ -572,7 +572,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				defer termFmttr.Close()
 			}
 
-			httpclient.ConfigureTransportForWorkers(appState.HTTPClient, cfg.Threads)
+			defer appState.Close()
 
 			var limiter *rate.Limiter
 			if cfg.Rate > 0 {

@@ -37,7 +37,10 @@ func TestWorker_HangingBody_TimesOutWithinConfiguredTimeout(t *testing.T) {
 	ts := hangingBodyServer()
 	defer ts.Close()
 
-	client := httpclient.New(1*time.Second, 1*time.Second, false, "")
+	client := httpclient.New(httpclient.Options{
+		Timeout:        1 * time.Second,
+		ConnectTimeout: 1 * time.Second,
+	})
 	fs, err := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create filter suite: %v", err)
@@ -70,7 +73,10 @@ func TestShutdown_StopTarget_WaitsAtMostConfiguredTimeout(t *testing.T) {
 	ts := hangingBodyServer()
 	defer ts.Close()
 
-	client := httpclient.New(1*time.Second, 1*time.Second, false, "")
+	client := httpclient.New(httpclient.Options{
+		Timeout:        1 * time.Second,
+		ConnectTimeout: 1 * time.Second,
+	})
 	fs, err := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create filter suite: %v", err)
@@ -109,7 +115,10 @@ func TestShutdown_AbortAll_CancelsImmediately(t *testing.T) {
 	defer ts.Close()
 
 	// Configure a long request timeout (10s)
-	client := httpclient.New(10*time.Second, 1*time.Second, false, "")
+	client := httpclient.New(httpclient.Options{
+		Timeout:        10 * time.Second,
+		ConnectTimeout: 1 * time.Second,
+	})
 	fs, err := filter.NewFilterSuite("200", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to create filter suite: %v", err)

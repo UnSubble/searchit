@@ -14,68 +14,43 @@ import (
 )
 
 func TestNew_ReturnsClient(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second, false, "")
+	c := httpclient.New(httpclient.Options{})
 	if c == nil {
 		t.Fatal("New returned nil")
 	}
 }
 
 func TestNew_TimeoutSet(t *testing.T) {
-	c := httpclient.New(5*time.Second, 10*time.Second, false, "")
+	c := httpclient.New(httpclient.Options{Timeout: 5 * time.Second})
 	if c.Timeout != 5*time.Second {
 		t.Errorf("Timeout = %v, want 5s", c.Timeout)
 	}
 }
 
 func TestNew_HasTransport(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second, false, "")
+	c := httpclient.New(httpclient.Options{})
 	if c.Transport == nil {
 		t.Fatal("Transport is nil; connection pooling will be disabled")
 	}
 }
 
 func TestNew_TransportSettings(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second, false, "")
+	c := httpclient.New(httpclient.Options{MaxWorkers: 128})
 	tr, ok := c.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("Transport is not *http.Transport")
 	}
-	if tr.MaxIdleConns != 1000 {
-		t.Errorf("MaxIdleConns = %d, want 1000", tr.MaxIdleConns)
+	if tr.MaxIdleConns != 2560 {
+		t.Errorf("MaxIdleConns = %d, want 2560", tr.MaxIdleConns)
 	}
-	if tr.MaxIdleConnsPerHost != 100 {
-		t.Errorf("MaxIdleConnsPerHost = %d, want 100", tr.MaxIdleConnsPerHost)
-	}
-
-	httpclient.ConfigureTransportForWorkers(c, 128)
 	if tr.MaxIdleConnsPerHost != 256 {
-		t.Errorf("after ConfigureTransportForWorkers(128), MaxIdleConnsPerHost = %d, want 256", tr.MaxIdleConnsPerHost)
+		t.Errorf("MaxIdleConnsPerHost = %d, want 256", tr.MaxIdleConnsPerHost)
+	}
+	if tr.MaxConnsPerHost != 256 {
+		t.Errorf("MaxConnsPerHost = %d, want 256", tr.MaxConnsPerHost)
 	}
 	if tr.IdleConnTimeout != 90*time.Second {
 		t.Errorf("IdleConnTimeout = %v, want 90s", tr.IdleConnTimeout)
-	}
-}
-
-type dummyWrapper struct {
-	underlying http.RoundTripper
-}
-
-func (d *dummyWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
-	return d.underlying.RoundTrip(req)
-}
-
-func (d *dummyWrapper) Unwrap() http.RoundTripper {
-	return d.underlying
-}
-
-func TestConfigureTransportForWorkers_Wrapped(t *testing.T) {
-	c := httpclient.New(10*time.Second, 3*time.Second, false, "")
-	origTr := c.Transport.(*http.Transport)
-	c.Transport = &dummyWrapper{underlying: c.Transport}
-
-	httpclient.ConfigureTransportForWorkers(c, 128)
-	if origTr.MaxIdleConnsPerHost != 256 {
-		t.Errorf("MaxIdleConnsPerHost = %d, want 256 for wrapped transport", origTr.MaxIdleConnsPerHost)
 	}
 }
 
@@ -122,7 +97,10 @@ func TestContentLength_Absent(t *testing.T) {
 }
 
 func TestNew_ConnectTimeout(t *testing.T) {
-	c := httpclient.New(10*time.Second, 50*time.Millisecond, false, "")
+	c := httpclient.New(httpclient.Options{
+		Timeout:        10 * time.Second,
+		ConnectTimeout: 50 * time.Millisecond,
+	})
 
 	start := time.Now()
 	_, err := c.Get("http://10.255.255.1:80")
@@ -151,7 +129,10 @@ func TestNew_FollowRedirects(t *testing.T) {
 	defer srv.Close()
 
 	t.Run("followRedirects=false", func(t *testing.T) {
-		c := httpclient.New(5*time.Second, 5*time.Second, false, "")
+		c := httpclient.New(httpclient.Options{
+			Timeout:        5 * time.Second,
+			ConnectTimeout: 5 * time.Second,
+		})
 		resp, err := c.Get(srv.URL + "/redirect")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -163,7 +144,11 @@ func TestNew_FollowRedirects(t *testing.T) {
 	})
 
 	t.Run("followRedirects=true", func(t *testing.T) {
-		c := httpclient.New(5*time.Second, 5*time.Second, true, "")
+		c := httpclient.New(httpclient.Options{
+			Timeout:         5 * time.Second,
+			ConnectTimeout:  5 * time.Second,
+			FollowRedirects: true,
+		})
 		resp, err := c.Get(srv.URL + "/redirect")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -176,7 +161,11 @@ func TestNew_FollowRedirects(t *testing.T) {
 }
 
 func TestNew_Proxy(t *testing.T) {
-	c := httpclient.New(10*time.Second, 10*time.Second, false, "http://127.0.0.1:8080")
+	c := httpclient.New(httpclient.Options{
+		Timeout:        10 * time.Second,
+		ConnectTimeout: 10 * time.Second,
+		ProxyURL:       "http://127.0.0.1:8080",
+	})
 	tr, ok := c.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("Transport is not *http.Transport")
@@ -201,7 +190,11 @@ func TestNew_ProxyPanicOnInvalid(t *testing.T) {
 			t.Errorf("expected panic on invalid proxy URL format")
 		}
 	}()
-	_ = httpclient.New(10*time.Second, 10*time.Second, false, ":\n")
+	_ = httpclient.New(httpclient.Options{
+		Timeout:        10 * time.Second,
+		ConnectTimeout: 10 * time.Second,
+		ProxyURL:       ":\n",
+	})
 }
 
 func TestValidateHTTPVersion(t *testing.T) {
@@ -263,7 +256,11 @@ func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
 			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nHello"))
 		}()
 
-		c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", "0.9")
+		c := httpclient.New(httpclient.Options{
+			Timeout:        5 * time.Second,
+			ConnectTimeout: 5 * time.Second,
+			HTTPVersion:    "0.9",
+		})
 		resp, err := c.Get("http://" + ln.Addr().String() + "/")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -291,7 +288,11 @@ func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
 			_, _ = conn.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nHello"))
 		}()
 
-		c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", "1.0")
+		c := httpclient.New(httpclient.Options{
+			Timeout:        5 * time.Second,
+			ConnectTimeout: 5 * time.Second,
+			HTTPVersion:    "1.0",
+		})
 		resp, err := c.Get("http://" + ln.Addr().String() + "/")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -308,7 +309,11 @@ func TestHTTPClient_HTTPVersion_Execution(t *testing.T) {
 		defer srv.Close()
 
 		for _, ver := range []string{"1.1", "2", "auto"} {
-			c := httpclient.NewWithHTTPVersion(5*time.Second, 5*time.Second, false, 10, "", ver)
+			c := httpclient.New(httpclient.Options{
+				Timeout:        5 * time.Second,
+				ConnectTimeout: 5 * time.Second,
+				HTTPVersion:    ver,
+			})
 			resp, err := c.Get(srv.URL)
 			if err != nil {
 				t.Fatalf("request failed for version %s: %v", ver, err)
