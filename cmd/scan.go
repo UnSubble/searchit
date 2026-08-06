@@ -843,20 +843,18 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						cfg.RecurseOn,
 						cfg.Paths.NormalizePaths,
 						cfg.Paths.CollapseSlashes,
-						cfg.IncludeSize,
-						cfg.ExcludeSize,
-						mapHeaders(cfg.IncludeHeaders),
-						mapHeaders(cfg.ExcludeHeaders),
 						cfg.Delay,
 						limiter,
 						fpCache,
 						entriesPerDir,
 					)
+
 					if appState.AdaptiveEngine != nil {
 						manager.SetAdaptiveEngine(appState.AdaptiveEngine)
 					}
 					manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, cfg.Cookies)
 					manager.SetFilterSuite(fs)
+					manager.SetDisplayHeaders(mapHeaders(cfg.IncludeHeaders), mapHeaders(cfg.ExcludeHeaders))
 					manager.SetStats(collector)
 					manager.SetExtensions(cfg.Extensions)
 					manager.PauseBlocker = stateMgr.WaitUntilRunning

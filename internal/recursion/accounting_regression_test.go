@@ -55,7 +55,7 @@ func TestAccounting_StandardScan(t *testing.T) {
 		status.MustParse("200"),
 		false,
 		false,
-		nil, nil, nil, nil, 0, nil, nil,
+		0, nil, nil,
 		entriesPerDir,
 	)
 	manager.SetDisableWildcard(true)
@@ -105,7 +105,7 @@ func TestAccounting_StandardScanExt(t *testing.T) {
 		status.MustParse("200"),
 		false,
 		false,
-		nil, nil, nil, nil, 0, nil, nil,
+		0, nil, nil,
 		entriesPerDir,
 	)
 	manager.SetDisableWildcard(true)
@@ -158,7 +158,7 @@ func TestAccounting_RecursiveScan(t *testing.T) {
 		status.MustParse("200"),
 		false,
 		false,
-		nil, nil, nil, nil, 0, nil, nil,
+		0, nil, nil,
 		entriesPerDir,
 	)
 	manager.SetDisableWildcard(true)
@@ -206,7 +206,7 @@ func TestAccounting_RootExcluded(t *testing.T) {
 		status.MustParse("200"),
 		false,
 		false,
-		nil, nil, nil, nil, 0, nil, nil,
+		0, nil, nil,
 		entriesPerDir,
 	)
 	manager.SetDisableWildcard(true)
@@ -254,7 +254,7 @@ func TestAccounting_CancellationGracefulAndImmediate(t *testing.T) {
 		status.MustParse("200"),
 		false,
 		false,
-		nil, nil, nil, nil, 0, nil, nil,
+		0, nil, nil,
 		entriesPerDir,
 	)
 	manager.SetDisableWildcard(true)

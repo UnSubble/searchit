@@ -43,7 +43,7 @@ func TestRegression_RedirectRecursionBug(t *testing.T) {
 		recurseOnFilters,
 		true,
 		true,
-		nil, nil, nil, nil, 0, nil, nil, 1,
+		0, nil, nil, 1,
 	)
 
 	manager.Run(context.Background(), context.Background(), []string{srv.URL + "/admin"}, 4, func(r engine.Result) {})
@@ -86,7 +86,7 @@ func TestRegression_DuplicateSuppression(t *testing.T) {
 		status.MustParse("200"),
 		true,
 		true,
-		nil, nil, nil, nil, 0, nil, nil, 1,
+		0, nil, nil, 1,
 	)
 
 	// Run with duplicate seed URLs as well

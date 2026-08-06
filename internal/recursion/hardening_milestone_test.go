@@ -222,7 +222,7 @@ func runDeterminismTest(
 		recurseOnFilters,
 		true, // normalizePaths
 		true, // collapseSlashes
-		nil, nil, nil, nil, 0, nil, nil, 100,
+		0, nil, nil, 100,
 	)
 	m1.SetDisableWildcard(true)
 
@@ -248,7 +248,7 @@ func runDeterminismTest(
 				recurseOnFilters,
 				true, // normalizePaths
 				true, // collapseSlashes
-				nil, nil, nil, nil, 0, nil, nil, 100,
+				0, nil, nil, 100,
 			)
 			mN.SetDisableWildcard(true)
 
@@ -542,7 +542,7 @@ func TestHardening_Cancellation(t *testing.T) {
 		recurseOnFilters,
 		true,
 		true,
-		nil, nil, nil, nil, 0, nil, nil, 100,
+		0, nil, nil, 100,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -582,7 +582,7 @@ func TestHardening_Timeouts(t *testing.T) {
 		recurseOnFilters,
 		true,
 		true,
-		nil, nil, nil, nil, 0, nil, nil, 100,
+		0, nil, nil, 100,
 	)
 
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
@@ -669,7 +669,7 @@ func TestHardening_Profiles(t *testing.T) {
 				recurseOnFilters,
 				true,
 				true,
-				nil, nil, nil, nil, 0, nil, nil, 100,
+				0, nil, nil, 100,
 			)
 
 			level := getBenchmarkLevel()

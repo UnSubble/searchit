@@ -39,7 +39,7 @@ func TestRecursion_OpenEndedDeterministicAccounting(t *testing.T) {
 		status.MustParse("200"),
 		false,
 		false,
-		nil, nil, nil, nil, 0, nil, nil,
+		0, nil, nil,
 		entriesPerDir,
 	)
 	manager.SetDisableWildcard(true)

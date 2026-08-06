@@ -65,10 +65,6 @@ func runRecurseOnManager(
 		recurseFilter,
 		false,
 		false,
-		nil,
-		nil,
-		nil,
-		nil,
 		0,
 		nil,
 		nil,
@@ -257,5 +253,87 @@ func TestRecurseOn_InvalidValues(t *testing.T) {
 		if _, err := status.Parse(expr); err == nil {
 			t.Errorf("status.Parse(%q) succeeded, expected error", expr)
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 7: --fs (exclude size) must NOT affect recursion
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestRecurseOn_FS_DoesNotAffectRecursion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)               // 200
+		_, _ = w.Write([]byte("size is 12 bytes")) // 16 bytes
+	}))
+	t.Cleanup(srv.Close)
+
+	makeDisplayFS(t, "", "")
+	f, _ := filter.NewFilterSuite("", "", "", "16", nil, nil, nil, nil)
+	displayFS := f
+
+	dispatched, _, accepted := runRecurseOnManager(t, srv, []string{"a"}, 2, "", displayFS)
+
+	if dispatched < 2 {
+		t.Errorf("--fs 16: expected >= 2 jobs dispatched (recursion unaffected), got %d", dispatched)
+	}
+	if accepted > 0 {
+		t.Errorf("--fs 16: expected 0 findings (all filtered), got %d", accepted)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 8: Custom header filters must NOT affect recursion
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestRecurseOn_HeaderFilter_DoesNotAffectRecursion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Secret", "1")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	displayFS := makeDisplayFS(t, "", "")
+
+	reader := staticReader{words: []string{"a"}}
+	a := newApp(t)
+
+	m := recursion.NewManager(
+		a.HTTPClient,
+		nil,
+		reader,
+		recursion.BFS,
+		2,
+		a.Config.RecurseOn,
+		false,
+		false,
+		0,
+		nil,
+		nil,
+		100,
+	)
+
+	m.SetFilterSuite(displayFS)
+	m.SetDisplayHeaders(nil, []engine.HeaderFilter{{Name: "X-Secret", Value: "1"}})
+
+	c := stats.NewCollector()
+	m.SetStats(c)
+
+	var del, acc int64
+	m.Run(context.Background(), context.Background(),
+		[]string{srv.URL + "/"},
+		4,
+		func(r engine.Result) {
+			atomic.AddInt64(&del, 1)
+			if r.Accepted {
+				atomic.AddInt64(&acc, 1)
+			}
+		},
+	)
+
+	if c.Snapshot().JobsProduced < 2 {
+		t.Errorf("Header filter: expected >= 2 jobs dispatched (recursion unaffected), got %d", c.Snapshot().JobsProduced)
+	}
+	if acc > 0 {
+		t.Errorf("Header filter: expected 0 findings (all filtered), got %d", acc)
 	}
 }

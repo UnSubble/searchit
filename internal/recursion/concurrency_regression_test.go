@@ -152,7 +152,7 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 				recurseOnFilters,
 				true, // normalizePaths
 				true, // collapseSlashes
-				nil, nil, nil, nil, 0, nil, nil, 100,
+				0, nil, nil, 100,
 			)
 
 			ctx := context.Background()
@@ -222,7 +222,7 @@ func TestConcurrencyCorrectness_StressTest(t *testing.T) {
 			recurseOnFilters,
 			true,
 			true,
-			nil, nil, nil, nil, 0, nil, nil, 100,
+			0, nil, nil, 100,
 		)
 
 		ctx := context.Background()

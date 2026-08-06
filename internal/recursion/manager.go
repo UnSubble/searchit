@@ -15,7 +15,6 @@ import (
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
-	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/stats"
 	"github.com/unsubble/searchit/internal/status"
 	"github.com/unsubble/searchit/internal/wildcard"
@@ -23,22 +22,43 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Architectural invariant:
+//
+// Traversal decisions MUST NEVER depend on user-facing display filters.
+//
+// Traversal is driven only by:
+//
+//   - recurse-on
+//   - wildcard detection
+//   - redirect policy
+//   - visited state
+//   - recursion depth
+//   - context cancellation
+//
+// Display filters affect only:
+//
+//   - reported findings (via m.displayFS)
+//   - formatter output
+//   - displayed statistics
+//
+// Violating this separation is a bug.
 // Manager orchestrates recursive directory scanning.
 // It owns the frontier, the visited set, and all traversal decisions.
 // Workers remain stateless execution units — they never know recursion exists.
 type Manager struct {
-	client           *http.Client
-	fs               *filter.FilterSuite // traversal filter — drives crawl decisions; never user-facing
-	displayFS        *filter.FilterSuite // user-facing display filter — only affects onResult reporting
-	reader           wordlist.Reader
-	extensions       []string
-	strategy         Strategy
-	maxDepth         uint16
+	client            *http.Client
+	fs                *filter.FilterSuite   // traversal filter — drives crawl decisions; never user-facing
+	displayFS         *filter.FilterSuite   // user-facing display filter — only affects onResult reporting
+	displayIncHeaders []engine.HeaderFilter // user-facing display filter
+	displayExcHeaders []engine.HeaderFilter // user-facing display filter
+	reader            wordlist.Reader
+	extensions        []string
+	strategy          Strategy
+	maxDepth          uint16
+
 	recurseOn        status.Filters
 	normalizePaths   bool
 	collapseSlashes  bool
-	includeHeaders   []engine.HeaderFilter
-	excludeHeaders   []engine.HeaderFilter
 	delay            time.Duration
 	limiter          *rate.Limiter
 	stats            *stats.Collector
@@ -97,6 +117,43 @@ func (m *Manager) SetFilterSuite(fs *filter.FilterSuite) {
 	m.displayFS = fs
 }
 
+// SetDisplayHeaders sets the display-layer header filters.
+func (m *Manager) SetDisplayHeaders(inc, exc []engine.HeaderFilter) {
+	m.displayIncHeaders = inc
+	m.displayExcHeaders = exc
+}
+
+// matchDisplayHeaders evaluates display header filters against the response headers.
+func (m *Manager) matchDisplayHeaders(headers http.Header) bool {
+	if m.displayIncHeaders == nil && m.displayExcHeaders == nil {
+		return true
+	}
+	for _, f := range m.displayExcHeaders {
+		if hasHeader(headers, f.Name, f.Value) {
+			return false
+		}
+	}
+	for _, f := range m.displayIncHeaders {
+		if !hasHeader(headers, f.Name, f.Value) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasHeader(headers http.Header, name, value string) bool {
+	for k, values := range headers {
+		if strings.EqualFold(k, name) {
+			for _, val := range values {
+				if strings.EqualFold(val, value) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // SetExtensions configures extension variants for recursion candidate generation.
 func (m *Manager) SetExtensions(exts []string) {
 	m.extensions = exts
@@ -111,16 +168,13 @@ func NewManager(
 	recurseOn status.Filters,
 	normalizePaths bool,
 	collapseSlashes bool,
-	includeSize size.Filters,
-	excludeSize size.Filters,
-	includeHeaders []engine.HeaderFilter,
-	excludeHeaders []engine.HeaderFilter,
 	delay time.Duration,
 	limiter *rate.Limiter,
 	fingerprintCache *fingerprint.Cache,
 	entriesPerDir int64,
 ) *Manager {
-	fs, _ := filter.NewFilterSuite("", exclude.String(), includeSize.String(), excludeSize.String(), nil, nil, nil, nil)
+	fs, _ := filter.NewFilterSuite("", exclude.String(), "", "", nil, nil, nil, nil)
+	fs.ShowHeaders = true // ALWAYS extract headers so display layer can filter by them
 
 	return &Manager{
 		client:           client,
@@ -131,8 +185,6 @@ func NewManager(
 		recurseOn:        recurseOn,
 		normalizePaths:   normalizePaths,
 		collapseSlashes:  collapseSlashes,
-		includeHeaders:   includeHeaders,
-		excludeHeaders:   excludeHeaders,
 		delay:            delay,
 		limiter:          limiter,
 		fingerprintCache: fingerprintCache,
@@ -238,8 +290,8 @@ func (m *Manager) Run(
 			drainCtx,
 			m.client,
 			m.fs,
-			m.includeHeaders,
-			m.excludeHeaders,
+			nil, // incHeaders: display-only filters must not reach the traversal engine
+			nil, // excHeaders: display-only filters must not reach the traversal engine
 			workers,
 			m.delay,
 			m.limiter,
@@ -426,15 +478,26 @@ func (m *Manager) handleResult(
 		if m.stats != nil {
 			m.stats.RecordDisplayFiltered()
 		}
-	} else if m.displayFS != nil {
-		contentType := ""
-		if result.Headers != nil {
-			contentType = result.Headers.Get("Content-Type")
+	} else {
+		if m.displayFS != nil {
+			contentType := ""
+			if result.Headers != nil {
+				contentType = result.Headers.Get("Content-Type")
+			}
+			if !m.displayFS.MatchHeaders(result.StatusCode, result.Length, contentType) {
+				reported.Accepted = false
+				if m.stats != nil {
+					m.stats.RecordDisplayFiltered()
+				}
+			}
 		}
-		if !m.displayFS.MatchHeaders(result.StatusCode, result.Length, contentType) {
-			reported.Accepted = false
-			if m.stats != nil {
-				m.stats.RecordDisplayFiltered()
+
+		if reported.Accepted && result.Headers != nil {
+			if !m.matchDisplayHeaders(result.Headers) {
+				reported.Accepted = false
+				if m.stats != nil {
+					m.stats.RecordDisplayFiltered()
+				}
 			}
 		}
 	}
