@@ -46,7 +46,7 @@ func TestAdaptive_WordPressDetectionAndPathInjection(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	expectedPaths := []string{"wp-admin", "wp-content", "wp-includes", "wp-login.php", "xmlrpc.php"}
 	injectedCount := 0
@@ -101,7 +101,7 @@ func TestAdaptive_ExpressDetectionAndPathInjection(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	expectedPaths := []string{"api", "uploads", "assets", "static"}
 	injectedCount := 0
@@ -159,7 +159,7 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 		var results []engine.Result
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		})
+		}, nil)
 
 		// Ensure "hello", "wp-admin" (WordPress), and "artisan", "horizon" (Laravel) are all scanned.
 		var foundHello, foundWPAdmin, foundArtisan, foundHorizon bool
@@ -218,7 +218,7 @@ func TestAdaptive_CrossTechnologyNonSuppression(t *testing.T) {
 		var results []engine.Result
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		})
+		}, nil)
 
 		// Ensure "hello", "artisan" (Laravel), and "wp-admin", "wp-content" (WordPress) are all scanned.
 		var foundHello, foundArtisan, foundWPAdmin, foundWPContent bool

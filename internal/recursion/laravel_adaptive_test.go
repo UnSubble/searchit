@@ -64,7 +64,7 @@ func TestAdaptive_DisabledByDefault(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Verify no Laravel paths were injected
 	expectedPaths := []string{".env", "artisan", "storage", "bootstrap", "vendor"}
@@ -110,7 +110,7 @@ func TestAdaptive_EnabledExplicitly(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	expectedPaths := []string{".env", "artisan", "storage", "bootstrap", "vendor"}
 	injectedCount := 0
@@ -162,7 +162,7 @@ func TestAdaptive_LaravelNotDetected(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	expectedPaths := []string{".env", "artisan", "storage", "bootstrap", "vendor"}
 	for _, p := range expectedPaths {
@@ -208,7 +208,7 @@ func TestAdaptive_DeduplicationAndDuplicateDiscoveries(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	counts := make(map[string]int)
 	for _, r := range results {
@@ -260,12 +260,12 @@ func TestAdaptive_MultiTargetIsolation(t *testing.T) {
 	var results1 []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srvLaravel.URL}, 4, func(r engine.Result) {
 		results1 = append(results1, r)
-	})
+	}, nil)
 
 	var results2 []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srvPlain.URL}, 4, func(r engine.Result) {
 		results2 = append(results2, r)
-	})
+	}, nil)
 
 	foundLaravelT1 := false
 	for _, r := range results1 {
@@ -329,7 +329,7 @@ func TestAdaptive_WorkerCountsDeterminism(t *testing.T) {
 			var results []engine.Result
 			m.Run(context.Background(), context.Background(), []string{srv.URL}, w, func(r engine.Result) {
 				results = append(results, r)
-			})
+			}, nil)
 
 			if len(results) != 7 {
 				t.Errorf("Determinism failure: expected 7 scanned results under %d workers, got %d. Results: %+v", w, len(results), results)
@@ -376,7 +376,7 @@ func TestAdaptive_Redirects(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL + "/redirect"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	foundLaravel := false
 	for _, r := range results {
@@ -426,7 +426,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 		var results []engine.Result
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		})
+		}, nil)
 
 		// With MaxDepth = 0, only the seed URL itself should be scanned.
 		if len(results) != 1 {
@@ -460,7 +460,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 		var results []engine.Result
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		})
+		}, nil)
 
 		// Root (0) + wordlist (1) + 5 injected paths (1) = 7 results.
 		if len(results) != 7 {
@@ -494,7 +494,7 @@ func TestAdaptive_MaxDepthBoundaryCheck(t *testing.T) {
 		var results []engine.Result
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		})
+		}, nil)
 
 		// Root (1) + depth-1 wordlist/injected (6) + depth-2 recursion (6) = 13 results.
 		if len(results) != 13 {
@@ -538,7 +538,7 @@ func TestAdaptive_BFS_DFS(t *testing.T) {
 		var results []engine.Result
 		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 			results = append(results, r)
-		})
+		}, nil)
 
 		if len(results) != 7 {
 			t.Errorf("Strategy %s: expected 7 results, got %d", strat.String(), len(results))
@@ -586,7 +586,7 @@ func TestAdaptive_Cancellation(t *testing.T) {
 	m.Run(ctx, ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
 		cancel() // Cancel context
-	})
+	}, nil)
 
 	// Verify the scan terminated early and didn't hang
 	if len(results) == 13 {
@@ -628,7 +628,7 @@ func TestAdaptive_EmptyWordlist(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Should have root (1) + 5 Laravel paths = 6 results (wordlist is empty, so no depth 2 wordlist additions).
 	if len(results) != 6 {
@@ -673,7 +673,7 @@ func TestAdaptive_RobotsSitemapFailures(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Scan should succeed despite robots/sitemap 500 errors, and still inject Laravel paths (total 7 results).
 	if len(results) != 7 {
@@ -711,7 +711,7 @@ func TestAdaptive_SchedulerStarvation(t *testing.T) {
 	// Run with 128 workers on empty wordlist. Verify it completes instantly and does not hang.
 	done := make(chan struct{})
 	go func() {
-		m.Run(context.Background(), context.Background(), []string{srv.URL}, 128, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 128, func(r engine.Result) {}, nil)
 		close(done)
 	}()
 
@@ -775,7 +775,7 @@ func BenchmarkAdaptive_SchedulerOverhead(b *testing.B) {
 			a.FingerprintCache,
 			100,
 		)
-		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {}, nil)
 	}
 }
 
@@ -844,6 +844,6 @@ func runStrategyBenchmark(b *testing.B, strategy recursion.Strategy, adaptive bo
 			a.FingerprintCache,
 			100,
 		)
-		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {}, nil)
 	}
 }

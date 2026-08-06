@@ -230,7 +230,7 @@ func runDeterminismTest(
 	var w1Results []engine.Result
 	m1.Run(ctx, ctx, seeds, 1, func(r engine.Result) {
 		w1Results = append(w1Results, r)
-	})
+	}, nil)
 	sortResults(w1Results)
 
 	// Run with configured workers matrix
@@ -255,7 +255,7 @@ func runDeterminismTest(
 			var wNResults []engine.Result
 			mN.Run(ctx, ctx, seeds, wN, func(r engine.Result) {
 				wNResults = append(wNResults, r)
-			})
+			}, nil)
 			sortResults(wNResults)
 
 			// Compare result counts
@@ -550,7 +550,7 @@ func TestHardening_Cancellation(t *testing.T) {
 
 	m.Run(ctx, ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		cancel()
-	})
+	}, nil)
 }
 
 func TestHardening_Timeouts(t *testing.T) {
@@ -585,7 +585,7 @@ func TestHardening_Timeouts(t *testing.T) {
 		0, nil, nil, 100,
 	)
 
-	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {})
+	m.Run(context.Background(), context.Background(), []string{srv.URL}, 4, func(r engine.Result) {}, nil)
 }
 
 func TestHardening_Adaptive(t *testing.T) {
@@ -682,7 +682,7 @@ func TestHardening_Profiles(t *testing.T) {
 			var results []engine.Result
 			m.Run(context.Background(), context.Background(), []string{srv.URL}, maxWorkers, func(r engine.Result) {
 				results = append(results, r)
-			})
+			}, nil)
 
 			if len(results) != 3 {
 				t.Errorf("Expected 3 results, got %d", len(results))

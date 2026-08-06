@@ -54,7 +54,7 @@ func TestRecurseWarning_Root404_DefaultPolicy(t *testing.T) {
 	)
 
 	stderr := captureStderr(func() {
-		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {}, nil)
 	})
 
 	if !strings.Contains(stderr, "[!] The root URL returned HTTP 404.") {
@@ -92,7 +92,7 @@ func TestRecurseWarning_Root403_ExcludedPolicy(t *testing.T) {
 	)
 
 	stderr := captureStderr(func() {
-		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {}, nil)
 	})
 
 	if !strings.Contains(stderr, "[!] The root URL returned HTTP 403.") {
@@ -127,7 +127,7 @@ func TestRecurseWarning_Root500_StatusExpression(t *testing.T) {
 	)
 
 	stderr := captureStderr(func() {
-		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {}, nil)
 	})
 
 	if !strings.Contains(stderr, "[!] The root URL returned HTTP 500.") {
@@ -165,7 +165,7 @@ func TestRecurseWarning_Root200_NoWarning(t *testing.T) {
 	)
 
 	stderr := captureStderr(func() {
-		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {}, nil)
 	})
 
 	if strings.Contains(stderr, "[!] The root URL returned") {
@@ -195,7 +195,7 @@ func TestRecurseWarning_TransportError_NoWarning(t *testing.T) {
 	)
 
 	stderr := captureStderr(func() {
-		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{srv.URL + "/"}, 2, func(r engine.Result) {}, nil)
 	})
 
 	if strings.Contains(stderr, "[!] The root URL returned") {

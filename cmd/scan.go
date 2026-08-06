@@ -887,6 +887,13 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 								fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
 							}
 						}
+					}, func(err error) {
+						msg := fmt.Sprintf("ERROR: root request failed: %v", err)
+						if progMgr != nil {
+							progMgr.PrintAbove(msg)
+						} else {
+							fmt.Fprintln(os.Stderr, msg)
+						}
 					}); err != nil {
 						return err
 					}

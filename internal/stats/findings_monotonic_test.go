@@ -112,7 +112,7 @@ func TestFindingsMonotonic_RecursiveScan(t *testing.T) {
 		if r.Accepted && r.Err == nil {
 			atomic.AddInt64(&acceptedEmitted, 1)
 		}
-	})
+	}, nil)
 
 	cancel()
 	<-doneMon

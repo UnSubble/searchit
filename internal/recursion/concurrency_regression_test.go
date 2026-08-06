@@ -164,7 +164,7 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 					Depth:      r.Depth,
 					Accepted:   r.Accepted,
 				})
-			})
+			}, nil)
 			sortNormalizedResults(actual)
 
 			// Assert that actual discoveries match expected discoveries exactly.
@@ -234,7 +234,7 @@ func TestConcurrencyCorrectness_StressTest(t *testing.T) {
 				Depth:      r.Depth,
 				Accepted:   r.Accepted,
 			})
-		})
+		}, nil)
 		sortNormalizedResults(actual)
 
 		compareResultSets(t, expectedResults, actual)

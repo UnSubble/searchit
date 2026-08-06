@@ -118,7 +118,7 @@ func TestGoldenCorrectnessAndWorkerConsistency(t *testing.T) {
 				mu.Lock()
 				actualDiscoveries[r.URL]++
 				mu.Unlock()
-			})
+			}, nil)
 
 			// Perform Golden Comparison
 			missingCount := 0

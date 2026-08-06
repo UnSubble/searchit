@@ -224,6 +224,7 @@ func (m *Manager) Run(
 	seeds []string,
 	workers int,
 	onResult func(r engine.Result),
+	onRootError func(err error),
 ) error {
 	var runErr error
 	func() {
@@ -321,7 +322,7 @@ func (m *Manager) Run(
 				closeJobs()
 				for result := range results {
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-					_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+					_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError)
 				}
 				return
 			}
@@ -349,7 +350,7 @@ func (m *Manager) Run(
 					closeJobs()
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError)
 					}
 					return
 
@@ -372,7 +373,7 @@ func (m *Manager) Run(
 
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult); err != nil {
+					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError); err != nil {
 						runErr = err
 						return
 					}
@@ -386,7 +387,7 @@ func (m *Manager) Run(
 					closeJobs()
 					for result := range results {
 						atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult)
+						_ = m.handleResult(context.Background(), result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError)
 					}
 					return
 				case result, ok := <-results:
@@ -395,7 +396,7 @@ func (m *Manager) Run(
 					}
 					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					pending--
-					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult); err != nil {
+					if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError); err != nil {
 						runErr = err
 						return
 					}
@@ -409,7 +410,7 @@ func (m *Manager) Run(
 		// Drain any results that arrived after the last pending decrement.
 		for result := range results {
 			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
-			if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult); err != nil {
+			if err := m.handleResult(ctx, result, frontier, &activeGenerator, visited, injectedLaravel, injectedWordPress, injectedExpress, onResult, onRootError); err != nil {
 				if runErr == nil {
 					runErr = err
 				}
@@ -438,9 +439,18 @@ func (m *Manager) handleResult(
 	injectedWordPress map[string]bool,
 	injectedExpress map[string]bool,
 	onResult func(engine.Result),
+	onRootError func(error),
 ) error {
+
 	if !result.Accepted {
 		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsRejected, 1)
+
+		if result.Err != nil && result.Depth == 0 && result.Origin == engine.OriginProfile {
+			if onRootError != nil {
+				onRootError(result.Err)
+			}
+		}
+
 		return nil
 	}
 

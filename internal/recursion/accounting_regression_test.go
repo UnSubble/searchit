@@ -63,7 +63,7 @@ func TestAccounting_StandardScan(t *testing.T) {
 	manager.SetStats(collector)
 
 	ctx := context.Background()
-	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {})
+	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 
 	snap := collector.Snapshot()
 	if snap.TotalWork != totalWork {
@@ -114,7 +114,7 @@ func TestAccounting_StandardScanExt(t *testing.T) {
 	manager.SetStats(collector)
 
 	ctx := context.Background()
-	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {})
+	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 
 	snap := collector.Snapshot()
 	if snap.TotalWork != totalWork {
@@ -166,7 +166,7 @@ func TestAccounting_RecursiveScan(t *testing.T) {
 	manager.SetStats(collector)
 
 	ctx := context.Background()
-	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {})
+	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 
 	snap := collector.Snapshot()
 	if snap.TotalWork != totalWork {
@@ -214,7 +214,7 @@ func TestAccounting_RootExcluded(t *testing.T) {
 	manager.SetStats(collector)
 
 	ctx := context.Background()
-	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {})
+	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 
 	snap := collector.Snapshot()
 	if snap.Completed != snap.Tried+snap.Skipped {
@@ -268,7 +268,7 @@ func TestAccounting_CancellationGracefulAndImmediate(t *testing.T) {
 		cancel()
 	}()
 
-	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {})
+	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 
 	snap := collector.Snapshot()
 	if snap.TotalWork != totalWork {

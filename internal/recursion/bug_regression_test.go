@@ -46,7 +46,7 @@ func TestRegression_RedirectRecursionBug(t *testing.T) {
 		0, nil, nil, 1,
 	)
 
-	manager.Run(context.Background(), context.Background(), []string{srv.URL + "/admin"}, 4, func(r engine.Result) {})
+	manager.Run(context.Background(), context.Background(), []string{srv.URL + "/admin"}, 4, func(r engine.Result) {}, nil)
 
 	// Verify that the child request was `/admin/login`, not `/adminlogin`
 	foundCorrectChild := false
@@ -91,7 +91,7 @@ func TestRegression_DuplicateSuppression(t *testing.T) {
 
 	// Run with duplicate seed URLs as well
 	seeds := []string{srv.URL, srv.URL}
-	manager.Run(context.Background(), context.Background(), seeds, 8, func(r engine.Result) {})
+	manager.Run(context.Background(), context.Background(), seeds, 8, func(r engine.Result) {}, nil)
 
 	// Total expected unique requests:
 	// - Root URL (1 unique request)

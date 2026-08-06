@@ -48,7 +48,7 @@ func TestRecursion_OpenEndedDeterministicAccounting(t *testing.T) {
 
 	ctx := context.Background()
 
-	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {})
+	manager.Run(ctx, ctx, []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 
 	snap := collector.Snapshot()
 	if snap.IsFinite {

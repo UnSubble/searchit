@@ -88,6 +88,7 @@ func runRecurseOnManager(
 				atomic.AddInt64(&acc, 1)
 			}
 		},
+		nil,
 	)
 
 	snap := c.Snapshot()
@@ -328,6 +329,7 @@ func TestRecurseOn_HeaderFilter_DoesNotAffectRecursion(t *testing.T) {
 				atomic.AddInt64(&acc, 1)
 			}
 		},
+		nil,
 	)
 
 	if c.Snapshot().JobsProduced < 2 {

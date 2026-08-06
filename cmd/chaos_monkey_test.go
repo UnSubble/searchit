@@ -114,7 +114,7 @@ func TestChaos_Scans(t *testing.T) {
 				100,
 			)
 
-			manager.Run(runCtx, runCtx, cfg.URLs, cfg.Threads, func(r engine.Result) {})
+			manager.Run(runCtx, runCtx, cfg.URLs, cfg.Threads, func(r engine.Result) {}, nil)
 			wg.Wait()
 		}
 	})
@@ -203,7 +203,7 @@ func TestMonkey_RandomScans(t *testing.T) {
 					fingerprint.NewCache(),
 					100,
 				)
-				manager.Run(ctx, ctx, []string{srv.URL}, workers, func(r engine.Result) {})
+				manager.Run(ctx, ctx, []string{srv.URL}, workers, func(r engine.Result) {}, nil)
 			} else {
 				// Fuzzing loop
 				jobs := make(chan fuzz.WorkItem, workers)

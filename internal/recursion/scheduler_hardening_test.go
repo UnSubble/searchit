@@ -69,7 +69,7 @@ func TestHarden_ZeroTargets(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.Run(context.Background(), context.Background(), []string{}, 4, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{}, 4, func(r engine.Result) {}, nil)
 		close(done)
 	}()
 
@@ -114,7 +114,7 @@ func TestHarden_OneTarget(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://target1.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// 1 seed + 1 wordlist path = 2 results
 	if len(results) != 2 {
@@ -160,7 +160,7 @@ func TestHarden_OneHundredTargets(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), targets, 16, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// 100 seeds + 100 wordlist paths = 200 results
 	if len(results) != 200 {
@@ -201,7 +201,7 @@ func TestHarden_EmptyWordlists(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://emptywordlist.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Only 1 seed scanned
 	if len(results) != 1 {
@@ -242,7 +242,7 @@ func TestHarden_DuplicatedWordlists(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://duplicatedwordlist.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Root (1) + unique words (2) + unique words at depth 2 (2*2 = 4) = 7 results.
 	if len(results) != 7 {
@@ -287,7 +287,7 @@ func TestHarden_MaxDepthBoundary(t *testing.T) {
 			var results []engine.Result
 			m.Run(context.Background(), context.Background(), []string{"http://depthtarget.com"}, 4, func(r engine.Result) {
 				results = append(results, r)
-			})
+			}, nil)
 
 			// Expected count: For each depth level, we have exactly 1 path.
 			// At Depth M, we scan exactly 1 path (which is seed/some/some/.../some).
@@ -340,7 +340,7 @@ func TestHarden_WorkerCounts(t *testing.T) {
 			var results []engine.Result
 			m.Run(context.Background(), context.Background(), []string{"http://workertarget.com"}, w, func(r engine.Result) {
 				results = append(results, r)
-			})
+			}, nil)
 
 			// Expected results: Depth 0 (1), Depth 1 (1), Depth 2 (1), Depth 3 (1) = 4 results
 			if len(results) != 4 {
@@ -389,7 +389,7 @@ func TestHarden_AdaptiveToggle(t *testing.T) {
 	var results1 []engine.Result
 	mEnabled.Run(context.Background(), context.Background(), []string{"http://adaptivetoggle.com"}, 4, func(r engine.Result) {
 		results1 = append(results1, r)
-	})
+	}, nil)
 
 	// Root (1) + wordlist (1) + 5 injected = 7 results
 	if len(results1) != 7 {
@@ -418,7 +418,7 @@ func TestHarden_AdaptiveToggle(t *testing.T) {
 	var results2 []engine.Result
 	mDisabled.Run(context.Background(), context.Background(), []string{"http://adaptivetoggle.com"}, 4, func(r engine.Result) {
 		results2 = append(results2, r)
-	})
+	}, nil)
 
 	// Root (1) + wordlist (1) = 2 results
 	if len(results2) != 2 {
@@ -483,7 +483,7 @@ func TestHarden_Redirects(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://redirecttarget.com/redirect"}, 1, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Verify Laravel paths are successfully injected after following redirects
 	foundLaravel := false
@@ -536,7 +536,7 @@ func TestHarden_Cancellation(t *testing.T) {
 	m.Run(ctx, ctx, []string{"http://cancel.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
 		cancel() // Cancel scan immediately
-	})
+	}, nil)
 
 	if len(results) >= 40 {
 		t.Error("Scan did not cancel cleanly")
@@ -582,7 +582,7 @@ func TestHarden_RobotsSitemapFailures(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://failures.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// 1 seed + 1 wordlist path = 2 results
 	if len(results) != 2 {
@@ -626,7 +626,7 @@ func TestHarden_RecursionFailures(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://recfailures.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Root only scanned (wordlist reader failed)
 	if len(results) != 1 {
@@ -668,7 +668,7 @@ func TestHarden_MalformedURLs(t *testing.T) {
 	var results []string
 	m.Run(context.Background(), context.Background(), []string{"http://normal.com", "::malformed::"}, 4, func(r engine.Result) {
 		results = append(results, r.URL)
-	})
+	}, nil)
 
 	// Normal seed + normal seed child = 2 results (malformed URL skipped cleanly)
 	if len(results) != 2 {
@@ -710,7 +710,7 @@ func TestHarden_DuplicateDiscoveries(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://dups.com", "http://dups.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Unique URL checks
 	urls := make(map[string]int)
@@ -766,7 +766,7 @@ func TestHarden_RecursivePathInjections(t *testing.T) {
 	var results []engine.Result
 	m.Run(context.Background(), context.Background(), []string{"http://injectedrecurse.com"}, 4, func(r engine.Result) {
 		results = append(results, r)
-	})
+	}, nil)
 
 	// Verify that injected paths themselves trigger normal wordlist recursion at depth 2 (up to maxDepth)
 	// Root (1) + wordlist path (1) + 5 injected paths = 7 results at depth 1.
@@ -824,7 +824,7 @@ func TestHarden_SchedulerStarvation(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.Run(context.Background(), context.Background(), []string{"http://starvation.com"}, 128, func(r engine.Result) {})
+		m.Run(context.Background(), context.Background(), []string{"http://starvation.com"}, 128, func(r engine.Result) {}, nil)
 		close(done)
 	}()
 

@@ -49,7 +49,7 @@ func collectResults(m *recursion.Manager, ctx context.Context, seeds []string, w
 	var out []engine.Result
 	m.Run(ctx, ctx, seeds, workers, func(r engine.Result) {
 		out = append(out, r)
-	})
+	}, nil)
 	return out
 }
 
@@ -389,7 +389,7 @@ func TestManager_CleanShutdown_Cancellation(t *testing.T) {
 		once.Do(func() {
 			cancel()
 		})
-	})
+	}, nil)
 }
 
 func TestManager_EmptySeeds(t *testing.T) {

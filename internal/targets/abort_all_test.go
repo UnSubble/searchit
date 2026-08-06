@@ -186,7 +186,7 @@ func TestAbortDuringRecursion(t *testing.T) {
 	count := 0
 	recMgr.Run(ctx, ctx, []string{srv.URL}, 4, func(r engine.Result) {
 		count++
-	})
+	}, nil)
 }
 
 func TestAbortDuringFuzzing(t *testing.T) {

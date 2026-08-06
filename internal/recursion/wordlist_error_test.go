@@ -73,7 +73,7 @@ func TestWordlistError_MissingFile(t *testing.T) {
 		100,
 	)
 
-	runErr := m.Run(context.Background(), context.Background(), []string{srv.URL}, 2, func(r engine.Result) {})
+	runErr := m.Run(context.Background(), context.Background(), []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 	if runErr == nil {
 		t.Fatalf("expected error from Manager.Run with missing wordlist, got nil")
 	}
@@ -142,7 +142,7 @@ func TestWordlistError_EmptyFile(t *testing.T) {
 		100,
 	)
 
-	runErr := m.Run(context.Background(), context.Background(), []string{srv.URL}, 2, func(r engine.Result) {})
+	runErr := m.Run(context.Background(), context.Background(), []string{srv.URL}, 2, func(r engine.Result) {}, nil)
 	if runErr != nil {
 		t.Fatalf("expected nil error from Manager.Run for valid empty wordlist, got: %v", runErr)
 	}
