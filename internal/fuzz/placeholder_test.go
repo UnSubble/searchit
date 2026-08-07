@@ -95,3 +95,135 @@ func TestFindPlaceholders(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectPlaceholderLocations(t *testing.T) {
+	tests := []struct {
+		name        string
+		req         RequestTemplate
+		placeholder string
+		expected    []string
+	}{
+		{
+			name: "URL path only",
+			req: RequestTemplate{
+				URL: "https://FUZZ.example.com/BAR",
+			},
+			placeholder: "FUZZ",
+			expected:    []string{"URL"},
+		},
+		{
+			name: "URL query parameter only",
+			req: RequestTemplate{
+				URL: "https://example.com/api?user=FOO",
+			},
+			placeholder: "FOO",
+			expected:    []string{"Query parameter"},
+		},
+		{
+			name: "URL and Query parameter together",
+			req: RequestTemplate{
+				URL: "https://FUZZ.example.com/api?user=FUZZ",
+			},
+			placeholder: "FUZZ",
+			expected:    []string{"URL", "Query parameter"},
+		},
+		{
+			name: "Header value",
+			req: RequestTemplate{
+				URL: "https://example.com",
+				Headers: http.Header{
+					"Host": []string{"BUZZ.futurevera.thm"},
+				},
+			},
+			placeholder: "BUZZ",
+			expected:    []string{"Header: Host"},
+		},
+		{
+			name: "Header key",
+			req: RequestTemplate{
+				URL: "https://example.com",
+				Headers: http.Header{
+					"X-FOO-Header": []string{"value"},
+				},
+			},
+			placeholder: "FOO",
+			expected:    []string{"Header: X-FOO-Header"},
+		},
+		{
+			name: "Multiple headers sorted alphabetically",
+			req: RequestTemplate{
+				URL: "https://example.com",
+				Headers: http.Header{
+					"Authorization": []string{"Bearer FOO"},
+					"X-Forwarded":   []string{"FOO"},
+				},
+			},
+			placeholder: "FOO",
+			expected:    []string{"Header: Authorization", "Header: X-Forwarded"},
+		},
+		{
+			name: "Body",
+			req: RequestTemplate{
+				URL:  "https://example.com",
+				Body: `{"id":"BAZ"}`,
+			},
+			placeholder: "BAZ",
+			expected:    []string{"Body"},
+		},
+		{
+			name: "Cookie",
+			req: RequestTemplate{
+				URL:    "https://example.com",
+				Cookie: "session=BAR",
+			},
+			placeholder: "BAR",
+			expected:    []string{"Cookie"},
+		},
+		{
+			name: "Multiple locations: URL, Header, Body, Cookie",
+			req: RequestTemplate{
+				URL:    "https://FUZZ.example.com/search?q=FUZZ",
+				Body:   "payload=FUZZ",
+				Cookie: "auth=FUZZ",
+				Headers: http.Header{
+					"Host": []string{"FUZZ.domain"},
+				},
+			},
+			placeholder: "FUZZ",
+			expected:    []string{"URL", "Query parameter", "Header: Host", "Body", "Cookie"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DetectPlaceholderLocations(tc.req, tc.placeholder)
+			if len(got) != len(tc.expected) {
+				t.Fatalf("expected %d locations (%v), got %d (%v)", len(tc.expected), tc.expected, len(got), got)
+			}
+			for i, v := range got {
+				if v != tc.expected[i] {
+					t.Errorf("at index %d, expected %q, got %q", i, tc.expected[i], v)
+				}
+			}
+		})
+	}
+}
+
+func TestGetPlaceholderLocations(t *testing.T) {
+	req := RequestTemplate{
+		URL: "https://FUZZ.example.com/api",
+		Headers: http.Header{
+			"Host": []string{"FUZZ.domain"},
+		},
+	}
+	got := GetPlaceholderLocations(req, "FUZZ")
+	expected := "URL, Header: Host"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+
+	none := GetPlaceholderLocations(req, "BAR")
+	if none != "None" {
+		t.Errorf("expected %q, got %q", "None", none)
+	}
+}

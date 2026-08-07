@@ -747,6 +747,90 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					}
 					placeholdersStr := fmt.Sprintf("%s (%d)", strings.Join(detectedPlaceholders, ", "), len(detectedPlaceholders))
 
+					var placeholderDetails []telemetry.PlaceholderInfo
+					targetReqTmpl := fuzz.RequestTemplate{
+						URL:     targetURL,
+						Method:  cfg.Method,
+						Body:    opts.Data,
+						Headers: headers,
+						Cookie:  opts.Cookie,
+					}
+					for _, p := range fuzz.SupportedPlaceholders {
+						isUsed := false
+						for _, dp := range detectedPlaceholders {
+							if dp == p {
+								isUsed = true
+								break
+							}
+						}
+						if !isUsed {
+							continue
+						}
+
+						loc := fuzz.GetPlaceholderLocations(targetReqTmpl, p)
+						var src string
+						var entries int
+
+						switch p {
+						case "FUZZ":
+							if isAlias(opts.Wordlist) {
+								src = fmt.Sprintf("alias (%s)", opts.Wordlist)
+							} else if opts.Wordlist == "" {
+								src = "embedded"
+							} else {
+								src = opts.Wordlist
+							}
+							if baseCount > 0 {
+								entries = baseCount
+							} else if words, ok := loadedWords["FUZZ"]; ok {
+								entries = len(words)
+							}
+						case "FOO":
+							if isAlias(opts.Foo) {
+								src = fmt.Sprintf("alias (%s)", opts.Foo)
+							} else if opts.Foo == "" {
+								src = "embedded"
+							} else {
+								src = opts.Foo
+							}
+							entries = len(fooWords)
+						case "BAR":
+							if isAlias(opts.Bar) {
+								src = fmt.Sprintf("alias (%s)", opts.Bar)
+							} else if opts.Bar == "" {
+								src = "embedded"
+							} else {
+								src = opts.Bar
+							}
+							entries = len(barWords)
+						case "BAZ":
+							if isAlias(opts.Baz) {
+								src = fmt.Sprintf("alias (%s)", opts.Baz)
+							} else if opts.Baz == "" {
+								src = "embedded"
+							} else {
+								src = opts.Baz
+							}
+							entries = len(bazWords)
+						case "BUZZ":
+							if isAlias(opts.Buzz) {
+								src = fmt.Sprintf("alias (%s)", opts.Buzz)
+							} else if opts.Buzz == "" {
+								src = "embedded"
+							} else {
+								src = opts.Buzz
+							}
+							entries = len(buzzWords)
+						}
+
+						placeholderDetails = append(placeholderDetails, telemetry.PlaceholderInfo{
+							Name:     p,
+							Location: loc,
+							Source:   src,
+							Entries:  entries,
+						})
+					}
+
 					excludeStatusStr := cfg.Status.Exclude.String()
 					if excludeStatusStr == "" {
 						excludeStatusStr = "none"
@@ -765,21 +849,22 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					totalCandidates = tmpRunner.EstimateCandidates(baseCount)
 
 					info := telemetry.ConfigInfo{
-						Target:          targetURL,
-						Method:          cfg.Method,
-						Workers:         cfg.Threads,
-						Mode:            "Fuzz",
-						Traversal:       strings.ToUpper(cfg.FuzzStrategy),
-						AdaptiveEnabled: cfg.Adaptive,
-						WordlistsCount:  wordlistsCount,
-						PrimaryWordlist: primaryWl,
-						Placeholders:    placeholdersStr,
-						HTTPVersion:     "auto",
-						FollowRedirects: cfg.FollowRedirects,
-						FilterStatus:    excludeStatusStr,
-						TotalCandidates: int(totalCandidates),
-						IsFuzz:          true,
-						Extensions:      cfg.Extensions,
+						Target:             targetURL,
+						Method:             cfg.Method,
+						Workers:            cfg.Threads,
+						Mode:               "Fuzz",
+						Traversal:          strings.ToUpper(cfg.FuzzStrategy),
+						AdaptiveEnabled:    cfg.Adaptive,
+						WordlistsCount:     wordlistsCount,
+						PrimaryWordlist:    primaryWl,
+						Placeholders:       placeholdersStr,
+						PlaceholderDetails: placeholderDetails,
+						HTTPVersion:        "auto",
+						FollowRedirects:    cfg.FollowRedirects,
+						FilterStatus:       excludeStatusStr,
+						TotalCandidates:    int(totalCandidates),
+						IsFuzz:             true,
+						Extensions:         cfg.Extensions,
 					}
 					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				}

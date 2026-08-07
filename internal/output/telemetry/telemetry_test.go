@@ -171,6 +171,68 @@ func TestPrintConfiguration_Variants(t *testing.T) {
 	}
 }
 
+func TestPrintConfiguration_RichPlaceholders(t *testing.T) {
+	var buf bytes.Buffer
+	tm := newTestTerminalManager(&buf)
+	_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+
+	cfg := telemetry.ConfigInfo{
+		Target:          "https://FUZZ.futurevera.thm/",
+		Method:          "GET",
+		Workers:         1,
+		Mode:            "Fuzz",
+		Traversal:       "EAGER",
+		WordlistsCount:  3,
+		PrimaryWordlist: "embedded",
+		IsFuzz:          true,
+		PlaceholderDetails: []telemetry.PlaceholderInfo{
+			{
+				Name:     "FUZZ",
+				Location: "URL",
+				Source:   "embedded",
+				Entries:  4751,
+			},
+			{
+				Name:     "FOO",
+				Location: "Header: Authorization",
+				Source:   "tokens.txt",
+				Entries:  250,
+			},
+			{
+				Name:     "BUZZ",
+				Location: "Header: Host",
+				Source:   "alias (=fuzz)",
+				Entries:  4751,
+			},
+		},
+	}
+
+	telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, cfg)
+
+	out := buf.String()
+	expectedSubstrings := []string{
+		"Placeholders",
+		"  FUZZ",
+		"    Location      URL",
+		"    Source        embedded",
+		"    Entries       4751",
+		"  FOO",
+		"    Location      Header: Authorization",
+		"    Source        tokens.txt",
+		"    Entries       250",
+		"  BUZZ",
+		"    Location      Header: Host",
+		"    Source        alias (=fuzz)",
+		"    Entries       4751",
+	}
+
+	for _, sub := range expectedSubstrings {
+		if !strings.Contains(out, sub) {
+			t.Errorf("expected output to contain %q, got:\n%s", sub, out)
+		}
+	}
+}
+
 func TestPrintPipelineReconciliation(t *testing.T) {
 	inst := stats.GlobalInstrumentation
 	atomic.StoreInt32(&inst.Enabled, 0)
