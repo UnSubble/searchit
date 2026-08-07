@@ -71,7 +71,7 @@ func TestScan_CancellationRendersSummary(t *testing.T) {
 	oldStderr := os.Stderr
 	os.Stderr = w
 
-	cxx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	cxx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 
 	wlFile := filepath.Join(t.TempDir(), "words.txt")

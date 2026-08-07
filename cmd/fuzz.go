@@ -451,53 +451,75 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			// Load auxiliary wordlists. Order matters: aliases reference previously-loaded slices.
 			// The loaded map is keyed by canonical placeholder name (upper-case).
 			loadedWords := map[string][]string{}
-			// FUZZ is the primary; it will be loaded later via primaryReader.
-			// Pre-populate with an empty sentinel so aliases to FUZZ are valid.
-			// The actual slice will be filled in at runtime by the Runner's primary channel.
-			// For alias resolution we need the file slice only for secondary placeholders;
-			// FUZZ is the only one that may be aliased without having a pre-loaded slice.
-			// We handle that case specially: if a secondary aliases =fuzz we will load
-			// FUZZ's file upfront so the slice is available.
-			var fuzzFileWords []string // non-nil only when a secondary aliases =fuzz
 
-			// Determine if any secondary aliases =fuzz so we can pre-load the FUZZ file.
-			for _, raw := range []string{opts.Foo, opts.Bar, opts.Baz, opts.Buzz} {
-				if isAlias(raw) && strings.EqualFold(strings.TrimPrefix(raw, "="), "fuzz") {
-					// Pre-load the FUZZ file once.
-					if fuzzFileWords == nil {
-						fuzzFileWords, err = loadLines(opts.Wordlist)
-						if err != nil {
-							return fmt.Errorf("failed to pre-load FUZZ wordlist for alias: %w", err)
-						}
-						loadedWords["FUZZ"] = fuzzFileWords
-					}
-					break
+			var resolvePlaceholder func(name string) ([]string, error)
+			resolvePlaceholder = func(name string) ([]string, error) {
+				canonical := strings.ToUpper(name)
+				if words, ok := loadedWords[canonical]; ok {
+					return words, nil
 				}
+				if canonical == "FUZZ" {
+					words, err := wordlist.LoadEffectiveWords(ctx, opts.Wordlist)
+					if err != nil {
+						return nil, fmt.Errorf("failed to pre-load FUZZ wordlist for alias: %w", err)
+					}
+					loadedWords["FUZZ"] = words
+					return words, nil
+				}
+				var raw string
+				switch canonical {
+				case "FOO":
+					raw = opts.Foo
+				case "BAR":
+					raw = opts.Bar
+				case "BAZ":
+					raw = opts.Baz
+				case "BUZZ":
+					raw = opts.Buzz
+				}
+				if raw == "" {
+					loadedWords[canonical] = nil
+					return nil, nil
+				}
+				if isAlias(raw) {
+					target := strings.ToUpper(strings.TrimPrefix(raw, "="))
+					targetWords, err := resolvePlaceholder(target)
+					if err != nil {
+						return nil, err
+					}
+					if targetWords == nil {
+						return nil, fmt.Errorf("--%s alias %q references %q which has no loaded wordlist",
+							strings.ToLower(canonical), raw, target)
+					}
+					cloned := make([]string, len(targetWords))
+					copy(cloned, targetWords)
+					loadedWords[canonical] = cloned
+					return cloned, nil
+				}
+				words, err := loadLines(raw)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load %s wordlist: %w", canonical, err)
+				}
+				loadedWords[canonical] = words
+				return words, nil
 			}
 
-			fooWords, err := resolveSecondaryWordlist(opts.Foo, "FOO", loadedWords)
+			fooWords, err := resolvePlaceholder("FOO")
 			if err != nil {
-				return fmt.Errorf("failed to load FOO wordlist: %w", err)
+				return err
 			}
-			loadedWords["FOO"] = fooWords
-
-			barWords, err := resolveSecondaryWordlist(opts.Bar, "BAR", loadedWords)
+			barWords, err := resolvePlaceholder("BAR")
 			if err != nil {
-				return fmt.Errorf("failed to load BAR wordlist: %w", err)
+				return err
 			}
-			loadedWords["BAR"] = barWords
-
-			bazWords, err := resolveSecondaryWordlist(opts.Baz, "BAZ", loadedWords)
+			bazWords, err := resolvePlaceholder("BAZ")
 			if err != nil {
-				return fmt.Errorf("failed to load BAZ wordlist: %w", err)
+				return err
 			}
-			loadedWords["BAZ"] = bazWords
-
-			buzzWords, err := resolveSecondaryWordlist(opts.Buzz, "BUZZ", loadedWords)
+			buzzWords, err := resolvePlaceholder("BUZZ")
 			if err != nil {
-				return fmt.Errorf("failed to load BUZZ wordlist: %w", err)
+				return err
 			}
-			loadedWords["BUZZ"] = buzzWords
 
 			var headers http.Header
 			if opts.Request != "" && len(opts.resolvedFuzzTargets) > 0 {
