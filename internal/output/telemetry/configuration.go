@@ -10,6 +10,13 @@ import (
 	"github.com/unsubble/searchit/internal/presentation"
 )
 
+type FuzzTargetInfo struct {
+	URL     string
+	Headers []string
+	Cookie  string
+	Body    string
+}
+
 type PlaceholderInfo struct {
 	Name     string
 	Location string
@@ -19,6 +26,7 @@ type PlaceholderInfo struct {
 
 type ConfigInfo struct {
 	Target             string
+	FuzzTarget         FuzzTargetInfo
 	Method             string
 	Workers            int
 	Mode               string
@@ -36,6 +44,36 @@ type ConfigInfo struct {
 	Extensions         []string
 }
 
+func renderFuzzTarget(w io.Writer, ft FuzzTargetInfo) {
+	if ft.URL == "" {
+		return
+	}
+	fmt.Fprintln(w, "Fuzz Target")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  URL")
+	fmt.Fprintf(w, "    %s\n", ft.URL)
+
+	if len(ft.Headers) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "  Header")
+		for _, h := range ft.Headers {
+			fmt.Fprintf(w, "    %s\n", h)
+		}
+	}
+
+	if ft.Cookie != "" {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "  Cookie")
+		fmt.Fprintf(w, "    %s\n", ft.Cookie)
+	}
+
+	if ft.Body != "" {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "  Body")
+		fmt.Fprintf(w, "    %s\n", ft.Body)
+	}
+}
+
 // PrintNormalConfiguration prints a compact configuration block.
 // All output is routed through tm.Emit(owner, fn).
 func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigInfo) {
@@ -49,10 +87,16 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 		wl = "embedded"
 	}
 
-	items := []terminal.Item{
-		{Key: "Target", Value: presentation.URL(info.Target, 45)},
-		{Key: "Mode", Value: info.Mode},
+	ft := info.FuzzTarget
+	if info.IsFuzz && ft.URL == "" && info.Target != "" {
+		ft.URL = info.Target
 	}
+
+	var items []terminal.Item
+	if !info.IsFuzz {
+		items = append(items, terminal.Item{Key: "Target", Value: presentation.URL(info.Target, 45)})
+	}
+	items = append(items, terminal.Item{Key: "Mode", Value: info.Mode})
 	if info.Traversal != "" {
 		items = append(items, terminal.Item{Key: "Traversal", Value: info.Traversal})
 	}
@@ -77,6 +121,12 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 		if title != "" {
 			fmt.Fprintln(w, terminal.CenterTitle(title, tm.ContentWidth()))
 			fmt.Fprintln(w, sep)
+		}
+		if info.IsFuzz && ft.URL != "" {
+			renderFuzzTarget(w, ft)
+			if len(items) > 0 {
+				fmt.Fprintln(w)
+			}
 		}
 		for _, item := range items {
 			line := fmt.Sprintf("%-28s %s", item.Key, item.Value)
@@ -107,8 +157,14 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 		wl = presentation.Path(wl, 60)
 	}
 
-	items := []terminal.Item{
-		{Key: "Target", Value: presentation.URL(info.Target, 45)},
+	ft := info.FuzzTarget
+	if info.IsFuzz && ft.URL == "" && info.Target != "" {
+		ft.URL = info.Target
+	}
+
+	var items []terminal.Item
+	if !info.IsFuzz {
+		items = append(items, terminal.Item{Key: "Target", Value: presentation.URL(info.Target, 45)})
 	}
 
 	if info.Method != "" {
@@ -164,6 +220,12 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 		if title != "" {
 			fmt.Fprintln(w, terminal.CenterTitle(title, tm.ContentWidth()))
 			fmt.Fprintln(w, sep)
+		}
+		if info.IsFuzz && ft.URL != "" {
+			renderFuzzTarget(w, ft)
+			if len(items) > 0 {
+				fmt.Fprintln(w)
+			}
 		}
 		for _, item := range items {
 			line := fmt.Sprintf("%-28s %s", item.Key, item.Value)

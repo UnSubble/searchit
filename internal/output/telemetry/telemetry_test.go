@@ -233,6 +233,210 @@ func TestPrintConfiguration_RichPlaceholders(t *testing.T) {
 	}
 }
 
+func TestPrintConfiguration_ContextAwareFuzzTarget(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         telemetry.ConfigInfo
+		expected    []string
+		notExpected []string
+	}{
+		{
+			name: "Case 1: Placeholder only in URL",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL: "https://FUZZ.futurevera.thm",
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://FUZZ.futurevera.thm",
+			},
+			notExpected: []string{
+				"  Header",
+				"  Cookie",
+				"  Body",
+			},
+		},
+		{
+			name: "Case 2: Placeholder only in Header",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL:     "https://futurevera.thm",
+					Headers: []string{"Host: FUZZ.futurevera.thm"},
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://futurevera.thm",
+				"  Header\n    Host: FUZZ.futurevera.thm",
+			},
+			notExpected: []string{
+				"  Cookie",
+				"  Body",
+			},
+		},
+		{
+			name: "Case 3: Placeholder in URL and Header",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL:     "https://FUZZ.futurevera.thm/api",
+					Headers: []string{"Authorization: Bearer BAR"},
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://FUZZ.futurevera.thm/api",
+				"  Header\n    Authorization: Bearer BAR",
+			},
+			notExpected: []string{
+				"  Cookie",
+				"  Body",
+			},
+		},
+		{
+			name: "Case 4: Placeholder only in Body",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL:  "https://futurevera.thm",
+					Body: `{"user":"FUZZ"}`,
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://futurevera.thm",
+				"  Body\n    {\"user\":\"FUZZ\"}",
+			},
+			notExpected: []string{
+				"  Header",
+				"  Cookie",
+			},
+		},
+		{
+			name: "Case 5: Placeholder in Query",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL: "https://futurevera.thm?id=FUZZ",
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://futurevera.thm?id=FUZZ",
+			},
+			notExpected: []string{
+				"  Header",
+				"  Cookie",
+				"  Body",
+			},
+		},
+		{
+			name: "Case 6: Placeholder in Cookie",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL:    "https://futurevera.thm",
+					Cookie: "session=FUZZ",
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://futurevera.thm",
+				"  Cookie\n    session=FUZZ",
+			},
+			notExpected: []string{
+				"  Header",
+				"  Body",
+			},
+		},
+		{
+			name: "Multiple Headers with placeholders",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL: "https://example.com",
+					Headers: []string{
+						"Host: FUZZ.example.com",
+						"Authorization: Bearer BAR",
+					},
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://example.com",
+				"  Header\n    Host: FUZZ.example.com\n    Authorization: Bearer BAR",
+			},
+			notExpected: []string{
+				"  Cookie",
+				"  Body",
+			},
+		},
+		{
+			name: "Mixed all sections",
+			cfg: telemetry.ConfigInfo{
+				IsFuzz: true,
+				FuzzTarget: telemetry.FuzzTargetInfo{
+					URL: "https://FUZZ.example.com/api?q=FOO",
+					Headers: []string{
+						"Host: BUZZ.example.com",
+					},
+					Cookie: "session=BAR",
+					Body:   `{"query":"BAZ"}`,
+				},
+				Workers: 1,
+				Mode:    "Fuzz",
+			},
+			expected: []string{
+				"Fuzz Target",
+				"  URL\n    https://FUZZ.example.com/api?q=FOO",
+				"  Header\n    Host: BUZZ.example.com",
+				"  Cookie\n    session=BAR",
+				"  Body\n    {\"query\":\"BAZ\"}",
+			},
+			notExpected: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tm := newTestTerminalManager(&buf)
+			_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+
+			telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, tc.cfg)
+			out := buf.String()
+
+			for _, exp := range tc.expected {
+				if !strings.Contains(out, exp) {
+					t.Errorf("expected output to contain %q, got:\n%s", exp, out)
+				}
+			}
+			for _, notExp := range tc.notExpected {
+				if strings.Contains(out, notExp) {
+					t.Errorf("expected output NOT to contain %q, got:\n%s", notExp, out)
+				}
+			}
+		})
+	}
+}
+
 func TestPrintPipelineReconciliation(t *testing.T) {
 	inst := stats.GlobalInstrumentation
 	atomic.StoreInt32(&inst.Enabled, 0)

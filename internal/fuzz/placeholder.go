@@ -20,6 +20,16 @@ type RequestTemplate struct {
 // SupportedPlaceholders defines the complete list of valid fuzz placeholders.
 var SupportedPlaceholders = []string{"FUZZ", "FOO", "BAR", "BAZ", "BUZZ"}
 
+// HasAnyPlaceholder returns true if s contains any supported placeholder.
+func HasAnyPlaceholder(s string) bool {
+	for _, p := range SupportedPlaceholders {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // FindPlaceholders inspects a merged RequestTemplate and returns a slice
 // containing all supported placeholders that are present within the request.
 func FindPlaceholders(req RequestTemplate) []string {

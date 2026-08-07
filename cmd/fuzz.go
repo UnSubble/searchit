@@ -848,8 +848,44 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					}
 					totalCandidates = tmpRunner.EstimateCandidates(baseCount)
 
+					var fuzzHeaderLines []string
+					if opts.Request != "" && len(opts.resolvedFuzzTargets) > 0 {
+						for _, h := range opts.resolvedFuzzTargets[0].Headers {
+							if fuzz.HasAnyPlaceholder(h) {
+								fuzzHeaderLines = append(fuzzHeaderLines, h)
+							}
+						}
+					}
+					for _, h := range cfg.Headers {
+						if fuzz.HasAnyPlaceholder(h) {
+							fuzzHeaderLines = append(fuzzHeaderLines, h)
+						}
+					}
+
+					var fuzzCookie string
+					if fuzz.HasAnyPlaceholder(opts.Cookie) {
+						fuzzCookie = opts.Cookie
+					} else if opts.Request != "" && len(opts.resolvedFuzzTargets) > 0 && fuzz.HasAnyPlaceholder(opts.resolvedFuzzTargets[0].Cookies) {
+						fuzzCookie = opts.resolvedFuzzTargets[0].Cookies
+					}
+
+					var fuzzBody string
+					if fuzz.HasAnyPlaceholder(opts.Data) {
+						fuzzBody = opts.Data
+					} else if opts.Request != "" && len(opts.resolvedFuzzTargets) > 0 && fuzz.HasAnyPlaceholder(opts.resolvedFuzzTargets[0].Body) {
+						fuzzBody = opts.resolvedFuzzTargets[0].Body
+					}
+
+					fuzzTargetInfo := telemetry.FuzzTargetInfo{
+						URL:     targetURL,
+						Headers: fuzzHeaderLines,
+						Cookie:  fuzzCookie,
+						Body:    fuzzBody,
+					}
+
 					info := telemetry.ConfigInfo{
 						Target:             targetURL,
+						FuzzTarget:         fuzzTargetInfo,
 						Method:             cfg.Method,
 						Workers:            cfg.Threads,
 						Mode:               "Fuzz",

@@ -227,3 +227,26 @@ func TestGetPlaceholderLocations(t *testing.T) {
 		t.Errorf("expected %q, got %q", "None", none)
 	}
 }
+
+func TestHasAnyPlaceholder(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"https://FUZZ.example.com", true},
+		{"Host: FOO.example.com", true},
+		{"session=BAR", true},
+		{"data=BAZ", true},
+		{"custom=BUZZ", true},
+		{"https://example.com/api", false},
+		{"Host: example.com", false},
+		{"session=12345", false},
+	}
+
+	for _, tc := range tests {
+		got := HasAnyPlaceholder(tc.input)
+		if got != tc.expected {
+			t.Errorf("HasAnyPlaceholder(%q) = %v, expected %v", tc.input, got, tc.expected)
+		}
+	}
+}
