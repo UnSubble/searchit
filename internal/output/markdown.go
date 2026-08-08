@@ -73,3 +73,8 @@ func formatMarkdownHeaders(h http.Header) string {
 func (f *MarkdownFormatter) Close() error {
 	return nil
 }
+
+// PrintTo delegates to Print; MarkdownFormatter always writes to its configured writer.
+func (f *MarkdownFormatter) PrintTo(_ io.Writer, r engine.Result) error {
+	return f.Print(r)
+}

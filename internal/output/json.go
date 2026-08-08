@@ -69,6 +69,11 @@ func (f *JSONFormatter) Print(r engine.Result) error {
 	return nil
 }
 
+// PrintTo delegates to Print; JSONFormatter always writes to its configured writer.
+func (f *JSONFormatter) PrintTo(_ io.Writer, r engine.Result) error {
+	return f.Print(r)
+}
+
 func (f *JSONFormatter) Close() error {
 	if f.closed {
 		return nil

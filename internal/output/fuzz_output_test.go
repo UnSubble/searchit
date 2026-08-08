@@ -16,6 +16,8 @@ func TestFuzzOutput_URLOnly(t *testing.T) {
 		StatusCode: 200,
 		Length:     35,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData:   nil,
 	}
 
@@ -25,12 +27,9 @@ func TestFuzzOutput_URLOnly(t *testing.T) {
 		t.Fatalf("Print failed: %v", err)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "https://host/admin") {
-		t.Errorf("expected URL in output, got: %s", out)
-	}
-	if strings.Contains(out, "Header:") || strings.Contains(out, "Cookie:") || strings.Contains(out, "Body:") || strings.Contains(out, "JSON:") {
-		t.Errorf("expected no extra fields for URL-only fuzz, got: %s", out)
+	expected := "[+] 200 - 35 B\n  URL\n    https://host/admin\n\n"
+	if buf.String() != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
 	}
 }
 
@@ -40,6 +39,8 @@ func TestFuzzOutput_Header(t *testing.T) {
 		StatusCode: 200,
 		Length:     35,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
 				{Location: engine.LocationHeader, Name: "Authorization", Value: "Bearer admin-token"},
@@ -53,8 +54,9 @@ func TestFuzzOutput_Header(t *testing.T) {
 	_ = tf.Print(res)
 	textOut := textBuf.String()
 
-	if !strings.Contains(textOut, "Header: Authorization=Bearer admin-token") {
-		t.Errorf("expected Header in text output, got: %s", textOut)
+	expectedText := "[+] 200 - 35 B\n  URL\n    https://host/api\n  Header\n    Authorization: Bearer admin-token\n\n"
+	if textOut != expectedText {
+		t.Errorf("expected:\n%q\ngot:\n%q", expectedText, textOut)
 	}
 
 	// JSON format check
@@ -87,6 +89,8 @@ func TestFuzzOutput_Cookie(t *testing.T) {
 		StatusCode: 200,
 		Length:     42,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
 				{Location: engine.LocationCookie, Name: "session", Value: "abcdef123"},
@@ -99,8 +103,9 @@ func TestFuzzOutput_Cookie(t *testing.T) {
 	_ = tf.Print(res)
 	out := buf.String()
 
-	if !strings.Contains(out, "Cookie: session=abcdef123") {
-		t.Errorf("expected Cookie in text output, got: %s", out)
+	expected := "[+] 200 - 42 B\n  URL\n    https://host/profile\n  Cookie\n    session=abcdef123\n\n"
+	if out != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, out)
 	}
 }
 
@@ -110,6 +115,8 @@ func TestFuzzOutput_POSTBody(t *testing.T) {
 		StatusCode: 200,
 		Length:     100,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
 				{Location: engine.LocationBody, Value: "username=admin&password=secret123"},
@@ -122,8 +129,9 @@ func TestFuzzOutput_POSTBody(t *testing.T) {
 	_ = tf.Print(res)
 	out := buf.String()
 
-	if !strings.Contains(out, "Body: username=admin&password=secret123") {
-		t.Errorf("expected Body in text output, got: %s", out)
+	expected := "[+] 200 - 100 B\n  URL\n    https://host/login\n  Body\n    username=admin&password=secret123\n\n"
+	if out != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, out)
 	}
 }
 
@@ -133,6 +141,8 @@ func TestFuzzOutput_JSONBody(t *testing.T) {
 		StatusCode: 200,
 		Length:     100,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
 				{Location: engine.LocationJSON, Value: `{"user":"admin","password":"secret123"}`},
@@ -145,8 +155,9 @@ func TestFuzzOutput_JSONBody(t *testing.T) {
 	_ = tf.Print(res)
 	out := buf.String()
 
-	if !strings.Contains(out, `JSON: {"user":"admin","password":"secret123"}`) {
-		t.Errorf("expected JSON in text output, got: %s", out)
+	expected := "[+] 200 - 100 B\n  URL\n    https://host/login\n  Body\n    {\"user\":\"admin\",\"password\":\"secret123\"}\n\n"
+	if out != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, out)
 	}
 }
 
@@ -156,6 +167,8 @@ func TestFuzzOutput_MultipleLocations(t *testing.T) {
 		StatusCode: 200,
 		Length:     150,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
 				{Location: engine.LocationHeader, Name: "Authorization", Value: "Bearer admin-token"},
@@ -169,23 +182,24 @@ func TestFuzzOutput_MultipleLocations(t *testing.T) {
 	_ = tf.Print(res)
 	out := buf.String()
 
-	if !strings.Contains(out, "Header: Authorization=Bearer admin-token") {
-		t.Errorf("missing Header line in output: %s", out)
-	}
-	if !strings.Contains(out, "Cookie: session=abcdef") {
-		t.Errorf("missing Cookie line in output: %s", out)
+	expected := "[+] 200 - 150 B\n  URL\n    https://host/api?id=test\n  Header\n    Authorization: Bearer admin-token\n  Cookie\n    session=abcdef\n\n"
+	if out != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, out)
 	}
 }
 
-func TestFuzzOutput_MultiplePlaceholdersInOneLocation(t *testing.T) {
+func TestFuzzOutput_MultipleHeaders(t *testing.T) {
 	res := engine.Result{
-		URL:        "https://host/api",
+		URL:        "https://futurevera.thm",
 		StatusCode: 200,
-		Length:     150,
+		Length:     512,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
-				{Location: engine.LocationHeader, Name: "Authorization", Value: "Bearer admin:secret"},
+				{Location: engine.LocationHeader, Name: "Host", Value: "admin.futurevera.thm"},
+				{Location: engine.LocationHeader, Name: "Authorization", Value: "Bearer eyJhb..."},
 			},
 		},
 	}
@@ -195,8 +209,36 @@ func TestFuzzOutput_MultiplePlaceholdersInOneLocation(t *testing.T) {
 	_ = tf.Print(res)
 	out := buf.String()
 
-	if !strings.Contains(out, "Header: Authorization=Bearer admin:secret") {
-		t.Errorf("missing multiple placeholder header line: %s", out)
+	expected := "[+] 200 - 512 B\n  URL\n    https://futurevera.thm\n  Header\n    Host: admin.futurevera.thm\n    Authorization: Bearer eyJhb...\n\n"
+	if out != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, out)
+	}
+}
+
+func TestFuzzOutput_QuietMode(t *testing.T) {
+	res := engine.Result{
+		URL:        "https://futurevera.thm",
+		StatusCode: 200,
+		Length:     4605,
+		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
+		FuzzData: &engine.FuzzData{
+			Fields: []engine.FuzzField{
+				{Location: engine.LocationHeader, Name: "Host", Value: "admin.futurevera.thm"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	tf := output.NewTextFormatter(&buf, true, false, false, false)
+	if err := tf.Print(res); err != nil {
+		t.Fatalf("Print failed: %v", err)
+	}
+
+	expected := "https://futurevera.thm\n"
+	if buf.String() != expected {
+		t.Errorf("expected quiet mode output %q, got %q", expected, buf.String())
 	}
 }
 
@@ -206,6 +248,8 @@ func TestFuzzOutput_NDJSONSchemaConsistency(t *testing.T) {
 		StatusCode: 200,
 		Length:     100,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData: &engine.FuzzData{
 			Fields: []engine.FuzzField{
 				{Location: engine.LocationHeader, Name: "X-Fuzz", Value: "val1"},
@@ -237,6 +281,8 @@ func TestFuzzOutput_OmitFuzzWhenNil(t *testing.T) {
 		StatusCode: 200,
 		Length:     35,
 		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
 		FuzzData:   nil,
 	}
 

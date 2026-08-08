@@ -58,7 +58,7 @@ func (r *Runner) evaluateLevel(ctx context.Context, e *Executor, cTmpl CompiledT
 			default:
 			}
 
-			job, err := r.buildJob(cTmpl, req.vars)
+			job, err := r.BuildJob(cTmpl, req.vars)
 			if err != nil {
 				pending <- pendingJob{word: req.word, idx: req.idx, vars: req.vars, err: err}
 				continue
@@ -363,7 +363,7 @@ func (r *Runner) runPriority(ctx context.Context, e *Executor, plan TraversalPla
 			task := deque[0]
 			deque = deque[1:]
 
-			job, err := r.buildJob(cTmpls[task.depth], task.vars)
+			job, err := r.BuildJob(cTmpls[task.depth], task.vars)
 			if err != nil {
 				r.recordPruned(plan, task.depth)
 				continue
@@ -587,7 +587,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 										eagerWg.Add(1)
 										go func(vCopy map[string]string, idxCopy []int) {
 											defer eagerWg.Done()
-											job, err := r.buildJob(r.compiledReq.targetURL, vCopy)
+											job, err := r.BuildJob(r.compiledReq.targetURL, vCopy)
 											if err != nil {
 												return
 											}

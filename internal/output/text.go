@@ -83,69 +83,80 @@ func (f *TerminalTextFormatter) Close() error {
 func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle, humanReadable bool) error {
 	if quiet {
 		_, err := fmt.Fprintf(w, "%s\n", r.URL)
-		if err != nil {
-			return err
-		}
-		return writeFuzzFieldsText(w, r.FuzzData)
+		return err
 	}
 
 	if showHeaders || showTitle {
-		if err := writeVerboseTextResult(w, r, showHeaders, showTitle, humanReadable); err != nil {
-			return err
-		}
-		return writeFuzzFieldsText(w, r.FuzzData)
+		return writeVerboseTextResult(w, r, showHeaders, showTitle, humanReadable)
 	}
 
 	if isRedirect(r) {
-		if err := writeRedirectResult(w, r, humanReadable); err != nil {
-			return err
-		}
-		return writeFuzzFieldsText(w, r.FuzzData)
+		return writeRedirectResult(w, r, humanReadable)
 	}
 
-	if err := writeNormalTextResult(w, r, humanReadable); err != nil {
-		return err
+	if r.IsFuzz || r.Origin == "fuzz" || r.FuzzData != nil {
+		return writeFuzzTextResult(w, r, humanReadable)
 	}
-	return writeFuzzFieldsText(w, r.FuzzData)
+
+	return writeNormalTextResult(w, r, humanReadable)
 }
 
-func writeFuzzFieldsText(w io.Writer, fuzzData *engine.FuzzData) error {
-	if fuzzData == nil || len(fuzzData.Fields) == 0 {
-		return nil
-	}
-	for _, field := range fuzzData.Fields {
-		switch field.Location {
-		case engine.LocationHeader:
-			if field.Name != "" {
-				if _, err := fmt.Fprintf(w, "Header: %s=%s\n", field.Name, field.Value); err != nil {
-					return err
-				}
-			} else {
-				if _, err := fmt.Fprintf(w, "Header: %s\n", field.Value); err != nil {
-					return err
+func writeFuzzTextResult(w io.Writer, r engine.Result, humanReadable bool) error {
+	var sb strings.Builder
+	s := formatSize(r.Length, humanReadable)
+	sb.WriteString(fmt.Sprintf("[+] %d - %s\n", r.StatusCode, s))
+	sb.WriteString("  URL\n")
+	sb.WriteString(fmt.Sprintf("    %s\n", r.URL))
+
+	if r.FuzzData != nil && len(r.FuzzData.Fields) > 0 {
+		var headers, cookies, bodies []engine.FuzzField
+		for _, f := range r.FuzzData.Fields {
+			switch f.Location {
+			case engine.LocationHeader:
+				headers = append(headers, f)
+			case engine.LocationCookie:
+				cookies = append(cookies, f)
+			case engine.LocationBody, engine.LocationJSON:
+				bodies = append(bodies, f)
+			}
+		}
+
+		if len(headers) > 0 {
+			sb.WriteString("  Header\n")
+			for _, h := range headers {
+				if h.Name != "" {
+					sb.WriteString(fmt.Sprintf("    %s: %s\n", h.Name, h.Value))
+				} else {
+					sb.WriteString(fmt.Sprintf("    %s\n", h.Value))
 				}
 			}
-		case engine.LocationCookie:
-			if field.Name != "" {
-				if _, err := fmt.Fprintf(w, "Cookie: %s=%s\n", field.Name, field.Value); err != nil {
-					return err
-				}
-			} else {
-				if _, err := fmt.Fprintf(w, "Cookie: %s\n", field.Value); err != nil {
-					return err
+		}
+
+		if len(cookies) > 0 {
+			sb.WriteString("  Cookie\n")
+			for _, c := range cookies {
+				if c.Name != "" {
+					sb.WriteString(fmt.Sprintf("    %s=%s\n", c.Name, c.Value))
+				} else {
+					sb.WriteString(fmt.Sprintf("    %s\n", c.Value))
 				}
 			}
-		case engine.LocationBody:
-			if _, err := fmt.Fprintf(w, "Body: %s\n", field.Value); err != nil {
-				return err
-			}
-		case engine.LocationJSON:
-			if _, err := fmt.Fprintf(w, "JSON: %s\n", field.Value); err != nil {
-				return err
+		}
+
+		if len(bodies) > 0 {
+			sb.WriteString("  Body\n")
+			for _, b := range bodies {
+				lines := strings.Split(b.Value, "\n")
+				for _, line := range lines {
+					sb.WriteString(fmt.Sprintf("    %s\n", line))
+				}
 			}
 		}
 	}
-	return nil
+
+	sb.WriteString("\n")
+	_, err := io.WriteString(w, sb.String())
+	return err
 }
 
 func isRedirect(r engine.Result) bool {

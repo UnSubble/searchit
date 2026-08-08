@@ -869,8 +869,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						if r.Accepted {
 							if termFmttr != nil {
 								if progMgr != nil {
-									progMgr.ExecuteAbove(func() {
-										_ = termFmttr.Print(r)
+									progMgr.ExecuteAbove(func(w io.Writer) {
+										_ = termFmttr.PrintTo(w, r)
 									})
 								} else {
 									_ = termFmttr.Print(r)
@@ -961,8 +961,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							atomic.AddInt64(&stats.GlobalInstrumentation.ResultsAccepted, 1)
 							if termFmttr != nil {
 								if progMgr != nil {
-									progMgr.ExecuteAbove(func() {
-										_ = termFmttr.Print(r)
+									progMgr.ExecuteAbove(func(w io.Writer) {
+										_ = termFmttr.PrintTo(w, r)
 									})
 								} else {
 									_ = termFmttr.Print(r)

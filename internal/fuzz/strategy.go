@@ -293,6 +293,21 @@ func (r *Runner) compileRequest() *compiledRequest {
 	return cr
 }
 
+// PrepareTemplates compiles the request templates and caches them in the Runner.
+// It must be called before BuildJob or IterateCandidates when not going through Run().
+// Run() calls this automatically; call it explicitly only from the dry-run path.
+func (r *Runner) PrepareTemplates() {
+	if r.compiledReq == nil {
+		r.compiledReq = r.compileRequest()
+	}
+}
+
+// CompiledURLTemplate returns the pre-compiled URL template.
+// PrepareTemplates must be called first.
+func (r *Runner) CompiledURLTemplate() CompiledTemplate {
+	return r.compiledReq.targetURL
+}
+
 // Run executes the fuzzer according to selected strategy.
 func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
 	r.compiledReq = r.compileRequest()
@@ -368,7 +383,13 @@ func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy str
 	return r.runEager(ctx, e, primaryChan, yield)
 }
 
-func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan string, yield ResultCallback) error {
+// IterateCandidates walks the full Cartesian product of the primary wordlist
+// with the secondary placeholder lists (FOO, BAR, BAZ, BUZZ) and calls yield
+// for each variable map. The map key order is always FUZZ/FOO/BAR/BAZ/BUZZ.
+// yield must return true to continue or false to abort early.
+// This is the single source of truth for candidate ordering; both runEager and
+// the dry-run path must call this function to guarantee candidate #N parity.
+func (r *Runner) IterateCandidates(ctx context.Context, primaryChan <-chan string, yield func(vars map[string]string) bool) {
 	fooList := r.FooWords
 	if len(fooList) == 0 {
 		fooList = []string{""}
@@ -386,6 +407,59 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		buzzList = []string{""}
 	}
 
+	expand := func(fuzzVal string) bool {
+		for _, fooVal := range fooList {
+			for _, barVal := range barList {
+				for _, bazVal := range bazList {
+					for _, buzzVal := range buzzList {
+						vars := map[string]string{
+							"FUZZ": fuzzVal,
+							"FOO":  fooVal,
+							"BAR":  barVal,
+							"BAZ":  bazVal,
+							"BUZZ": buzzVal,
+						}
+						if !yield(vars) {
+							return false
+						}
+					}
+				}
+			}
+		}
+		return true
+	}
+
+	if primaryChan != nil {
+		for word := range primaryChan {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			if !expand(word) {
+				return
+			}
+		}
+	} else {
+		fuzzList := r.FuzzWords
+		if len(fuzzList) == 0 {
+			// Fallback for legacy single-placeholder unit tests that set FooWords for FUZZ
+			hasFOO := strings.Contains(r.TargetURL, "FOO") || strings.Contains(r.BodyTemplate, "FOO") || strings.Contains(r.CookieTemplate, "FOO")
+			if !hasFOO && len(r.FooWords) > 0 {
+				fuzzList = r.FooWords
+			} else {
+				fuzzList = []string{""}
+			}
+		}
+		for _, fuzzVal := range fuzzList {
+			if !expand(fuzzVal) {
+				return
+			}
+		}
+	}
+}
+
+func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan string, yield ResultCallback) error {
 	bufSize := r.Threads * 32
 	if bufSize < 512 {
 		bufSize = 512
@@ -398,8 +472,8 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 		defer producerWg.Done()
 		defer close(jobChan)
 
-		pushCandidate := func(vars map[string]string) bool {
-			job, err := r.buildJob(r.compiledReq.targetURL, vars)
+		r.IterateCandidates(ctx, primaryChan, func(vars map[string]string) bool {
+			job, err := r.BuildJob(r.compiledReq.targetURL, vars)
 			if err != nil {
 				if r.Collector != nil {
 					r.Collector.RecordSkipped(1)
@@ -416,66 +490,7 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			case jobChan <- asyncCh:
 				return true
 			}
-		}
-
-		if primaryChan != nil {
-			for word := range primaryChan {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				for _, fooVal := range fooList {
-					for _, barVal := range barList {
-						for _, bazVal := range bazList {
-							for _, buzzVal := range buzzList {
-								vars := map[string]string{
-									"FUZZ": word,
-									"FOO":  fooVal,
-									"BAR":  barVal,
-									"BAZ":  bazVal,
-									"BUZZ": buzzVal,
-								}
-								if !pushCandidate(vars) {
-									return
-								}
-							}
-						}
-					}
-				}
-			}
-		} else {
-			fuzzList := r.FuzzWords
-			if len(fuzzList) == 0 {
-				// Fallback for legacy single-placeholder unit tests that set FooWords for FUZZ
-				hasFOO := strings.Contains(r.TargetURL, "FOO") || strings.Contains(r.BodyTemplate, "FOO") || strings.Contains(r.CookieTemplate, "FOO")
-				if !hasFOO && len(r.FooWords) > 0 {
-					fuzzList = r.FooWords
-				} else {
-					fuzzList = []string{""}
-				}
-			}
-			for _, fuzzVal := range fuzzList {
-				for _, fooVal := range fooList {
-					for _, barVal := range barList {
-						for _, bazVal := range bazList {
-							for _, buzzVal := range buzzList {
-								vars := map[string]string{
-									"FUZZ": fuzzVal,
-									"FOO":  fooVal,
-									"BAR":  barVal,
-									"BAZ":  bazVal,
-									"BUZZ": buzzVal,
-								}
-								if !pushCandidate(vars) {
-									return
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		})
 	}()
 
 	for resCh := range jobChan {
@@ -494,7 +509,12 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 	return nil
 }
 
-func (r *Runner) buildJob(urlTemplate CompiledTemplate, vars map[string]string) (RequestDTO, error) {
+// BuildJob renders a single RequestDTO from a compiled URL template and a map of
+// placeholder → value substitutions.
+// This is exported so that the dry-run path can produce RequestDTOs using the
+// exact same rendering logic as the live execution path, guaranteeing candidate
+// #N parity between dry-run and real runs for the same configuration.
+func (r *Runner) BuildJob(urlTemplate CompiledTemplate, vars map[string]string) (RequestDTO, error) {
 	urlStr := urlTemplate.RenderString(vars)
 
 	var bodyStr string

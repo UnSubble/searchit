@@ -12,7 +12,12 @@ import (
 
 // Formatter abstracts output presentation to decouple CLI presentation from the scanning engine.
 type Formatter interface {
+	// Print writes r to the formatter's configured output.
 	Print(engine.Result) error
+	// PrintTo writes r to w instead of the formatter's default output.
+	// Used by ExecuteAbove to route finding output through the TM-locked writer,
+	// ensuring all terminal writes (ANSI sequences + findings) share the same fd.
+	PrintTo(io.Writer, engine.Result) error
 	Close() error
 }
 

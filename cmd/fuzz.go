@@ -96,6 +96,8 @@ type FuzzOptions struct {
 	RandomAgent     bool
 	NoProgress      bool
 	HelpAll         bool
+	DryRun          bool
+	DryRunLimit     int
 
 	resolvedFuzzTargets   []targets.Target
 	testHookConfigApplied func(config.Config)
@@ -1134,6 +1136,37 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					appState.AdaptiveEngine.InfoHandler = adaptiveInfoHandler
 				}
 
+				// ── Dry-run early return ──────────────────────────────────────────────
+				// Execute the full candidate-generation + request-construction pipeline
+				// without making any network connections.
+				if opts.DryRun {
+					out := cmd.OutOrStdout()
+					if !cfg.Quiet {
+						fuzz.PrintDryRunHeader(out)
+						fmt.Fprintln(out)
+					}
+
+					// primaryChan may still be open if not adaptive/dfs/bfs/priority;
+					// GenerateDryRunRequests drains it via IterateCandidates before returning.
+					dryRequests, totalCandidates, dryErr := fuzz.GenerateDryRunRequests(fuzzCtx, runner, primaryChan, opts.DryRunLimit)
+					if dryErr != nil && !errors.Is(dryErr, context.Canceled) {
+						return dryErr
+					}
+
+					if cfg.Quiet {
+						for _, dr := range dryRequests {
+							fmt.Fprintln(out, dr.Req.URL)
+						}
+					} else {
+						for _, dr := range dryRequests {
+							fuzz.PrintDryRunRequest(out, dr)
+						}
+						fuzz.PrintDryRunSummary(out, totalCandidates, len(dryRequests))
+					}
+					return nil
+				}
+				// ─────────────────────────────────────────────────────────────────────
+
 				runErr := runner.Run(fuzzCtx, drainCtx, cfg.FuzzStrategy, primaryChan, func(r fuzz.Result) {
 					if r.Accepted {
 						engRes := engine.Result{
@@ -1144,14 +1177,15 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							Accepted:    r.Accepted,
 							Err:         r.Err,
 							Origin:      "fuzz",
+							IsFuzz:      true,
 							Title:       r.Title,
 							Headers:     r.Headers,
 							FuzzData:    r.FuzzData,
 						}
 						if termFmttr != nil {
 							if progMgr != nil {
-								progMgr.ExecuteAbove(func() {
-									_ = termFmttr.Print(engRes)
+								progMgr.ExecuteAbove(func(w io.Writer) {
+									_ = termFmttr.PrintTo(w, engRes)
 								})
 							} else {
 								_ = termFmttr.Print(engRes)
@@ -1303,6 +1337,8 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVar(&opts.UserAgent, "user-agent", "", "set a custom User-Agent for every request")
 	cmd.Flags().BoolVar(&opts.RandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
 	cmd.Flags().BoolVar(&opts.HelpAll, "help-all", false, "show all available options")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "render candidates without sending any network requests")
+	cmd.Flags().IntVar(&opts.DryRunLimit, "dry-run-limit", 10, "number of rendered requests to preview in --dry-run mode")
 
 	setupCmdHelp(cmd, func() bool { return opts.HelpAll }, fuzzHelpConfig)
 	return cmd, opts

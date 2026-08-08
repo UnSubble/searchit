@@ -396,6 +396,7 @@ func process(
 		Title:       title,
 		Headers:     resHeaders,
 		UserData:    item.Req.UserData,
+		FuzzData:    item.Req.FuzzData,
 	})
 	return true
 }

@@ -78,6 +78,11 @@ func (f *CSVFormatter) Close() error {
 	return f.w.Error()
 }
 
+// PrintTo delegates to Print; CSVFormatter always writes to its configured writer.
+func (f *CSVFormatter) PrintTo(_ io.Writer, r engine.Result) error {
+	return f.Print(r)
+}
+
 // itoa converts an int64 to its decimal string representation without importing strconv.
 func itoa(n int64) string {
 	if n == 0 {

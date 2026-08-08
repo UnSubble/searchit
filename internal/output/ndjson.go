@@ -44,6 +44,11 @@ func (f *NDJSONFormatter) Print(r engine.Result) error {
 	return err
 }
 
+// PrintTo delegates to Print; NDJSONFormatter always writes to its configured writer.
+func (f *NDJSONFormatter) PrintTo(_ io.Writer, r engine.Result) error {
+	return f.Print(r)
+}
+
 func (f *NDJSONFormatter) Close() error {
 	return nil
 }

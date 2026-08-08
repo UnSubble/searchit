@@ -28,6 +28,6 @@ func BenchmarkBuildJob_Simple(b *testing.B) {
 	vars := map[string]string{"FUZZ": "fuzzVal"}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = r.buildJob(r.compiledReq.targetURL, vars)
+		_, _ = r.BuildJob(r.compiledReq.targetURL, vars)
 	}
 }

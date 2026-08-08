@@ -26,4 +26,7 @@ type Result struct {
 
 	// Substituted non-URL fuzzed fields (if any)
 	FuzzData *FuzzData
+
+	// IsFuzz indicates if the result originated from a fuzzing execution
+	IsFuzz bool
 }

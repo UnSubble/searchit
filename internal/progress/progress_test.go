@@ -384,7 +384,7 @@ func TestManager_InPlaceStatisticsOverlay(t *testing.T) {
 
 	// 2. Execute a finding above while stats view is open
 	var findingExecuted bool
-	m.ExecuteAbove(func() {
+	m.ExecuteAbove(func(_ io.Writer) {
 		findingExecuted = true
 	})
 
