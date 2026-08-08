@@ -98,6 +98,8 @@ type ScanOptions struct {
 	HumanReadable bool
 	Request       string
 	HelpAll       bool
+	DryRun        bool
+	DryRunLimit   int
 
 	resolvedTargets       []targets.Target
 	testHookConfigApplied func(config.Config)
@@ -195,6 +197,14 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			if cmd.Flags().Changed("format") {
 				if _, err := output.Parse(opts.Format); err != nil {
 					return fmt.Errorf("invalid --format: %w", err)
+				}
+			}
+
+			// --dry-run is only supported with text output.
+			if opts.DryRun && cmd.Flags().Changed("format") {
+				parsed, err := output.Parse(opts.Format)
+				if err == nil && parsed != output.FormatText {
+					return fmt.Errorf("--dry-run is not supported with --format %s (use text output for dry-run preview)", opts.Format)
 				}
 			}
 
@@ -620,6 +630,62 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				if !cfg.Quiet {
 					infoLog = cmd.ErrOrStderr()
 				}
+
+				// ── Dry-run early return ────────────────────────────────────────────
+				// During dry-run we must not make any network calls, including the
+				// AutoDetectTarget HTTP probe. Use the raw target URL as-is.
+				if opts.DryRun {
+					dryURL := tCtx.Target.URL
+					out := cmd.OutOrStdout()
+
+					if !cfg.Quiet {
+						wordlistDisplay := cfg.Wordlist
+						if wordlistDisplay == "" {
+							wordlistDisplay = "embedded"
+						}
+						strategyDisplay := ""
+						if cfg.Recursive {
+							strategyDisplay = strings.ToUpper(cfg.Strategy.String())
+						}
+						dryRunCfg := recursion.ScanDryRunConfig{
+							Target:      dryURL,
+							Workers:     cfg.Threads,
+							IsRecursive: cfg.Recursive,
+							Strategy:    strategyDisplay,
+							MaxDepth:    int(cfg.MaxDepth),
+							Wordlist:    wordlistDisplay,
+						}
+						recursion.PrintScanDryRunHeader(out, dryRunCfg)
+						fmt.Fprintln(out)
+					}
+
+					dryRequests, totalCandidates, dryErr := recursion.GenerateScanDryRunRequests(
+						tCtx.Ctx,
+						[]string{dryURL},
+						reader,
+						cfg.Paths.NormalizePaths,
+						cfg.Paths.CollapseSlashes,
+						cfg.Extensions,
+						opts.DryRunLimit,
+					)
+					if dryErr != nil && !errors.Is(dryErr, context.Canceled) {
+						return dryErr
+					}
+
+					if cfg.Quiet {
+						for _, dr := range dryRequests {
+							fmt.Fprintln(out, dr.URL)
+						}
+					} else {
+						for _, dr := range dryRequests {
+							fmt.Fprintf(out, "REQUEST %d\n  %s\n\n", dr.Index, dr.URL)
+						}
+						recursion.PrintScanDryRunSummary(out, len(dryRequests), totalCandidates, cfg.Recursive)
+					}
+					return nil
+				}
+				// ───────────────────────────────────────────────────────────────────
+
 				resolvedURL, err := targets.AutoDetectTarget(tCtx.Ctx, appState.HTTPClient, tCtx.Target.URL, infoLog)
 				if err != nil {
 					return err
@@ -1322,6 +1388,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	cmd.Flags().StringVar(&opts.UserAgent, "user-agent", "", "set a custom User-Agent for every request")
 	cmd.Flags().BoolVar(&opts.RandomAgent, "random-agent", false, "use a randomly selected built-in User-Agent")
 	cmd.Flags().BoolVar(&opts.HelpAll, "help-all", false, "show all available options")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "generate candidates without sending any network requests")
+	cmd.Flags().IntVar(&opts.DryRunLimit, "dry-run-limit", 10, "number of candidate URLs to preview in --dry-run mode")
 
 	setupCmdHelp(cmd, func() bool { return opts.HelpAll }, scanHelpConfig)
 	return cmd, opts

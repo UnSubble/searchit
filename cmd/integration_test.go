@@ -55,8 +55,22 @@ func runIntegrationCommandStreams(args []string) (string, string, error) {
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
 	os.Stdout = wOut
+	os.Stderr = wErr
 	cmd.SetOut(wOut)
 	cmd.SetErr(wErr)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	outCh := make(chan struct{})
+	errCh := make(chan struct{})
+
+	go func() {
+		_, _ = io.Copy(&stdoutBuf, rOut)
+		close(outCh)
+	}()
+	go func() {
+		_, _ = io.Copy(&stderrBuf, rErr)
+		close(errCh)
+	}()
 
 	execErr := cmd.ExecuteContext(context.Background())
 
@@ -65,9 +79,8 @@ func runIntegrationCommandStreams(args []string) (string, string, error) {
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
 
-	var stdoutBuf, stderrBuf bytes.Buffer
-	_, _ = io.Copy(&stdoutBuf, rOut)
-	_, _ = io.Copy(&stderrBuf, rErr)
+	<-outCh
+	<-errCh
 
 	return stdoutBuf.String(), stderrBuf.String(), execErr
 }
