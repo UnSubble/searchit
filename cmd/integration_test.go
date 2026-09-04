@@ -570,7 +570,8 @@ func TestIntegration_ExtensionSupport(t *testing.T) {
 			"scan",
 			"-u", srv.URL,
 			"-w", wlFile,
-			"--ext", "php,txt",
+			// ",php,txt" → empty sentinel ("") + "php" + "txt": produces admin, admin.php, admin.txt
+			"--ext", ",php,txt",
 		})
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
@@ -588,7 +589,8 @@ func TestIntegration_ExtensionSupport(t *testing.T) {
 			"fuzz",
 			"-u", srv.URL + "/FUZZ",
 			"-w", wlFile,
-			"--ext", "php,bak",
+			// ",php,bak" → empty sentinel + "php" + "bak": produces admin, admin.php, admin.bak
+			"--ext", ",php,bak",
 		})
 		if err != nil {
 			t.Fatalf("command failed: %v", err)

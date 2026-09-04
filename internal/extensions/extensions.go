@@ -9,8 +9,12 @@ import (
 
 // Parse takes a slice of raw extension arguments (e.g. ["php,txt", "@file.txt", "bak"])
 // and returns a deduplicated, order-preserved slice of normalized extensions.
-// Leading dots and surrounding whitespace are stripped.
+// Leading dots and surrounding whitespace are stripped from non-empty extensions.
 // File arguments starting with '@' are read line-by-line.
+//
+// An empty string ("") is a valid extension meaning "the extensionless variant of
+// the base word". It is preserved when explicitly produced by a leading, trailing,
+// or consecutive comma in the input (e.g. ",php,html" → ["", "php", "html"]).
 func Parse(raw []string) ([]string, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -20,21 +24,23 @@ func Parse(raw []string) ([]string, error) {
 	var result []string
 
 	addExt := func(ext string) {
-		ext = strings.TrimSpace(ext)
-		ext = strings.TrimPrefix(ext, ".")
-		ext = strings.TrimSpace(ext)
-		if ext == "" {
-			return
+		// For non-empty tokens, strip leading dots and whitespace.
+		// For empty tokens (from consecutive commas), preserve "" as-is.
+		trimmed := strings.TrimSpace(ext)
+		if trimmed != "" {
+			trimmed = strings.TrimPrefix(trimmed, ".")
+			trimmed = strings.TrimSpace(trimmed)
 		}
-		if _, exists := seen[ext]; !exists {
-			seen[ext] = struct{}{}
-			result = append(result, ext)
+		if _, exists := seen[trimmed]; !exists {
+			seen[trimmed] = struct{}{}
+			result = append(result, trimmed)
 		}
 	}
 
 	for _, item := range raw {
-		item = strings.TrimSpace(item)
-		if item == "" {
+		// A completely blank raw item (e.g. an empty -e flag with nothing at all)
+		// is ignored. A raw item that contains commas may still produce "" entries.
+		if strings.TrimSpace(item) == "" {
 			continue
 		}
 
@@ -75,19 +81,26 @@ func Parse(raw []string) ([]string, error) {
 	return result, nil
 }
 
-// GenerateVariants returns baseWord followed by baseWord + "." + ext for each extension.
-// If exts is empty, it returns []string{baseWord}.
+// GenerateVariants returns one candidate per extension for baseWord.
+//
+//   - If exts is nil or empty, returns []string{baseWord} (no extensions specified).
+//   - If exts is non-empty, each entry determines one variant:
+//   - ""    → baseWord          (extensionless; from an explicit empty entry like ",php")
+//   - "php" → baseWord + ".php"
+//
+// The returned slice preserves the order of exts. No deduplication is performed
+// here; callers rely on Parse to deduplicate before calling GenerateVariants.
 func GenerateVariants(baseWord string, exts []string) []string {
 	if len(exts) == 0 {
 		return []string{baseWord}
 	}
-	variants := make([]string, 0, 1+len(exts))
-	variants = append(variants, baseWord)
+	variants := make([]string, 0, len(exts))
 	for _, ext := range exts {
 		if ext == "" {
-			continue
+			variants = append(variants, baseWord)
+		} else {
+			variants = append(variants, baseWord+"."+ext)
 		}
-		variants = append(variants, baseWord+"."+ext)
 	}
 	return variants
 }

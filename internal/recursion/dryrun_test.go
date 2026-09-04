@@ -436,7 +436,8 @@ func TestScanDryRun_CollapseSlashes(t *testing.T) {
 
 func TestScanDryRun_Extensions(t *testing.T) {
 	words := []string{"config"}
-	exts := []string{"php", "html"}
+	// Use the empty sentinel to get all 3 variants: config, config.php, config.html
+	exts := []string{"", "php", "html"}
 	r := wordlist.NewSliceReader(staticSliceReader(words))
 	results, total, err := recursion.GenerateScanDryRunRequests(
 		context.Background(),
@@ -446,7 +447,7 @@ func TestScanDryRun_Extensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// GenerateVariants produces: config, config.php, config.html
+	// GenerateVariants produces: config (from ""), config.php, config.html
 	if total != 3 {
 		t.Fatalf("expected 3 (1 word × 3 variants), got %d", total)
 	}

@@ -88,9 +88,11 @@ func TestAccounting_StandardScanExt(t *testing.T) {
 
 	collector := stats.NewCollector()
 	wordlist := []string{"admin", "login"}
-	exts := []string{"php", "html"}
-	entriesPerDir := int64(len(wordlist) * (1 + len(exts))) // 2 * 3 = 6
-	totalWork := int64(1) + entriesPerDir                   // 1 seed + 6 candidates = 7
+	// Use the empty sentinel ("") so GenerateVariants produces 3 variants per word:
+	//   word, word.php, word.html  → 2 words × 3 = 6 candidates
+	exts := []string{"", "php", "html"}
+	entriesPerDir := int64(len(wordlist) * len(exts)) // 2 * 3 = 6
+	totalWork := int64(1) + entriesPerDir             // 1 seed + 6 candidates = 7
 
 	collector.SetTotalWork(totalWork)
 

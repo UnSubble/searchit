@@ -23,7 +23,10 @@ echo "[3/3] Running staticcheck..."
 STATICCHECK="$(go env GOPATH)/bin/staticcheck"
 if ! command -v "${STATICCHECK}" &> /dev/null && ! which staticcheck &> /dev/null; then
     echo "Installing staticcheck..."
-    go install honnef.co/go/tools/cmd/staticcheck@v0.4.7
+    # v0.7.0 (latest release) does not support Go 1.27 export data (version 4).
+    # Use master until the next tagged release ships with Go 1.27 support.
+    # TODO: go install honnef.co/go/tools/cmd/staticcheck@latest
+    go install honnef.co/go/tools/cmd/staticcheck@master
 fi
 
 if command -v staticcheck &> /dev/null; then
