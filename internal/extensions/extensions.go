@@ -38,12 +38,6 @@ func Parse(raw []string) ([]string, error) {
 	}
 
 	for _, item := range raw {
-		// A completely blank raw item (e.g. an empty -e flag with nothing at all)
-		// is ignored. A raw item that contains commas may still produce "" entries.
-		if strings.TrimSpace(item) == "" {
-			continue
-		}
-
 		if strings.HasPrefix(item, "@") {
 			filePath := strings.TrimPrefix(item, "@")
 			filePath = strings.TrimSpace(filePath)
@@ -71,6 +65,10 @@ func Parse(raw []string) ([]string, error) {
 				return nil, fmt.Errorf("error reading extension file %q: %w", filePath, err)
 			}
 		} else {
+			// Split each item on commas. Empty parts (produced by pflag splitting
+			// ",php" into ["", "php"] or by the user writing ",php,html") are
+			// valid empty-extension sentinels and must be passed to addExt so that
+			// GenerateVariants emits the extensionless variant for that word.
 			parts := strings.Split(item, ",")
 			for _, part := range parts {
 				addExt(part)

@@ -539,7 +539,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				if count, err := countable.Count(); err == nil {
 					totalWords = count
 					if len(cfg.Extensions) > 0 {
-						totalWords *= (1 + len(cfg.Extensions))
+						totalWords *= len(cfg.Extensions)
 					}
 				}
 			}

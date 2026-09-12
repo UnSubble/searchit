@@ -666,7 +666,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				if cnt, err := countable.Count(); err == nil {
 					baseCount = cnt
 					if len(cfg.Extensions) > 0 {
-						baseCount *= (1 + len(cfg.Extensions))
+						baseCount *= len(cfg.Extensions)
 					}
 				}
 			}

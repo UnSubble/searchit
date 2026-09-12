@@ -152,29 +152,38 @@ func (p *TraversalPlan) TruncateTemplate(urlTemplate string, currentDepth int) s
 		return urlTemplate
 	}
 
+	// Determine the end position of all placeholders at or before currentDepth
+	// so we never truncate into or before current/earlier level placeholders.
+	minSafeIdx := 0
+	for d := 0; d <= currentDepth; d++ {
+		curPh := p.Levels[d].Placeholder
+		if idx := strings.Index(urlTemplate, curPh); idx != -1 {
+			end := idx + len(curPh)
+			if end > minSafeIdx {
+				minSafeIdx = end
+			}
+		}
+	}
+
 	earliestIdx := len(urlTemplate)
 	// Truncate at the NEXT level's placeholder, or ANY placeholder after it.
 	for i := currentDepth + 1; i < len(p.Levels); i++ {
 		ph := p.Levels[i].Placeholder
-		phWithSlash := "/" + ph
-		if idx := strings.Index(urlTemplate, phWithSlash); idx != -1 && idx < earliestIdx {
-			earliestIdx = idx
-		} else if idx := strings.Index(urlTemplate, ph); idx != -1 && idx < earliestIdx {
-			earliestIdx = idx
+		idx := strings.Index(urlTemplate, ph)
+		if idx == -1 {
+			continue
 		}
 
-		// If FOO and FUZZ are both active, we should truncate on either.
-		if ph == "FOO" || ph == "FUZZ" {
-			other := "FOO"
-			if ph == "FOO" {
-				other = "FUZZ"
-			}
-			otherWithSlash := "/" + other
-			if idx := strings.Index(urlTemplate, otherWithSlash); idx != -1 && idx < earliestIdx {
-				earliestIdx = idx
-			} else if idx := strings.Index(urlTemplate, other); idx != -1 && idx < earliestIdx {
-				earliestIdx = idx
-			}
+		// If the placeholder is preceded by a slash (e.g. "/FOO" or "/sub_FOO"),
+		// and that slash is strictly after the current depth's placeholders,
+		// truncate from the leading slash so the entire child path segment is removed.
+		cutIdx := idx
+		if lastSlash := strings.LastIndex(urlTemplate[:idx], "/"); lastSlash >= minSafeIdx {
+			cutIdx = lastSlash
+		}
+
+		if cutIdx < earliestIdx {
+			earliestIdx = cutIdx
 		}
 	}
 

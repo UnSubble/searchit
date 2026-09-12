@@ -232,3 +232,110 @@ func TestRoundTrip_ParseThenGenerateVariants(t *testing.T) {
 		})
 	}
 }
+
+// TestParse_PflagSplitBehavior verifies that Parse correctly handles the
+// pre-split items produced by pflag.StringSliceVar. When the user passes
+// "-e ,php" on the command line, pflag splits on comma and produces
+// []string{"", "php"}. Parse must treat "" as the empty-extension sentinel
+// and NOT discard it.
+func TestParse_PflagSplitBehavior(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string // simulates what pflag.StringSliceVar produces
+		expected []string
+	}{
+		{
+			// pflag splits "-e ,php" into ["", "php"]
+			name:     "pflag split of -e ,php produces empty sentinel + php",
+			input:    []string{"", "php"},
+			expected: []string{"", "php"},
+		},
+		{
+			// pflag splits "-e ,php,html" into ["", "php", "html"]
+			name:     "pflag split of -e ,php,html produces empty sentinel + php + html",
+			input:    []string{"", "php", "html"},
+			expected: []string{"", "php", "html"},
+		},
+		{
+			// pflag splits "-e php,html" into ["php", "html"] — no empty sentinel
+			name:     "pflag split of -e php,html produces only php + html",
+			input:    []string{"php", "html"},
+			expected: []string{"php", "html"},
+		},
+		{
+			// pflag splits "-e php" into ["php"]
+			name:     "pflag split of -e php produces only php",
+			input:    []string{"php"},
+			expected: []string{"php"},
+		},
+		{
+			// Duplicate empty sentinel deduplicated
+			name:     "duplicate empty sentinels deduplicated",
+			input:    []string{"", "", "php"},
+			expected: []string{"", "php"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := extensions.Parse(tc.input)
+			if err != nil {
+				t.Fatalf("Parse error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.expected) {
+				t.Errorf("got %v, want %v", got, tc.expected)
+			}
+		})
+	}
+}
+
+// TestParse_PflagSplitRoundTrip verifies the complete pipeline:
+// pflag splits CLI input → Parse → GenerateVariants produces correct URL candidates.
+// This is the regression test for the bug where "-e ,php" with URL "http://example.com/hmr_FUZZ"
+// would only generate "hmr_images.php" and miss "hmr_images" (the extensionless variant).
+func TestParse_PflagSplitRoundTrip(t *testing.T) {
+	tests := []struct {
+		name     string
+		pflagOut []string // what pflag.StringSliceVar produces
+		baseWord string
+		expected []string
+	}{
+		{
+			name:     "-e ,php → images + images.php",
+			pflagOut: []string{"", "php"},
+			baseWord: "images",
+			expected: []string{"images", "images.php"},
+		},
+		{
+			name:     "-e ,php,html → images + images.php + images.html",
+			pflagOut: []string{"", "php", "html"},
+			baseWord: "images",
+			expected: []string{"images", "images.php", "images.html"},
+		},
+		{
+			name:     "-e php,html → images.php + images.html (no base word)",
+			pflagOut: []string{"php", "html"},
+			baseWord: "images",
+			expected: []string{"images.php", "images.html"},
+		},
+		{
+			name:     "no ext flag (nil) → images only",
+			pflagOut: nil,
+			baseWord: "images",
+			expected: []string{"images"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			exts, err := extensions.Parse(tc.pflagOut)
+			if err != nil {
+				t.Fatalf("Parse error: %v", err)
+			}
+			got := extensions.GenerateVariants(tc.baseWord, exts)
+			if !reflect.DeepEqual(got, tc.expected) {
+				t.Errorf("got %v, want %v", got, tc.expected)
+			}
+		})
+	}
+}
