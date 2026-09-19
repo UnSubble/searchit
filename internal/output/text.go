@@ -101,7 +101,24 @@ func writeTextResult(w io.Writer, r engine.Result, quiet, showHeaders, showTitle
 	return writeNormalTextResult(w, r, humanReadable)
 }
 
+func hasNonURLFuzzFields(r engine.Result) bool {
+	if r.FuzzData == nil || len(r.FuzzData.Fields) == 0 {
+		return false
+	}
+	for _, f := range r.FuzzData.Fields {
+		switch f.Location {
+		case engine.LocationHeader, engine.LocationCookie, engine.LocationBody, engine.LocationJSON:
+			return true
+		}
+	}
+	return false
+}
+
 func writeFuzzTextResult(w io.Writer, r engine.Result, humanReadable bool) error {
+	if !hasNonURLFuzzFields(r) {
+		return writeNormalTextResult(w, r, humanReadable)
+	}
+
 	var sb strings.Builder
 	s := formatSize(r.Length, humanReadable)
 	sb.WriteString(fmt.Sprintf("[+] %d - %s\n", r.StatusCode, s))

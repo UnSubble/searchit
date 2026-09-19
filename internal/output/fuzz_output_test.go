@@ -27,7 +27,53 @@ func TestFuzzOutput_URLOnly(t *testing.T) {
 		t.Fatalf("Print failed: %v", err)
 	}
 
-	expected := "[+] 200 - 35 B\n  URL\n    https://host/admin\n\n"
+	expected := "[+] 200 - 35 B - https://host/admin\n"
+	if buf.String() != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
+	}
+}
+
+func TestFuzzOutput_URLOnly_HumanReadable(t *testing.T) {
+	res := engine.Result{
+		URL:        "http://10.81.130.191/index.php",
+		StatusCode: 200,
+		Length:     1080,
+		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
+		FuzzData:   nil,
+	}
+
+	var buf bytes.Buffer
+	tf := output.NewTextFormatter(&buf, false, false, false, true)
+	if err := tf.Print(res); err != nil {
+		t.Fatalf("Print failed: %v", err)
+	}
+
+	expected := "[+] 200 - 1.1 KB - http://10.81.130.191/index.php\n"
+	if buf.String() != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
+	}
+}
+
+func TestFuzzOutput_URLOnly_EmptyFuzzDataFields(t *testing.T) {
+	res := engine.Result{
+		URL:        "http://example.com/index.php",
+		StatusCode: 200,
+		Length:     1080,
+		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
+		FuzzData:   &engine.FuzzData{Fields: nil},
+	}
+
+	var buf bytes.Buffer
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
+	if err := tf.Print(res); err != nil {
+		t.Fatalf("Print failed: %v", err)
+	}
+
+	expected := "[+] 200 - 1080 B - http://example.com/index.php\n"
 	if buf.String() != expected {
 		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
 	}
@@ -303,5 +349,83 @@ func TestFuzzOutput_OmitFuzzWhenNil(t *testing.T) {
 
 	if strings.Contains(ndjsonBuf.String(), `"fuzz"`) {
 		t.Errorf("expected 'fuzz' key to be completely omitted in NDJSON, got: %s", ndjsonBuf.String())
+	}
+}
+
+func TestFuzzOutput_URLAndHeader(t *testing.T) {
+	res := engine.Result{
+		URL:        "http://example.com/index.php",
+		StatusCode: 200,
+		Length:     1080,
+		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
+		FuzzData: &engine.FuzzData{
+			Fields: []engine.FuzzField{
+				{Location: engine.LocationHeader, Name: "Host", Value: "admin.example.com"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
+	if err := tf.Print(res); err != nil {
+		t.Fatalf("Print failed: %v", err)
+	}
+
+	expected := "[+] 200 - 1080 B\n  URL\n    http://example.com/index.php\n  Header\n    Host: admin.example.com\n\n"
+	if buf.String() != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
+	}
+}
+
+func TestFuzzOutput_URLAndBody(t *testing.T) {
+	res := engine.Result{
+		URL:        "http://example.com/index.php",
+		StatusCode: 200,
+		Length:     1080,
+		Accepted:   true,
+		Origin:     "fuzz",
+		IsFuzz:     true,
+		FuzzData: &engine.FuzzData{
+			Fields: []engine.FuzzField{
+				{Location: engine.LocationBody, Value: "username=admin"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
+	if err := tf.Print(res); err != nil {
+		t.Fatalf("Print failed: %v", err)
+	}
+
+	expected := "[+] 200 - 1080 B\n  URL\n    http://example.com/index.php\n  Body\n    username=admin\n\n"
+	if buf.String() != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
+	}
+}
+
+func TestFuzzOutput_Redirect(t *testing.T) {
+	res := engine.Result{
+		URL:         "http://example.com/welcome.php",
+		RedirectURL: "http://example.com/login.php",
+		StatusCode:  302,
+		Length:      0,
+		Accepted:    true,
+		Origin:      "fuzz",
+		IsFuzz:      true,
+		FuzzData:    nil,
+	}
+
+	var buf bytes.Buffer
+	tf := output.NewTextFormatter(&buf, false, false, false, false)
+	if err := tf.Print(res); err != nil {
+		t.Fatalf("Print failed: %v", err)
+	}
+
+	expected := "[302] - 0 B - /welcome.php -> http://example.com/login.php\n"
+	if buf.String() != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, buf.String())
 	}
 }

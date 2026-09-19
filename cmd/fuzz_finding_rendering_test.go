@@ -43,14 +43,85 @@ func TestFuzz_FindingRendering_URLOnly(t *testing.T) {
 		"--no-progress",
 	})
 
-	if !strings.Contains(stdout, "[+] 200 - 2 B") {
-		t.Errorf("expected status and size header in finding, got:\n%s", stdout)
+	expectedCompact := "[+] 200 - 2 B - " + srv.URL + "/admin\n"
+	if !strings.Contains(stdout, expectedCompact) {
+		t.Errorf("expected compact one-line finding %q, got:\n%s", expectedCompact, stdout)
 	}
-	if !strings.Contains(stdout, "  URL\n    "+srv.URL+"/admin") {
-		t.Errorf("expected rendered URL block, got:\n%s", stdout)
+	if strings.Contains(stdout, "  URL\n") {
+		t.Errorf("expected URL-only finding to NOT use multi-line URL block, got:\n%s", stdout)
 	}
 	if strings.Contains(stdout, "Header") || strings.Contains(stdout, "Cookie") || strings.Contains(stdout, "Body") {
 		t.Errorf("expected unchanged components not to be rendered, got:\n%s", stdout)
+	}
+}
+
+func TestFuzz_FindingRendering_URLAndHeader(t *testing.T) {
+	wl := createWordlistWith(t, "user1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	stdout := runFuzzCmdAndCaptureStdout(t, []string{
+		"-u", srv.URL + "/FUZZ",
+		"-H", "X-Role: FOO",
+		"--foo", wl,
+		"-w", wl,
+		"-t", "1",
+		"--no-progress",
+	})
+
+	if !strings.Contains(stdout, "  URL\n    "+srv.URL+"/user1") {
+		t.Errorf("expected URL block in structured finding, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "  Header\n    X-Role: user1") {
+		t.Errorf("expected Header block in structured finding, got:\n%s", stdout)
+	}
+}
+
+func TestFuzz_FindingRendering_URLAndBody(t *testing.T) {
+	wl := createWordlistWith(t, "admin")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	stdout := runFuzzCmdAndCaptureStdout(t, []string{
+		"-u", srv.URL + "/FUZZ",
+		"-d", "username=FOO",
+		"--foo", wl,
+		"-w", wl,
+		"-t", "1",
+		"--no-progress",
+	})
+
+	if !strings.Contains(stdout, "  URL\n    "+srv.URL+"/admin") {
+		t.Errorf("expected URL block in structured finding, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "  Body\n    username=admin") {
+		t.Errorf("expected Body block in structured finding, got:\n%s", stdout)
+	}
+}
+
+func TestFuzz_FindingRendering_Redirect(t *testing.T) {
+	wl := createWordlistWith(t, "welcome.php")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com/login.php", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	stdout := runFuzzCmdAndCaptureStdout(t, []string{
+		"-u", srv.URL + "/FUZZ",
+		"-w", wl,
+		"-t", "1",
+		"--no-progress",
+		"--mc", "302",
+	})
+
+	if !strings.Contains(stdout, "[302] - ") || !strings.Contains(stdout, " - /welcome.php -> http://example.com/login.php\n") {
+		t.Errorf("expected compact redirect finding format, got:\n%s", stdout)
 	}
 }
 
