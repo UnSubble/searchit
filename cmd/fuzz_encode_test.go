@@ -81,7 +81,7 @@ func TestFuzzCLI_EncodeValidation(t *testing.T) {
 	wl := createWordlistFile(t, "admin")
 
 	// Invalid encodings must fail
-	for _, inv := range []string{"hex", "rot13", "none", "utf8"} {
+	for _, inv := range []string{"hex", "rot13", "none", "utf8", "wl-hex"} {
 		t.Run("invalid_"+inv, func(t *testing.T) {
 			_, _, err := executeFuzzCmd([]string{
 				"-u", "http://example.com/FUZZ",
@@ -92,14 +92,19 @@ func TestFuzzCLI_EncodeValidation(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected error for --encode %q, got nil", inv)
 			}
-			if !strings.Contains(err.Error(), "supported encodings are base64, url, doubleurl") {
-				t.Errorf("error %q does not list supported encodings", err.Error())
+			for _, exp := range []string{"base64", "url", "doubleurl", "wl-base64", "wl-url", "wl-doubleurl"} {
+				if !strings.Contains(err.Error(), exp) {
+					t.Errorf("error %q does not list supported encoding %q", err.Error(), exp)
+				}
 			}
 		})
 	}
 
 	// Valid encodings must pass validation
-	for _, valid := range []string{"base64", "url", "doubleurl", "BASE64", "Url", "DoubleURL"} {
+	for _, valid := range []string{
+		"base64", "url", "doubleurl", "BASE64", "Url", "DoubleURL",
+		"wl-base64", "wl-url", "wl-doubleurl", "WL-BASE64", "Wl-Url", "WL-DOUBLEURL",
+	} {
 		t.Run("valid_"+valid, func(t *testing.T) {
 			_, _, err := executeFuzzCmd([]string{
 				"-u", "http://example.com/FUZZ",
@@ -378,5 +383,248 @@ func TestFuzzCLI_Alias_WithEncoding(t *testing.T) {
 	expected := "http://example.com/api/admin%2Fuser/admin%2Fuser"
 	if !strings.Contains(stdout, expected) {
 		t.Errorf("expected aliased placeholder to receive encoding:\n got stdout:\n%s\n want match: %s", stdout, expected)
+	}
+}
+
+func TestFuzzCLI_WordlistURL_DryRun(t *testing.T) {
+	wl := createWordlistFile(t, "admin/user")
+
+	stdout, stderr, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ",
+		"-w", wl,
+		"-E", "wl-url",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The word admin/user must be URL encoded, and /api/ must remain unchanged
+	expected := "http://example.com/api/admin%2Fuser"
+	if !strings.Contains(stdout, expected) {
+		t.Errorf("expected %q in stdout, got:\n%s", expected, stdout)
+	}
+	// Static URL must NOT be encoded
+	if strings.Contains(stdout, "http%3A%2F%2Fexample.com") {
+		t.Errorf("static URL must not be encoded:\n%s", stdout)
+	}
+
+	// Configuration output must contain Encoding wl-url
+	if !strings.Contains(stderr, "Encoding                     wl-url") && !strings.Contains(stderr, "Encoding                   wl-url") {
+		t.Errorf("expected 'Encoding wl-url' in configuration stderr:\n%s", stderr)
+	}
+}
+
+func TestFuzzCLI_WordlistDoubleURL_DryRun(t *testing.T) {
+	wl := createWordlistFile(t, "admin/user")
+
+	stdout, stderr, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ/test",
+		"-w", wl,
+		"--encode", "wl-doubleurl",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := "http://example.com/api/admin%252Fuser/test"
+	if !strings.Contains(stdout, expected) {
+		t.Errorf("expected %q in stdout, got:\n%s", expected, stdout)
+	}
+	if strings.Contains(stdout, "http%3A%2F%2Fexample.com") {
+		t.Errorf("static URL must not be encoded:\n%s", stdout)
+	}
+
+	if !strings.Contains(stderr, "Encoding                     wl-doubleurl") && !strings.Contains(stderr, "Encoding                   wl-doubleurl") {
+		t.Errorf("expected 'Encoding wl-doubleurl' in configuration stderr:\n%s", stderr)
+	}
+}
+
+func TestFuzzCLI_WordlistBase64_DryRun(t *testing.T) {
+	wl := createWordlistFile(t, "admin", "admin/user")
+
+	stdout, stderr, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ",
+		"-w", wl,
+		"-E", "wl-base64",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(stdout, "http://example.com/api/YWRtaW4=") {
+		t.Errorf("expected base64 encoded 'admin' in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "http://example.com/api/YWRtaW4vdXNlcg==") {
+		t.Errorf("expected base64 encoded 'admin/user' in stdout:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "http%3A%2F%2Fexample.com") {
+		t.Errorf("static URL must not be encoded:\n%s", stdout)
+	}
+
+	if !strings.Contains(stderr, "Encoding                     wl-base64") && !strings.Contains(stderr, "Encoding                   wl-base64") {
+		t.Errorf("expected 'Encoding wl-base64' in configuration stderr:\n%s", stderr)
+	}
+}
+
+func TestFuzzCLI_WordlistEncoding_Extensions(t *testing.T) {
+	wl := createWordlistFile(t, "admin/user")
+
+	stdout, _, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ",
+		"-w", wl,
+		"-e", ",php",
+		"-E", "wl-url",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should produce extensionless variant and .php variant
+	if !strings.Contains(stdout, "http://example.com/api/admin%2Fuser\n") {
+		t.Errorf("expected extensionless variant in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "http://example.com/api/admin%2Fuser.php\n") {
+		t.Errorf("expected .php variant in stdout:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "%2Ephp") {
+		t.Errorf(".php must not be percent-encoded as %%2Ephp:\n%s", stdout)
+	}
+}
+
+func TestFuzzCLI_WordlistBase64_Extensions(t *testing.T) {
+	wl := createWordlistFile(t, "admin")
+
+	stdout, _, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/FUZZ",
+		"-w", wl,
+		"-e", ",php",
+		"-E", "wl-base64",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With wl-base64, the word is base64 encoded first (YWRtaW4=), then extensions are added
+	// producing YWRtaW4= and YWRtaW4=.php (in contrast to full-URL base64 which encodes admin.php -> YWRtaW4ucGhw)
+	if !strings.Contains(stdout, "http://example.com/YWRtaW4=\n") {
+		t.Errorf("expected base64 variant in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "http://example.com/YWRtaW4=.php\n") {
+		t.Errorf("expected base64 with .php extension in stdout:\n%s", stdout)
+	}
+}
+
+func TestFuzzCLI_WordlistEncoding_Aliases(t *testing.T) {
+	wl := createWordlistFile(t, "admin/user")
+
+	stdout, _, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ/FOO",
+		"-w", wl,
+		"--foo", "=fuzz",
+		"-E", "wl-url",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := "http://example.com/api/admin%2Fuser/admin%2Fuser"
+	if !strings.Contains(stdout, expected) {
+		t.Errorf("expected aliased placeholder to receive wl-url encoding:\n got stdout:\n%s\n want match: %s", stdout, expected)
+	}
+}
+
+func TestFuzzCLI_WordlistEncoding_SecondaryWordlist(t *testing.T) {
+	wlFuzz := createWordlistFile(t, "route1")
+	wlFoo := createWordlistFile(t, "secret/param")
+
+	stdout, _, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ?data=FOO",
+		"-w", wlFuzz,
+		"--foo", wlFoo,
+		"-E", "wl-url",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := "http://example.com/api/route1?data=secret%2Fparam"
+	if !strings.Contains(stdout, expected) {
+		t.Errorf("expected secondary wordlist to receive wl-url encoding:\n got stdout:\n%s\n want match: %s", stdout, expected)
+	}
+}
+
+func TestFuzzCLI_WordlistEncoding_HeadersCookiesBody(t *testing.T) {
+	wlFuzz := createWordlistFile(t, "user/1")
+	wlFoo := createWordlistFile(t, "token/secret")
+	wlBar := createWordlistFile(t, "session/cookie")
+
+	stdout, _, err := executeFuzzCmd([]string{
+		"-u", "http://example.com/api/FUZZ",
+		"-H", "X-Token: FOO",
+		"-b", "sid=BAR",
+		"-d", "body=FUZZ",
+		"-w", wlFuzz,
+		"--foo", wlFoo,
+		"--bar", wlBar,
+		"-E", "wl-url",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(stdout, "http://example.com/api/user%2F1") {
+		t.Errorf("expected encoded URL in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "X-Token: token%2Fsecret") {
+		t.Errorf("expected encoded Header in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "sid=session%2Fcookie") {
+		t.Errorf("expected encoded Cookie in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "body=user%2F1") {
+		t.Errorf("expected encoded Body in stdout:\n%s", stdout)
+	}
+}
+
+func TestFuzzCLI_WordlistEncoding_RealExecution(t *testing.T) {
+	wl := createWordlistFile(t, "admin/user")
+
+	var receivedPath string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		receivedPath = r.URL.RequestURI()
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	_, _, err := executeFuzzCmd([]string{
+		"-u", srv.URL + "/api/FUZZ/test",
+		"-w", wl,
+		"-E", "wl-url",
+		"-t", "1",
+		"--no-progress",
+	})
+	if err != nil {
+		t.Fatalf("unexpected execution error: %v", err)
+	}
+
+	mu.Lock()
+	gotPath := receivedPath
+	mu.Unlock()
+
+	// Server should receive the URL-encoded path
+	if !strings.Contains(gotPath, "/api/admin%2Fuser/test") {
+		t.Errorf("server received unexpected path: %q, expected to contain '/api/admin%%2Fuser/test'", gotPath)
 	}
 }

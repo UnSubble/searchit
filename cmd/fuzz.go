@@ -440,6 +440,14 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				return err
 			}
 
+			var wlEncoder fuzz.Encoder
+			var candidateEncoder fuzz.Encoder
+			if fuzzEncoder.IsWordlistScoped() {
+				wlEncoder = fuzzEncoder
+			} else {
+				candidateEncoder = fuzzEncoder
+			}
+
 			var delay time.Duration
 			if cfg.Delay > 0 {
 				delay = cfg.Delay
@@ -477,6 +485,11 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					if err != nil {
 						return nil, fmt.Errorf("failed to pre-load FUZZ wordlist for alias: %w", err)
 					}
+					if wlEncoder != nil {
+						for i, w := range words {
+							words[i] = wlEncoder.Encode(w)
+						}
+					}
 					loadedWords["FUZZ"] = words
 					return words, nil
 				}
@@ -513,6 +526,11 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				words, err := loadLines(raw)
 				if err != nil {
 					return nil, fmt.Errorf("failed to load %s wordlist: %w", canonical, err)
+				}
+				if wlEncoder != nil {
+					for i, w := range words {
+						words[i] = wlEncoder.Encode(w)
+					}
 				}
 				loadedWords[canonical] = words
 				return words, nil
@@ -1073,6 +1091,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						}()
 						for w := range tempChan {
 							atomic.AddInt64(&stats.GlobalInstrumentation.WordsRead, 1)
+							if wlEncoder != nil {
+								w = wlEncoder.Encode(w)
+							}
 							variants := extensions.GenerateVariants(w, cfg.Extensions)
 							for _, v := range variants {
 								select {
@@ -1124,7 +1145,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					AdaptiveEngine:  appState.AdaptiveEngine,
 					Cache:           appState.FingerprintCache,
 					PauseBlocker:    stateMgr.WaitUntilRunning,
-					Encoder:         fuzzEncoder,
+					Encoder:         candidateEncoder,
 				}
 
 				estCandidates := runner.EstimateCandidates(baseCount)
@@ -1353,7 +1374,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().BoolVar(&opts.HelpAll, "help-all", false, "show all available options")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "render candidates without sending any network requests")
 	cmd.Flags().IntVar(&opts.DryRunLimit, "dry-run-limit", 10, "number of rendered requests to preview in --dry-run mode")
-	cmd.Flags().StringVarP(&opts.Encode, "encode", "E", "", "encode candidates before substitution (base64, url, doubleurl)")
+	cmd.Flags().StringVarP(&opts.Encode, "encode", "E", "", "encode candidates before substitution (base64, url, doubleurl, wl-base64, wl-url, wl-doubleurl)")
 
 	setupCmdHelp(cmd, func() bool { return opts.HelpAll }, fuzzHelpConfig)
 	return cmd, opts
