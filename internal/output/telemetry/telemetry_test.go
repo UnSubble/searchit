@@ -497,3 +497,109 @@ func TestPerformance(t *testing.T) {
 		t.Errorf("expected Req/sec in performance output, got:\n%s", buf.String())
 	}
 }
+
+func TestFormatExtensions(t *testing.T) {
+	tests := []struct {
+		name string
+		exts []string
+		want string
+	}{
+		{
+			name: "empty + php",
+			exts: []string{"", "php"},
+			want: "(none), .php",
+		},
+		{
+			name: "empty + php + html",
+			exts: []string{"", "php", "html"},
+			want: "(none), .php, .html",
+		},
+		{
+			name: "php + html",
+			exts: []string{"php", "html"},
+			want: ".php, .html",
+		},
+		{
+			name: ".php input",
+			exts: []string{".php"},
+			want: ".php",
+		},
+		{
+			name: "duplicate normalized extensions",
+			exts: []string{"php", ".php", "html", ".html"},
+			want: ".php, .html",
+		},
+		{
+			name: "empty + .php input",
+			exts: []string{"", ".php"},
+			want: "(none), .php",
+		},
+		{
+			name: "empty slice",
+			exts: []string{},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := telemetry.FormatExtensions(tt.exts)
+			if got != tt.want {
+				t.Errorf("FormatExtensions(%v) = %q; want %q", tt.exts, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintConfiguration_ExtensionsFormatting(t *testing.T) {
+	tests := []struct {
+		name         string
+		exts         []string
+		wantContains string
+	}{
+		{
+			name:         "empty + php",
+			exts:         []string{"", "php"},
+			wantContains: "Extensions                   (none), .php",
+		},
+		{
+			name:         "empty + php + html",
+			exts:         []string{"", "php", "html"},
+			wantContains: "Extensions                   (none), .php, .html",
+		},
+		{
+			name:         "php + html",
+			exts:         []string{"php", "html"},
+			wantContains: "Extensions                   .php, .html",
+		},
+		{
+			name:         ".php input",
+			exts:         []string{".php"},
+			wantContains: "Extensions                   .php",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tm := newTestTerminalManager(&buf)
+			_ = tm.AcquireOwner(terminal.OwnerConfiguration)
+
+			cfg := telemetry.ConfigInfo{
+				Target:          "http://example.com/FUZZ",
+				Method:          "GET",
+				Workers:         16,
+				Mode:            "Fuzz",
+				PrimaryWordlist: "words.txt",
+				IsFuzz:          true,
+				Extensions:      tt.exts,
+			}
+
+			telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, cfg)
+			out := buf.String()
+			if !strings.Contains(out, tt.wantContains) {
+				t.Errorf("expected %q in config output, got:\n%s", tt.wantContains, out)
+			}
+		})
+	}
+}

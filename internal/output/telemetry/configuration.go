@@ -106,7 +106,7 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 	)
 
 	if len(info.Extensions) > 0 {
-		items = append(items, terminal.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
+		items = append(items, terminal.Item{Key: "Extensions", Value: presentation.Extensions(info.Extensions)})
 	}
 	items = append(items, terminal.Item{Key: "Workers", Value: strconv.Itoa(info.Workers)})
 
@@ -194,7 +194,7 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 	}
 
 	if len(info.Extensions) > 0 {
-		items = append(items, terminal.Item{Key: "Extensions", Value: strings.Join(info.Extensions, ", ")})
+		items = append(items, terminal.Item{Key: "Extensions", Value: presentation.Extensions(info.Extensions)})
 	}
 
 	if info.HTTPVersion != "" && info.HTTPVersion != "HTTP/1.1" {
@@ -244,4 +244,9 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 		}
 		fmt.Fprintln(w, sep)
 	})
+}
+
+// FormatExtensions formats a slice of extension strings for human-readable configuration display.
+func FormatExtensions(exts []string) string {
+	return presentation.Extensions(exts)
 }

@@ -278,3 +278,31 @@ func truncateMiddle(s string, max int) string {
 	tail := max - 3 - head
 	return s[:head] + "..." + s[len(s)-tail:]
 }
+
+// Extensions formats a slice of extension strings for human-readable display.
+// An empty extension sentinel ("" or ".") is explicitly displayed as "(none)".
+// Non-empty extensions are normalized with a leading dot (e.g. ".php").
+// Duplicate normalized extensions are deduplicated while preserving insertion order.
+func Extensions(exts []string) string {
+	if len(exts) == 0 {
+		return ""
+	}
+	seen := make(map[string]struct{})
+	var formatted []string
+	for _, ext := range exts {
+		ext = strings.TrimSpace(ext)
+		var norm string
+		if ext == "" || ext == "(none)" || ext == "." {
+			norm = "(none)"
+		} else if !strings.HasPrefix(ext, ".") {
+			norm = "." + ext
+		} else {
+			norm = ext
+		}
+		if _, exists := seen[norm]; !exists {
+			seen[norm] = struct{}{}
+			formatted = append(formatted, norm)
+		}
+	}
+	return strings.Join(formatted, ", ")
+}

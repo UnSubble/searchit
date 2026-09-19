@@ -276,3 +276,66 @@ func TestNumber(t *testing.T) {
 		t.Errorf("Number(1500000) = %q; want 1.5M", got)
 	}
 }
+
+func TestExtensions(t *testing.T) {
+	tests := []struct {
+		name string
+		exts []string
+		want string
+	}{
+		{
+			name: "empty slice",
+			exts: []string{},
+			want: "",
+		},
+		{
+			name: "nil slice",
+			exts: nil,
+			want: "",
+		},
+		{
+			name: "empty + php",
+			exts: []string{"", "php"},
+			want: "(none), .php",
+		},
+		{
+			name: "empty + php + html",
+			exts: []string{"", "php", "html"},
+			want: "(none), .php, .html",
+		},
+		{
+			name: "php + html",
+			exts: []string{"php", "html"},
+			want: ".php, .html",
+		},
+		{
+			name: ".php input",
+			exts: []string{".php"},
+			want: ".php",
+		},
+		{
+			name: "empty + .php input",
+			exts: []string{"", ".php"},
+			want: "(none), .php",
+		},
+		{
+			name: "duplicate normalized extensions",
+			exts: []string{"php", ".php", "html", ".html", "php"},
+			want: ".php, .html",
+		},
+		{
+			name: "duplicate empty and non-empty extensions",
+			exts: []string{"", "(none)", ".", "php", ".php"},
+			want: "(none), .php",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Extensions(tt.exts)
+			if got != tt.want {
+				t.Errorf("Extensions(%v) = %q; want %q", tt.exts, got, tt.want)
+			}
+		})
+	}
+}
