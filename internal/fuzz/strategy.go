@@ -173,6 +173,7 @@ type Runner struct {
 	// When false (pre-counted wordlist), SetTotalCandidates was already called
 	// at startup; AddTotalCandidates must NOT be called to avoid double-counting.
 	StreamingMode bool
+	Encoder       Encoder
 
 	compiledReq *compiledRequest
 }
@@ -515,26 +516,34 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 // exact same rendering logic as the live execution path, guaranteeing candidate
 // #N parity between dry-run and real runs for the same configuration.
 func (r *Runner) BuildJob(urlTemplate CompiledTemplate, vars map[string]string) (RequestDTO, error) {
-	urlStr := urlTemplate.RenderString(vars)
+	subVars := vars
+	if r.Encoder != nil && r.Encoder.Name() != "" {
+		subVars = make(map[string]string, len(vars))
+		for k, v := range vars {
+			subVars[k] = r.Encoder.Encode(v)
+		}
+	}
+
+	urlStr := urlTemplate.RenderString(subVars)
 
 	var bodyStr string
 	if len(r.compiledReq.body) > 0 {
-		bodyStr = r.compiledReq.body.RenderString(vars)
+		bodyStr = r.compiledReq.body.RenderString(subVars)
 	}
 
 	headers := make(map[string][]string)
 	for _, ch := range r.compiledReq.headers {
-		newK := ch.key.RenderString(vars)
+		newK := ch.key.RenderString(subVars)
 		var newValues []string
 		for _, val := range ch.values {
-			newValues = append(newValues, val.RenderString(vars))
+			newValues = append(newValues, val.RenderString(subVars))
 		}
 		headers[newK] = newValues
 	}
 
 	var cookies []string
 	if len(r.compiledReq.cookie) > 0 {
-		cookies = append(cookies, r.compiledReq.cookie.RenderString(vars))
+		cookies = append(cookies, r.compiledReq.cookie.RenderString(subVars))
 	}
 
 	var fuzzData *engine.FuzzData
@@ -542,9 +551,9 @@ func (r *Runner) BuildJob(urlTemplate CompiledTemplate, vars map[string]string) 
 		var fields []engine.FuzzField
 		if r.compiledReq.hasHeaderPlaceholders {
 			for _, ch := range r.compiledReq.fuzzedHeaders {
-				newK := ch.key.RenderString(vars)
+				newK := ch.key.RenderString(subVars)
 				for _, val := range ch.values {
-					newV := val.RenderString(vars)
+					newV := val.RenderString(subVars)
 					fields = append(fields, engine.FuzzField{
 						Location: engine.LocationHeader,
 						Name:     newK,

@@ -42,6 +42,7 @@ type ConfigInfo struct {
 	TotalCandidates    int
 	IsFuzz             bool
 	Extensions         []string
+	Encoding           string
 }
 
 func renderFuzzTarget(w io.Writer, ft FuzzTargetInfo) {
@@ -107,6 +108,9 @@ func PrintNormalConfiguration(tm *terminal.Manager, owner terminal.Owner, info C
 
 	if len(info.Extensions) > 0 {
 		items = append(items, terminal.Item{Key: "Extensions", Value: presentation.Extensions(info.Extensions)})
+	}
+	if info.Encoding != "" {
+		items = append(items, terminal.Item{Key: "Encoding", Value: info.Encoding})
 	}
 	items = append(items, terminal.Item{Key: "Workers", Value: strconv.Itoa(info.Workers)})
 
@@ -195,6 +199,10 @@ func PrintConfiguration(tm *terminal.Manager, owner terminal.Owner, info ConfigI
 
 	if len(info.Extensions) > 0 {
 		items = append(items, terminal.Item{Key: "Extensions", Value: presentation.Extensions(info.Extensions)})
+	}
+
+	if info.Encoding != "" {
+		items = append(items, terminal.Item{Key: "Encoding", Value: info.Encoding})
 	}
 
 	if info.HTTPVersion != "" && info.HTTPVersion != "HTTP/1.1" {

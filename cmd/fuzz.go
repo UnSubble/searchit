@@ -98,6 +98,7 @@ type FuzzOptions struct {
 	HelpAll         bool
 	DryRun          bool
 	DryRunLimit     int
+	Encode          string
 
 	resolvedFuzzTargets   []targets.Target
 	testHookConfigApplied func(config.Config)
@@ -313,6 +314,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				}
 			}
 
+			if opts.Encode != "" {
+				if _, err := fuzz.NewEncoder(opts.Encode); err != nil {
+					return err
+				}
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -427,6 +434,11 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			opts.Data = cfg.Data
 			opts.Cookie = cfg.Cookies
 			opts.Request = cfg.RequestFile
+
+			fuzzEncoder, err := fuzz.NewEncoder(opts.Encode)
+			if err != nil {
+				return err
+			}
 
 			var delay time.Duration
 			if cfg.Delay > 0 {
@@ -903,6 +915,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						TotalCandidates:    int(totalCandidates),
 						IsFuzz:             true,
 						Extensions:         cfg.Extensions,
+						Encoding:           fuzzEncoder.Name(),
 					}
 					telemetry.PrintConfiguration(tm, terminal.OwnerConfiguration, info)
 				}
@@ -1111,6 +1124,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					AdaptiveEngine:  appState.AdaptiveEngine,
 					Cache:           appState.FingerprintCache,
 					PauseBlocker:    stateMgr.WaitUntilRunning,
+					Encoder:         fuzzEncoder,
 				}
 
 				estCandidates := runner.EstimateCandidates(baseCount)
@@ -1339,6 +1353,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().BoolVar(&opts.HelpAll, "help-all", false, "show all available options")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "render candidates without sending any network requests")
 	cmd.Flags().IntVar(&opts.DryRunLimit, "dry-run-limit", 10, "number of rendered requests to preview in --dry-run mode")
+	cmd.Flags().StringVarP(&opts.Encode, "encode", "E", "", "encode candidates before substitution (base64, url, doubleurl)")
 
 	setupCmdHelp(cmd, func() bool { return opts.HelpAll }, fuzzHelpConfig)
 	return cmd, opts
@@ -1362,7 +1377,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Discovery",
-			Names: []string{"adaptive", "ext", "profile", "strategy"},
+			Names: []string{"adaptive", "ext", "profile", "strategy", "encode"},
 		},
 		{
 			Title: "Matching / Filtering",

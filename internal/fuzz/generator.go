@@ -28,6 +28,13 @@ type Generator struct {
 	barWords  []string
 	bazWords  []string
 	buzzWords []string
+
+	encoder Encoder
+}
+
+// SetEncoder sets the candidate encoder for this Generator.
+func (g *Generator) SetEncoder(enc Encoder) {
+	g.encoder = enc
 }
 
 // NewGenerator creates a new Generator.
@@ -141,6 +148,11 @@ func (g *Generator) generatePermutations(
 					}
 
 					values := [5]string{fuzzVal, fooVal, barVal, bazVal, buzzVal}
+					if g.encoder != nil && g.encoder.Name() != "" {
+						for i := range values {
+							values[i] = g.encoder.Encode(values[i])
+						}
+					}
 
 					urlStr := g.urlTemplate.Render(values)
 					if _, err := url.Parse(urlStr); err != nil {
