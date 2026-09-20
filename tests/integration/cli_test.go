@@ -116,20 +116,35 @@ func TestDoctorCommand(t *testing.T) {
 
 	tempDir := t.TempDir()
 
+	pathEnv := tempDir
+	goDir := ""
 	if goBin, err := exec.LookPath("go"); err == nil {
-		_ = os.Symlink(goBin, filepath.Join(tempDir, "go"))
+		goDir = filepath.Dir(goBin)
+	} else if gr := runtime.GOROOT(); gr != "" {
+		goDir = filepath.Join(gr, "bin")
+	}
+	if goDir != "" {
+		pathEnv = tempDir + string(os.PathListSeparator) + goDir
 	}
 
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
-		"PATH":              tempDir, // Empty directory, so it won't find multiple binaries
+		"PATH":              pathEnv,
 	}
 
 	cmd := exec.Command(binPath, "doctor")
-	cmd.Env = os.Environ()
-	for k, v := range env {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	var cmdEnv []string
+	for _, e := range os.Environ() {
+		key := strings.SplitN(e, "=", 2)[0]
+		if strings.EqualFold(key, "PATH") {
+			continue
+		}
+		cmdEnv = append(cmdEnv, e)
 	}
+	for k, v := range env {
+		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Env = cmdEnv
 	cmd.Dir = tempDir
 
 	out, err := cmd.CombinedOutput()
@@ -153,10 +168,18 @@ func TestDoctorCommand_NoGoToolchain(t *testing.T) {
 	}
 
 	cmd := exec.Command(binPath, "doctor")
-	cmd.Env = os.Environ()
-	for k, v := range env {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	var cmdEnv []string
+	for _, e := range os.Environ() {
+		key := strings.SplitN(e, "=", 2)[0]
+		if strings.EqualFold(key, "PATH") {
+			continue
+		}
+		cmdEnv = append(cmdEnv, e)
 	}
+	for k, v := range env {
+		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Env = cmdEnv
 	cmd.Dir = tempDir
 
 	out, err := cmd.CombinedOutput()
