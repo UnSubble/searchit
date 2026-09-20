@@ -116,6 +116,10 @@ func TestDoctorCommand(t *testing.T) {
 
 	tempDir := t.TempDir()
 
+	if goBin, err := exec.LookPath("go"); err == nil {
+		_ = os.Symlink(goBin, filepath.Join(tempDir, "go"))
+	}
+
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
 		"PATH":              tempDir, // Empty directory, so it won't find multiple binaries
@@ -134,6 +138,39 @@ func TestDoctorCommand(t *testing.T) {
 	}
 
 	verifyGolden(t, string(out), "doctor/healthy.golden")
+}
+
+func TestDoctorCommand_NoGoToolchain(t *testing.T) {
+	releasesJSON := `[{"tag_name": "v1.0.0", "draft": false}]`
+	server := setupMockServer(releasesJSON, 200)
+	defer server.Close()
+
+	tempDir := t.TempDir()
+
+	env := map[string]string{
+		"SEARCHIT_API_BASE": server.URL,
+		"PATH":              tempDir, // Empty directory with no go binary
+	}
+
+	cmd := exec.Command(binPath, "doctor")
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %v\nOutput: %s", err, out)
+	}
+
+	outStr := string(out)
+	if !strings.Contains(outStr, "GO VERSION\n\n                NOT VERIFIED") {
+		t.Errorf("expected GO VERSION to be NOT VERIFIED when go is missing from PATH, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "STATUS\n\n                NOT READY") {
+		t.Errorf("expected STATUS to be NOT READY when go is missing from PATH, got:\n%s", outStr)
+	}
 }
 
 func TestNewsCommand(t *testing.T) {

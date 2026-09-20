@@ -1,12 +1,14 @@
 package doctor
 
 import (
-	"runtime"
-
 	"github.com/unsubble/searchit/internal/env"
 	"github.com/unsubble/searchit/internal/github"
+	"github.com/unsubble/searchit/internal/news"
+	"github.com/unsubble/searchit/internal/profile"
+	"github.com/unsubble/searchit/internal/semver"
 	"github.com/unsubble/searchit/internal/testutil/command"
 	"github.com/unsubble/searchit/internal/update"
+	"github.com/unsubble/searchit/internal/version"
 )
 
 type CheckResult struct {
@@ -15,12 +17,14 @@ type CheckResult struct {
 }
 
 type Doctor struct {
-	Executor command.Executor
+	Executor     command.Executor
+	ProfileStore profile.Store
 }
 
 func NewDoctor() *Doctor {
 	return &Doctor{
-		Executor: command.DefaultExecutor{},
+		Executor:     command.DefaultExecutor{},
+		ProfileStore: profile.NewStore(),
 	}
 }
 
@@ -29,7 +33,12 @@ func (d *Doctor) RunAllChecks() ([]CheckResult, bool) {
 	allHealthy := true
 
 	// VERSION
-	results = append(results, CheckResult{"VERSION", "PASS"})
+	if _, err := semver.Parse(version.Version); err != nil {
+		results = append(results, CheckResult{"VERSION", "FAIL"})
+		allHealthy = false
+	} else {
+		results = append(results, CheckResult{"VERSION", "PASS"})
+	}
 
 	// UPDATE SYSTEM
 	mgr := update.NewManager()
@@ -41,10 +50,26 @@ func (d *Doctor) RunAllChecks() ([]CheckResult, bool) {
 	}
 
 	// NEWS SYSTEM
-	results = append(results, CheckResult{"NEWS SYSTEM", "PASS"})
+	newsDir := news.GetNewsDir()
+	if newsDir == "" {
+		results = append(results, CheckResult{"NEWS SYSTEM", "FAIL"})
+		allHealthy = false
+	} else {
+		results = append(results, CheckResult{"NEWS SYSTEM", "PASS"})
+	}
 
 	// CONFIGURATION
-	results = append(results, CheckResult{"CONFIGURATION", "PASS"})
+	_ = profile.RegisterBuiltinDecoders()
+	store := d.ProfileStore
+	if store == nil {
+		store = profile.NewStore()
+	}
+	if _, err := store.List(); err != nil {
+		results = append(results, CheckResult{"CONFIGURATION", "FAIL"})
+		allHealthy = false
+	} else {
+		results = append(results, CheckResult{"CONFIGURATION", "PASS"})
+	}
 
 	// GITHUB CONNECTIVITY
 	ghClient := github.NewClient()
@@ -56,7 +81,12 @@ func (d *Doctor) RunAllChecks() ([]CheckResult, bool) {
 	}
 
 	// RELEASE CHANNEL
-	results = append(results, CheckResult{"RELEASE CHANNEL", "PASS"})
+	if v, err := semver.Parse(version.Version); err != nil || (v.Channel() != "stable" && v.Channel() != "experimental") {
+		results = append(results, CheckResult{"RELEASE CHANNEL", "FAIL"})
+		allHealthy = false
+	} else {
+		results = append(results, CheckResult{"RELEASE CHANNEL", "PASS"})
+	}
 
 	// MULTIPLE BINARIES
 	mult := env.CheckMultipleInstallations(d.Executor)
@@ -89,16 +119,12 @@ func (d *Doctor) RunAllChecks() ([]CheckResult, bool) {
 	}
 
 	// GO VERSION
-	goVer := runtime.Version()
-	if goVer != "" {
-		results = append(results, CheckResult{"GO VERSION", "PASS"})
+	cmd := d.Executor.Command("go", "version")
+	if err := cmd.Run(); err != nil {
+		results = append(results, CheckResult{"GO VERSION", "NOT VERIFIED"})
+		allHealthy = false
 	} else {
-		cmd := d.Executor.Command("go", "version")
-		if err := cmd.Run(); err != nil {
-			results = append(results, CheckResult{"GO VERSION", "NOT VERIFIED"})
-		} else {
-			results = append(results, CheckResult{"GO VERSION", "PASS"})
-		}
+		results = append(results, CheckResult{"GO VERSION", "PASS"})
 	}
 
 	return results, allHealthy
