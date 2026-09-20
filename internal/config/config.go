@@ -8,14 +8,6 @@ import (
 	"github.com/unsubble/searchit/internal/status"
 )
 
-// TechProfile describes a technology-specific scanning profile selected via --tech.
-type TechProfile struct {
-	// ID is the canonical lowercase identifier (e.g. "laravel", "wordpress").
-	ID string
-	// DisplayName is the human-readable name shown in output (e.g. "Laravel").
-	DisplayName string
-}
-
 // Config is the single source of truth consumed by the engine.
 // All external inputs (CLI, YAML, env) must be translated into this struct.
 type Config struct {
@@ -65,10 +57,6 @@ type Config struct {
 	FilterRegex   []string
 	MatchContent  []string
 	FilterContent []string
-
-	// TechProfile is the explicitly-selected technology profile (--tech flag).
-	// A nil value means no explicit selection; automatic detection applies.
-	TechProfile *TechProfile
 
 	// Adaptive enables technology detection and adaptive path injection.
 	Adaptive bool

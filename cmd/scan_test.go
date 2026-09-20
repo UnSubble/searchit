@@ -641,36 +641,6 @@ func TestCLI_TechFlag(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "valid tech laravel",
-			args:    []string{"-u", "http://localhost", "--tech", "laravel"},
-			wantErr: false,
-		},
-		{
-			name:    "valid tech spring",
-			args:    []string{"-u", "http://localhost", "--tech", "spring"},
-			wantErr: false,
-		},
-		{
-			name:    "valid tech uppercase",
-			args:    []string{"-u", "http://localhost", "--tech", "LARAVEL"},
-			wantErr: false,
-		},
-		{
-			name:    "valid tech mixed case",
-			args:    []string{"-u", "http://localhost", "--tech", "WordPress"},
-			wantErr: false,
-		},
-		{
-			name:    "unknown tech rejected",
-			args:    []string{"-u", "http://localhost", "--tech", "rails"},
-			wantErr: true,
-		},
-		{
-			name:    "empty tech treated as no tech specified",
-			args:    []string{"-u", "http://localhost", "--tech", ""},
-			wantErr: false,
-		},
-		{
 			name:    "no tech flag is valid",
 			args:    []string{"-u", "http://localhost"},
 			wantErr: false,
@@ -705,67 +675,4 @@ func TestCLI_TechFlag(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestApplyCLIOverrides_TechProfile(t *testing.T) {
-	runWithTech := func(t *testing.T, techArg string) config.Config {
-		cmd, opts := NewScanCmd()
-		_ = opts
-		_ = cmd
-		t.Helper()
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		cmd.SetContext(ctx)
-		rootCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
-
-		args := []string{"-u", "http://localhost"}
-		if techArg != "" {
-			args = append(args, "--tech", techArg)
-		}
-		cmd.SetArgs(args)
-
-		buf := new(bytes.Buffer)
-		cmd.SetOut(buf)
-		cmd.SetErr(buf)
-
-		var got config.Config
-		opts.testHookConfigApplied = func(c config.Config) { got = c }
-		defer func() { opts.testHookConfigApplied = nil }()
-
-		if err := cmd.ExecuteContext(ctx); err != nil {
-			t.Fatalf("Execute() error: %v", err)
-		}
-		return got
-	}
-
-	t.Run("tech flag populates TechProfile", func(t *testing.T) {
-		got := runWithTech(t, "laravel")
-		if got.TechProfile == nil {
-			t.Fatal("TechProfile is nil, want non-nil")
-		}
-		if got.TechProfile.ID != "laravel" {
-			t.Errorf("TechProfile.ID = %q, want %q", got.TechProfile.ID, "laravel")
-		}
-		if got.TechProfile.DisplayName != "Laravel" {
-			t.Errorf("TechProfile.DisplayName = %q, want %q", got.TechProfile.DisplayName, "Laravel")
-		}
-	})
-
-	t.Run("case-insensitive --tech sets canonical ID", func(t *testing.T) {
-		got := runWithTech(t, "SPRING")
-		if got.TechProfile == nil {
-			t.Fatal("TechProfile is nil, want non-nil")
-		}
-		if got.TechProfile.ID != "spring" {
-			t.Errorf("TechProfile.ID = %q, want canonical %q", got.TechProfile.ID, "spring")
-		}
-	})
-
-	t.Run("no --tech flag leaves TechProfile nil", func(t *testing.T) {
-		got := runWithTech(t, "")
-		if got.TechProfile != nil {
-			t.Errorf("TechProfile = %+v, want nil", got.TechProfile)
-		}
-	})
 }

@@ -103,7 +103,6 @@ var explicitRuntimeFlags = map[string]bool{
 var runtimeWarnMsgScan = map[string]string{
 	"profile":     "--profile cannot be imported: profiles cannot recursively reference other profiles during creation",
 	"no-progress": "--no-progress is a runtime display flag and cannot be saved in a profile",
-	"tech":        "--tech is runtime-only; technology detection cannot be saved in a profile",
 	"output":      "--output sets an output file path and cannot be saved in a profile; use --format to set the output format",
 }
 

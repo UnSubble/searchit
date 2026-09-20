@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -70,7 +69,7 @@ type ScanOptions struct {
 	Profiles        []string
 	RawProfile      string
 	NoProgress      bool
-	Tech            string
+	Verbose         bool
 	FollowRedirects bool
 	MaxRedirects    int
 	Adaptive        bool
@@ -105,45 +104,6 @@ type ScanOptions struct {
 	testHookConfigApplied func(config.Config)
 }
 
-// techProfiles is the built-in registry of supported technology identifiers.
-// Keys are canonical lowercase IDs; values are human-readable display names.
-// Add new technologies here — no other file needs to change.
-var techProfiles = map[string]string{
-	"angular":   "Angular",
-	"aspnet":    "ASP.NET",
-	"django":    "Django",
-	"express":   "Express",
-	"flask":     "Flask",
-	"go":        "Go",
-	"laravel":   "Laravel",
-	"nextjs":    "Next.js",
-	"nuxt":      "Nuxt",
-	"react":     "React",
-	"spring":    "Spring Boot",
-	"vue":       "Vue",
-	"wordpress": "WordPress",
-}
-
-// lookupTech returns the config.TechProfile for the given ID (case-insensitive).
-func lookupTech(id string) (config.TechProfile, bool) {
-	key := strings.ToLower(strings.TrimSpace(id))
-	name, ok := techProfiles[key]
-	if !ok {
-		return config.TechProfile{}, false
-	}
-	return config.TechProfile{ID: key, DisplayName: name}, true
-}
-
-// supportedTechIDs returns a sorted, comma-separated list of supported tech IDs.
-func supportedTechIDs() string {
-	ids := make([]string, 0, len(techProfiles))
-	for id := range techProfiles {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return strings.Join(ids, ", ")
-}
-
 func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	opts := &ScanOptions{}
 	cmd := &cobra.Command{
@@ -159,6 +119,16 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			if opts.HelpAll {
 				return pflag.ErrHelp
 			}
+
+			if verbose {
+				opts.Verbose = true
+			}
+			isVerbose := opts.Verbose || (cmd.Flags().Lookup("verbose") != nil && cmd.Flags().Lookup("verbose").Changed)
+			isQuiet := opts.Quiet || (cmd.Flags().Lookup("quiet") != nil && cmd.Flags().Lookup("quiet").Changed)
+			if isVerbose && isQuiet {
+				return fmt.Errorf("error: --verbose cannot be used with --quiet")
+			}
+
 			if opts.RawProfile != "" {
 				for _, p := range strings.Split(opts.RawProfile, ",") {
 					p = strings.TrimSpace(p)
@@ -345,15 +315,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			}
 			// else: profiles provided, no URL flag — defer to RunE.
 
-			if opts.Tech != "" {
-				if _, ok := lookupTech(opts.Tech); !ok {
-					return fmt.Errorf(
-						"unknown technology %q; supported values: %s",
-						opts.Tech, supportedTechIDs(),
-					)
-				}
-			}
-
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -437,6 +398,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			// 3. Apply CLI flag overrides.
 			applyCLIOverrides(opts, cmd, &cfg)
 
+			if opts.Verbose && cfg.Quiet {
+				return fmt.Errorf("error: --verbose cannot be used with --quiet")
+			}
+
 			// If no targets were resolved from CLI flags, attempt to populate them
 			// from values supplied via profile (url: or url-file:).
 			if len(opts.resolvedTargets) == 0 {
@@ -476,9 +441,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				for _, name := range appliedProfiles {
 					fmt.Fprintf(os.Stderr, "    %s\n", name)
 				}
-			}
-			if !cfg.Quiet && cfg.TechProfile != nil {
-				fmt.Fprintf(os.Stderr, "[*] Tech profile: %s\n", cfg.TechProfile.ID)
 			}
 
 			if opts.testHookConfigApplied != nil {
@@ -891,6 +853,13 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				}()
 
 				stateMgr.Transition(state.PhaseRunning)
+				printDiag := func(msg string) {
+					if progMgr != nil {
+						progMgr.PrintAbove(msg)
+					} else {
+						fmt.Fprintln(os.Stderr, msg)
+					}
+				}
 				var manager *recursion.Manager
 				if cfg.Recursive {
 
@@ -923,14 +892,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					manager.SetDisplayHeaders(mapHeaders(cfg.IncludeHeaders), mapHeaders(cfg.ExcludeHeaders))
 					manager.SetStats(collector)
 					manager.SetExtensions(cfg.Extensions)
-					manager.PauseBlocker = stateMgr.WaitUntilRunning
-					manager.SetWarningHandler(func(msg string) {
-						if progMgr != nil {
-							progMgr.PrintAbove(msg)
-						} else {
-							fmt.Fprintln(os.Stderr, msg)
-						}
-					})
+					manager.SetWarningHandler(printDiag)
 					if err := manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
 							if termFmttr != nil {
@@ -948,18 +910,15 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						} else if r.Err != nil {
 							errStr := r.Err.Error()
 							if strings.Contains(errStr, "maximum redirect limit exceeded") {
-								fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+								printDiag("ERROR: maximum redirect limit exceeded")
 							} else if strings.Contains(errStr, "redirect loop detected") {
-								fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+								printDiag("ERROR: redirect loop detected")
+							} else if opts.Verbose {
+								printDiag(fmt.Sprintf("[-] Request error: %s: %v", r.URL, r.Err))
 							}
 						}
 					}, func(err error) {
-						msg := fmt.Sprintf("ERROR: root request failed: %v", err)
-						if progMgr != nil {
-							progMgr.PrintAbove(msg)
-						} else {
-							fmt.Fprintln(os.Stderr, msg)
-						}
+						printDiag(fmt.Sprintf("ERROR: root request failed: %v", err))
 					}); err != nil {
 						return err
 					}
@@ -1043,9 +1002,11 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							if r.Err != nil {
 								errStr := r.Err.Error()
 								if strings.Contains(errStr, "maximum redirect limit exceeded") {
-									fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+									printDiag("ERROR: maximum redirect limit exceeded")
 								} else if strings.Contains(errStr, "redirect loop detected") {
-									fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+									printDiag("ERROR: redirect loop detected")
+								} else if opts.Verbose {
+									printDiag(fmt.Sprintf("[-] Request error: %s: %v", r.URL, r.Err))
 								}
 							}
 						}
@@ -1338,11 +1299,12 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"disable the live progress display (progress is enabled automatically when stdout is a terminal)",
 	)
 
-	cmd.Flags().StringVar(
-		&opts.Tech,
-		"tech",
-		"",
-		"explicitly select a technology profile, bypassing automatic detection (e.g. laravel, spring, wordpress)",
+	cmd.Flags().BoolVarP(
+		&opts.Verbose,
+		"verbose",
+		"v",
+		false,
+		"enable verbose diagnostic output",
 	)
 
 	cmd.Flags().BoolVar(
@@ -1424,7 +1386,7 @@ var scanHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Output",
-			Names: []string{"output", "quiet", "human-readable", "random-agent"},
+			Names: []string{"output", "quiet", "human-readable", "random-agent", "verbose"},
 		},
 	},
 	HelpAllCmd: "searchit scan --help-all",
@@ -1585,11 +1547,6 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	}
 	if cmd.Flags().Changed("insecure") {
 		cfg.Insecure = opts.Insecure
-	}
-	if opts.Tech != "" {
-		if p, ok := lookupTech(opts.Tech); ok {
-			cfg.TechProfile = &p
-		}
 	}
 	if cmd.Flags().Changed("adaptive") {
 		cfg.Adaptive = opts.Adaptive

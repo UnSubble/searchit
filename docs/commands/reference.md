@@ -69,7 +69,6 @@ The `scan` command is used for directory and file enumeration.
 * `-o, --output`: Output file.
 * `--format`: Output format (e.g., json, csv, markdown).
 * `-q, --quiet`: Quiet mode (only show results).
-* `--tech`: Detect and show technologies.
 * `--no-progress`: Disable progress bar.
 
 ### Profile Options

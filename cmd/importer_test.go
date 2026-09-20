@@ -253,7 +253,7 @@ func TestParseCommand_Scan_AliasMS_OverridesIncludeSize(t *testing.T) {
 // ─── ParseCommand: runtime-only flags ────────────────────────────────────────
 
 func TestParseCommand_Scan_RuntimeFlagsGenerateWarnings(t *testing.T) {
-	cfg, warns, err := importer.ParseCommand("scan", "scan -t 128 --no-progress --profile scan/quick --tech laravel -o out.json", func() *pflag.FlagSet {
+	cfg, warns, err := importer.ParseCommand("scan", "scan -t 128 --no-progress --profile scan/quick -o out.json", func() *pflag.FlagSet {
 		cmd, _ := NewScanCmd()
 		return cmd.Flags()
 	})
@@ -265,7 +265,7 @@ func TestParseCommand_Scan_RuntimeFlagsGenerateWarnings(t *testing.T) {
 		t.Errorf("threads: got %q; want 128", v)
 	}
 	// runtime flags must NOT appear in YAML
-	for _, key := range []string{"no-progress", "profile", "tech", "output"} {
+	for _, key := range []string{"no-progress", "profile", "output"} {
 		if hasKey(cfg, key) {
 			t.Errorf("runtime flag %q should not appear in config YAML", key)
 		}

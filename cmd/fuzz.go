@@ -65,6 +65,7 @@ type FuzzOptions struct {
 	Profiles        []string
 	RawProfile      string
 	Quiet           bool
+	Verbose         bool
 	FollowRedirects bool
 	MaxRedirects    int
 	ExcludeStatus   string
@@ -166,6 +167,16 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			if opts.HelpAll {
 				return pflag.ErrHelp
 			}
+
+			if verbose {
+				opts.Verbose = true
+			}
+			isVerbose := opts.Verbose || (cmd.Flags().Lookup("verbose") != nil && cmd.Flags().Lookup("verbose").Changed)
+			isQuiet := opts.Quiet || (cmd.Flags().Lookup("quiet") != nil && cmd.Flags().Lookup("quiet").Changed)
+			if isVerbose && isQuiet {
+				return fmt.Errorf("error: --verbose cannot be used with --quiet")
+			}
+
 			if opts.RawProfile != "" {
 				for _, p := range strings.Split(opts.RawProfile, ",") {
 					p = strings.TrimSpace(p)
@@ -416,6 +427,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 			// 3. Apply CLI flag overrides to ensure they take precedence
 			applyFuzzCLIOverrides(opts, cmd, &cfg)
+
+			if opts.Verbose && cfg.Quiet {
+				return fmt.Errorf("error: --verbose cannot be used with --quiet")
+			}
 
 			// If no CLI URL was given but a profile set one, propagate it now.
 			if opts.URL == "" && len(cfg.URLs) > 0 {
@@ -1232,9 +1247,11 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					} else if r.Err != nil {
 						errStr := r.Err.Error()
 						if strings.Contains(errStr, "maximum redirect limit exceeded") {
-							fmt.Fprintln(os.Stderr, "ERROR: maximum redirect limit exceeded")
+							adaptiveInfoHandler("ERROR: maximum redirect limit exceeded")
 						} else if strings.Contains(errStr, "redirect loop detected") {
-							fmt.Fprintln(os.Stderr, "ERROR: redirect loop detected")
+							adaptiveInfoHandler("ERROR: redirect loop detected")
+						} else if opts.Verbose {
+							adaptiveInfoHandler(fmt.Sprintf("[-] Request error: %s: %v", r.URL, r.Err))
 						}
 					}
 				})
@@ -1345,6 +1362,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "write results to this file (default: stdout)")
 	cmd.Flags().StringVar(&opts.Format, "format", "text", "explicit output format (text, json, ndjson, csv, markdown)")
 	cmd.Flags().BoolVarP(&opts.Quiet, "quiet", "q", false, "disable status prefix printing in stdout")
+	cmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "enable verbose diagnostic output")
 	cmd.Flags().StringVar(&opts.Delay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	cmd.Flags().Float64Var(&opts.Rate, "rate", 0, "maximum requests per second rate limit")
 	cmd.Flags().BoolVar(&opts.NoProgress, "no-progress", false, "disable progress output")
@@ -1406,7 +1424,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Output",
-			Names: []string{"output", "quiet", "human-readable"},
+			Names: []string{"output", "quiet", "human-readable", "verbose"},
 		},
 		{
 			Title: "Performance",

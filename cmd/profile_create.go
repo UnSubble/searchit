@@ -52,7 +52,7 @@ NOTES
   The profile namespace must match the command type: a scan/... profile
   requires a scan command, and a fuzz/... profile requires a fuzz command.
 
-  Runtime-only flags (--no-progress, --profile, --tech, --output) are
+  Runtime-only flags (--no-progress, --profile, --output) are
   recognised but ignored with an informational note — they cannot be saved
   in a profile.
 
