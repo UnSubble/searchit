@@ -6,10 +6,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/adaptive/types"
 	"github.com/unsubble/searchit/internal/presentation"
+	"github.com/unsubble/searchit/internal/stats"
 )
 
 type TraversalLevel struct {
@@ -222,6 +224,7 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 				continue
 			}
 			res := <-p.ch
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 
 			if ctx.Err() == nil {
 				if res.Accepted || res.Err != nil {
@@ -289,6 +292,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 				continue
 			}
 			res := <-p.ch
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 
 			if ctx.Err() == nil {
 				if res.Accepted || res.Err != nil {
@@ -412,6 +416,7 @@ func (r *Runner) runPriority(ctx context.Context, e *Executor, plan TraversalPla
 			return ctx.Err()
 		case comp := <-completionChan:
 			inFlight--
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 
 			if comp.err != nil {
 				r.recordPruned(plan, comp.task.depth)
@@ -550,12 +555,17 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 
 				for item := range pending {
 					if item.err != nil {
+						r.recordPruned(plan, currentDepth)
 						continue
 					}
 					res := <-item.ch
+					atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 					if ctx.Err() == nil {
 						if res.Accepted || res.Err != nil {
 							yield(res)
+						}
+						if !res.Accepted {
+							r.recordPruned(plan, currentDepth)
 						}
 						if res.Accepted {
 							parts := strings.Split(strings.TrimRight(res.URL, "/"), "/")
@@ -652,6 +662,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 				continue
 			}
 			res := <-p.ch
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 			if ctx.Err() == nil {
 				if res.Accepted || res.Err != nil {
 					yield(res)

@@ -999,6 +999,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 										close(jobs)
 										return
 									case jobs <- j:
+										atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 										atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 										if collector != nil {
 											collector.RecordJobProduced()
@@ -1101,10 +1102,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						if appState.AdaptiveEngine != nil {
 							techs, discoveries, high, med, low := appState.AdaptiveEngine.GetMetrics()
 							dfsCount, bfsCount, eagerCount := 0, 0, 0
-							if manager != nil {
-								dfsCount = manager.DFSCount
-								bfsCount = manager.BFSCount
-								eagerCount = manager.EagerCount
+							if appState.AdaptiveEngine.Summary != nil {
+								dfsCount = appState.AdaptiveEngine.Summary.DFSCount
+								bfsCount = appState.AdaptiveEngine.Summary.BFSCount
+								eagerCount = appState.AdaptiveEngine.Summary.EagerCount
 							}
 							telemetry.PrintAdaptive(tm, terminal.OwnerPipeline, telemetry.AdaptiveInfo{
 								Technologies:        techs,

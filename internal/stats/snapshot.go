@@ -32,6 +32,7 @@ type Snapshot struct {
 	Redirects                int64
 	BodyInspected            int64
 	AverageLatency           time.Duration
+	LatencyCount             int64
 	RequestsPerSecond        float64 // Lifetime average Req/s
 	CurrentRequestsPerSecond float64 // Sliding-window current Req/s (~1–5s window)
 	PeakRequestsPerSecond    float64 // Highest observed CurrentRequestsPerSecond

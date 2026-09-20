@@ -117,6 +117,7 @@ func (e *Executor) Execute(job RequestDTO) (Result, error) {
 	case <-e.ctx.Done():
 		return Result{}, e.ctx.Err()
 	case res := <-ch:
+		atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 		return res, nil
 	}
 }
@@ -500,6 +501,7 @@ func (r *Runner) runEager(ctx context.Context, e *Executor, primaryChan <-chan s
 			producerWg.Wait()
 			return ctx.Err()
 		case res := <-resCh:
+			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 			if res.Accepted || res.Err != nil {
 				yield(res)
 			}

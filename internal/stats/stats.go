@@ -449,8 +449,14 @@ func (c *Collector) Snapshot() Snapshot {
 		Redirects:                redirects,
 		BodyInspected:            inspected,
 		AverageLatency:           avgLat,
+		LatencyCount:             latCount,
 		RequestsPerSecond:        avgReqPerSec,
 		CurrentRequestsPerSecond: currentReqPerSec,
 		PeakRequestsPerSecond:    peakReqPerSec,
 	}
+}
+
+// LatencyCount returns the total number of latency samples recorded.
+func (c *Collector) LatencyCount() int64 {
+	return atomic.LoadInt64(&c.latencyCount)
 }

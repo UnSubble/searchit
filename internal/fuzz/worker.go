@@ -193,9 +193,6 @@ func process(
 		}
 		resp, err = client.Do(req)
 		if err == nil {
-			if collector != nil {
-				collector.RecordLatency(time.Since(startTime))
-			}
 			break
 		}
 		// Check context before retrying

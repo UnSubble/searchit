@@ -361,6 +361,7 @@ func (m *Manager) Run(
 					if m.stats != nil {
 						m.stats.RecordJobProduced()
 					}
+					atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsDispatched, 1)
 					atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 					pending++

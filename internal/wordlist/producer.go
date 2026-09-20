@@ -105,6 +105,7 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 							errCh <- ctx.Err()
 							return
 						case jobs <- engine.Job{URL: url}:
+							atomic.AddInt64(&stats.GlobalInstrumentation.JobsProduced, 1)
 							atomic.AddInt64(&stats.GlobalInstrumentation.JobsSubmitted, 1)
 							if p.Collector != nil {
 								p.Collector.RecordJobProduced()
