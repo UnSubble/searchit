@@ -49,6 +49,7 @@ type ScanOverlay struct {
 
 	// Redirects
 	FollowRedirects *bool `yaml:"follow-redirects"`
+	OnlyRedirects   *bool `yaml:"only-redirects"`
 	MaxRedirects    *int  `yaml:"max-redirects"`
 	Insecure        *bool `yaml:"insecure"`
 
@@ -118,6 +119,7 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 		LogCount   *int    `yaml:"log-count"`
 
 		FollowRedirects *bool `yaml:"follow-redirects"`
+		OnlyRedirects   *bool `yaml:"only-redirects"`
 		MaxRedirects    *int  `yaml:"max-redirects"`
 		Insecure        *bool `yaml:"insecure"`
 
@@ -189,6 +191,7 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 	o.Quiet = raw.Quiet
 
 	o.FollowRedirects = raw.FollowRedirects
+	o.OnlyRedirects = raw.OnlyRedirects
 	o.MaxRedirects = raw.MaxRedirects
 	o.Insecure = raw.Insecure
 
@@ -353,6 +356,12 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 	}
 	if o.FollowRedirects != nil {
 		cfg.FollowRedirects = *o.FollowRedirects
+	}
+	if o.OnlyRedirects != nil {
+		cfg.OnlyRedirects = *o.OnlyRedirects
+	}
+	if cfg.OnlyRedirects {
+		cfg.FollowRedirects = true
 	}
 	if o.MaxRedirects != nil {
 		cfg.MaxRedirects = *o.MaxRedirects

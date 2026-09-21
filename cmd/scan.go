@@ -71,6 +71,7 @@ type ScanOptions struct {
 	NoProgress      bool
 	Verbose         bool
 	FollowRedirects bool
+	OnlyRedirects   bool
 	MaxRedirects    int
 	Adaptive        bool
 
@@ -127,6 +128,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			isQuiet := opts.Quiet || (cmd.Flags().Lookup("quiet") != nil && cmd.Flags().Lookup("quiet").Changed)
 			if isVerbose && isQuiet {
 				return fmt.Errorf("error: --verbose cannot be used with --quiet")
+			}
+
+			if opts.OnlyRedirects {
+				opts.FollowRedirects = true
 			}
 
 			if opts.RawProfile != "" {
@@ -893,6 +898,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					manager.SetStats(collector)
 					manager.SetExtensions(cfg.Extensions)
 					manager.SetWarningHandler(printDiag)
+					manager.SetOnlyRedirects(cfg.OnlyRedirects)
 					if err := manager.Run(scanCtx, drainCtx, seeds, cfg.Threads, func(r engine.Result) {
 						if r.Accepted {
 							if termFmttr != nil {
@@ -941,7 +947,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						jobs,
 						collector,
 						stateMgr.WaitUntilRunning,
-						engine.WorkerOptions{ExtractLinks: false},
+						engine.WorkerOptions{ExtractLinks: false, OnlyRedirects: cfg.OnlyRedirects},
 					)
 
 					go func() {
@@ -1314,6 +1320,13 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"follow HTTP redirects",
 	)
 
+	cmd.Flags().BoolVar(
+		&opts.OnlyRedirects,
+		"only-redirects",
+		false,
+		"follow redirects and report only the final response reached through a redirect",
+	)
+
 	cmd.Flags().IntVar(
 		&opts.MaxRedirects,
 		"max-redirects",
@@ -1378,7 +1391,7 @@ var scanHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Matching / Filtering",
-			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr"},
+			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
 		},
 		{
 			Title: "Performance",
@@ -1485,6 +1498,12 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	}
 	if cmd.Flags().Changed("follow-redirects") {
 		cfg.FollowRedirects = opts.FollowRedirects
+	}
+	if cmd.Flags().Changed("only-redirects") {
+		cfg.OnlyRedirects = opts.OnlyRedirects
+	}
+	if cfg.OnlyRedirects {
+		cfg.FollowRedirects = true
 	}
 	if cmd.Flags().Changed("max-redirects") {
 		cfg.MaxRedirects = opts.MaxRedirects

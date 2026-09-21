@@ -83,6 +83,12 @@ type Manager struct {
 	MediumPriorityCount int
 	LowPriorityCount    int
 	entriesPerDir       int64
+	onlyRedirects       bool
+}
+
+// SetOnlyRedirects configures whether the manager should only report findings reached via followed redirects.
+func (m *Manager) SetOnlyRedirects(onlyRedirects bool) {
+	m.onlyRedirects = onlyRedirects
 }
 
 // SetAdaptiveEngine configures the unified AdaptiveEngine for recursion.
@@ -303,7 +309,7 @@ func (m *Manager) Run(
 			jobs,
 			m.stats,
 			m.PauseBlocker,
-			engine.WorkerOptions{ExtractLinks: true, DeferDiscoveredAccounting: true},
+			engine.WorkerOptions{ExtractLinks: true, DeferDiscoveredAccounting: true, OnlyRedirects: m.onlyRedirects},
 		)
 
 		// pending counts jobs dispatched to workers but not yet returned.
@@ -484,6 +490,12 @@ func (m *Manager) handleResult(ctx context.Context, result engine.Result, fronti
 			m.stats.RecordDisplayFiltered()
 		}
 	} else {
+		if m.onlyRedirects && !result.Redirected {
+			reported.Accepted = false
+			if m.stats != nil {
+				m.stats.RecordDisplayFiltered()
+			}
+		}
 		if m.displayFS != nil {
 			contentType := ""
 			if result.Headers != nil {

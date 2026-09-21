@@ -50,6 +50,7 @@ func CanonicalizeLocation(rawLoc string, reqURL *url.URL) string {
 type WorkerOptions struct {
 	ExtractLinks              bool
 	DeferDiscoveredAccounting bool
+	OnlyRedirects             bool
 }
 
 // Worker executes the response pipeline for incoming jobs.
@@ -221,8 +222,39 @@ func process(
 		collector.RecordLatency(time.Since(startTime))
 	}
 
+	wasRedirected := resp.Request != nil && resp.Request.Response != nil
+
+	if opts.OnlyRedirects && !wasRedirected {
+		if !(job.Depth == 0 && opts.ExtractLinks) {
+			drained := httpclient.DrainAndClose(resp.Body, httpclient.ContentLength(resp))
+			recLen := httpclient.ContentLength(resp)
+			if recLen < 0 {
+				recLen = drained
+			}
+			if collector != nil {
+				collector.RecordResponseReceived(resp.StatusCode, recLen)
+				collector.RecordRequestFiltered()
+			}
+			sendResult(results, Result{
+				URL:        job.URL,
+				StatusCode: resp.StatusCode,
+				Length:     recLen,
+				Depth:      job.Depth,
+				Accepted:   false,
+				Origin:     job.Origin,
+				Redirected: false,
+			})
+			return
+		}
+	}
+
+	effectiveURL := job.URL
 	statusCode := resp.StatusCode
-	if resp.Request != nil && resp.Request.Response != nil {
+	if opts.OnlyRedirects {
+		if wasRedirected && resp.Request != nil && resp.Request.URL != nil {
+			effectiveURL = resp.Request.URL.String()
+		}
+	} else if wasRedirected {
 		origResp := resp.Request.Response
 		for origResp.Request != nil && origResp.Request.Response != nil {
 			origResp = origResp.Request.Response
@@ -245,12 +277,13 @@ func process(
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
-			URL:        job.URL,
+			URL:        effectiveURL,
 			StatusCode: statusCode,
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
+			Redirected: wasRedirected,
 		})
 		return
 	}
@@ -263,16 +296,17 @@ func process(
 			if recLen < 0 {
 				recLen = drained
 			}
-			collector.RecordResponseReceived(resp.StatusCode, recLen)
+			collector.RecordResponseReceived(statusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
+			URL:        effectiveURL,
+			StatusCode: statusCode,
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
+			Redirected: wasRedirected,
 		})
 		return
 	}
@@ -304,34 +338,36 @@ func process(
 
 	if length != -1 && ((len(fs.MatchSize) > 0 && !fs.MatchSize.Match(length)) || (len(fs.FilterSize) > 0 && fs.FilterSize.Match(length))) {
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, recLen)
+			collector.RecordResponseReceived(statusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
+			URL:        effectiveURL,
+			StatusCode: statusCode,
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
 			Err:        readErr,
+			Redirected: wasRedirected,
 		})
 		return
 	}
 
 	if readErr != nil || !fs.MatchBody(bodyBytes) {
 		if collector != nil {
-			collector.RecordResponseReceived(resp.StatusCode, recLen)
+			collector.RecordResponseReceived(statusCode, recLen)
 			collector.RecordRequestFiltered()
 		}
 		sendResult(results, Result{
-			URL:        job.URL,
-			StatusCode: resp.StatusCode,
+			URL:        effectiveURL,
+			StatusCode: statusCode,
 			Length:     length,
 			Depth:      job.Depth,
 			Accepted:   false,
 			Origin:     job.Origin,
 			Err:        readErr,
+			Redirected: wasRedirected,
 		})
 		return
 	}
@@ -360,7 +396,7 @@ func process(
 	}
 
 	if collector != nil {
-		collector.RecordResponseReceived(resp.StatusCode, recLen)
+		collector.RecordResponseReceived(statusCode, recLen)
 		collector.RecordRequestSucceeded()
 		if !opts.DeferDiscoveredAccounting {
 			collector.RecordDiscovered()
@@ -368,25 +404,31 @@ func process(
 	}
 
 	var redirectURL string
-	if resp.Request != nil && resp.Request.URL != nil {
-		finalURL := resp.Request.URL.String()
-		if finalURL != job.URL {
-			redirectURL = finalURL
+	if !opts.OnlyRedirects {
+		if resp.Request != nil && resp.Request.URL != nil {
+			finalURL := resp.Request.URL.String()
+			if finalURL != job.URL {
+				redirectURL = finalURL
+			}
 		}
-	}
-	if redirectURL == "" && statusCode >= 300 && statusCode < 400 {
-		if resolvedLoc != "" {
-			redirectURL = resolvedLoc
+		if redirectURL == "" && statusCode >= 300 && statusCode < 400 {
+			if resolvedLoc != "" {
+				redirectURL = resolvedLoc
+			}
 		}
-	}
-	if redirectURL != "" && resp.Request != nil && resp.Request.URL != nil {
-		destURL, err2 := url.Parse(redirectURL)
-		if err2 == nil {
-			if resp.Request.URL.Host != destURL.Host {
+		if redirectURL != "" && resp.Request != nil && resp.Request.URL != nil {
+			destURL, err2 := url.Parse(redirectURL)
+			if err2 == nil {
+				if resp.Request.URL.Host != destURL.Host {
+					redirectURL = ""
+				}
+			} else {
 				redirectURL = ""
 			}
-		} else {
-			redirectURL = ""
+		}
+	} else if statusCode >= 300 && statusCode < 400 {
+		if resolvedLoc != "" {
+			redirectURL = resolvedLoc
 		}
 	}
 
@@ -403,7 +445,7 @@ func process(
 	}
 
 	sendResult(results, Result{
-		URL:         job.URL,
+		URL:         effectiveURL,
 		RedirectURL: redirectURL,
 		StatusCode:  statusCode,
 		Length:      length,
@@ -414,6 +456,7 @@ func process(
 		Headers:     resHeaders,
 		Links:       links,
 		BodyHash:    bodyHash,
+		Redirected:  wasRedirected,
 	})
 }
 

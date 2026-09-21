@@ -102,7 +102,7 @@ func New(ctx context.Context, cfg config.Config) *App {
 	opts := httpclient.Options{
 		Timeout:         cfg.Timeout,
 		ConnectTimeout:  cfg.ConnectTimeout,
-		FollowRedirects: cfg.FollowRedirects,
+		FollowRedirects: cfg.FollowRedirects || cfg.OnlyRedirects,
 		MaxRedirects:    cfg.MaxRedirects,
 		ProxyURL:        cfg.Proxy,
 		HTTPVersion:     cfg.HTTPVersion,

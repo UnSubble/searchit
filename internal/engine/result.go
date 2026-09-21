@@ -11,6 +11,7 @@ type Result struct {
 	Length      int64 // -1 when Content-Length is absent
 	Depth       uint16
 	Accepted    bool
+	Redirected  bool
 	Origin      string
 	Err         error
 

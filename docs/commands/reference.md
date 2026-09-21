@@ -45,6 +45,7 @@ The `scan` command is used for directory and file enumeration.
 * `--normalize-paths`: Normalize paths in URLs.
 * `--collapse-slashes`: Collapse multiple slashes in paths.
 * `--follow-redirects`: Follow HTTP redirects.
+* `--only-redirects`: Follow redirects and report only the final response reached through a redirect (suppresses intermediate 3xx responses).
 * `--max-redirects`: Maximum number of redirects to follow.
 
 ### Filtering Options
