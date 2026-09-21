@@ -36,6 +36,11 @@ func sendResult(results chan<- Result, item WorkItem, res Result) {
 	}
 }
 
+// WorkerOpts configures optional behavior for fuzz workers.
+type WorkerOpts struct {
+	OnlyRedirects bool
+}
+
 // Worker processes incoming fuzzed jobs from the channel.
 func Worker(
 	targetCtx context.Context,
@@ -48,7 +53,12 @@ func Worker(
 	results chan<- Result,
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
+	workerOpts ...WorkerOpts,
 ) {
+	var opts WorkerOpts
+	if len(workerOpts) > 0 {
+		opts = workerOpts[0]
+	}
 	if execCtx == nil {
 		execCtx = targetCtx
 	}
@@ -95,7 +105,7 @@ func Worker(
 				}
 			}
 
-			replied = process(targetCtx, execCtx, client, fs, item, results, collector)
+			replied = process(targetCtx, execCtx, client, fs, item, results, collector, opts)
 			atomic.AddInt64(&stats.GlobalInstrumentation.WorkerJobsComp, 1)
 
 			if delay > 0 {
@@ -118,6 +128,7 @@ func process(
 	item WorkItem,
 	results chan<- Result,
 	collector *stats.Collector,
+	opts WorkerOpts,
 ) bool {
 	if targetCtx != nil && targetCtx.Err() != nil {
 		return false
@@ -221,17 +232,36 @@ func process(
 		collector.RecordLatency(time.Since(startTime))
 	}
 
+	wasRedirected := resp.Request != nil && resp.Request.Response != nil
 	statusCode := resp.StatusCode
-	if resp.Request != nil && resp.Request.Response != nil {
-		origResp := resp.Request.Response
-		for origResp.Request != nil && origResp.Request.Response != nil {
-			origResp = origResp.Request.Response
-		}
-		statusCode = origResp.StatusCode
-	}
 
 	contentType := resp.Header.Get("Content-Type")
 	length := httpclient.ContentLength(resp)
+
+	if opts.OnlyRedirects && !wasRedirected {
+		drained := httpclient.DrainAndClose(resp.Body, length)
+		recLen := length
+		if recLen < 0 {
+			recLen = drained
+		}
+		if collector != nil {
+			collector.RecordResponseReceived(statusCode, recLen)
+			collector.RecordRequestFiltered()
+		}
+		sendResult(results, item, Result{
+			URL:        item.Req.URL,
+			StatusCode: statusCode,
+			Length:     length,
+			Accepted:   false,
+			UserData:   item.Req.UserData,
+		})
+		return true
+	}
+
+	effectiveURL := item.Req.URL
+	if wasRedirected && resp.Request != nil && resp.Request.URL != nil {
+		effectiveURL = resp.Request.URL.String()
+	}
 
 	// Filter 1: Match Headers (Status, Content-Type, Size)
 	if !fs.MatchHeaders(statusCode, length, contentType) {
@@ -385,7 +415,7 @@ func process(
 	}
 
 	sendResult(results, item, Result{
-		URL:         item.Req.URL,
+		URL:         effectiveURL,
 		RedirectURL: redirectURL,
 		StatusCode:  statusCode,
 		Length:      length,

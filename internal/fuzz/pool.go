@@ -25,7 +25,12 @@ func Start(
 	jobs <-chan WorkItem,
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
+	workerOpts ...WorkerOpts,
 ) <-chan Result {
+	var wOpts WorkerOpts
+	if len(workerOpts) > 0 {
+		wOpts = workerOpts[0]
+	}
 	results := make(chan Result, workers)
 
 	var wg sync.WaitGroup
@@ -34,7 +39,7 @@ func Start(
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			Worker(targetCtx, execCtx, client, fs, delay, limiter, jobs, results, collector, pauseBlocker)
+			Worker(targetCtx, execCtx, client, fs, delay, limiter, jobs, results, collector, pauseBlocker, wOpts)
 		}()
 	}
 

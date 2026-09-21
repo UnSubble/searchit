@@ -19,6 +19,7 @@ import (
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/diagnostics"
+	"github.com/unsubble/searchit/internal/encode"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
@@ -44,8 +45,8 @@ import (
 
 type ScanOptions struct {
 	URL             string
-	URLFile         string
 	Wordlist        string
+	Encode          string
 	Ext             []string
 	Threads         int
 	Timeout         int
@@ -61,8 +62,7 @@ type ScanOptions struct {
 	Quiet           bool
 	IncludeSize     string
 	ExcludeSize     string
-	IncludeHeaders  []string
-	ExcludeHeaders  []string
+
 	Delay           string
 	Rate            float64
 	ConnectTimeout  string
@@ -226,7 +226,11 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					return fmt.Errorf("connect-timeout cannot be negative")
 				}
 			}
-
+			if opts.Encode != "" {
+				if _, err := encode.NewEncoder(opts.Encode); err != nil {
+					return err
+				}
+			}
 			if opts.HTTPVersion != "" {
 				if err := httpclient.ValidateHTTPVersion(opts.HTTPVersion); err != nil {
 					return err
@@ -235,17 +239,6 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 
 			if opts.MaxRedirects < 0 {
 				return fmt.Errorf("max-redirects cannot be negative")
-			}
-
-			for _, h := range opts.IncludeHeaders {
-				if err := validateHeaderFlag(h); err != nil {
-					return fmt.Errorf("invalid include-header: %w", err)
-				}
-			}
-			for _, h := range opts.ExcludeHeaders {
-				if err := validateHeaderFlag(h); err != nil {
-					return fmt.Errorf("invalid exclude-header: %w", err)
-				}
 			}
 
 			for _, h := range opts.Headers {
@@ -305,20 +298,19 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			// Parse target URLs when they are provided via CLI flags.
 			// When no URL flag is present but profiles are specified, defer target
 			// resolution to RunE where profiles will have been applied and may
-			// supply a url or url-file value.
-			hasURL := opts.URL != "" || opts.URLFile != "" || opts.Request != ""
+			// supply a url value.
+			hasURL := opts.URL != "" || opts.Request != ""
 			if hasURL {
 				var errParse error
 				opts.resolvedTargets, errParse = targets.Parse(targets.ParseOptions{
 					URL:         opts.URL,
-					URLFile:     opts.URLFile,
 					RequestFile: opts.Request,
 				})
 				if errParse != nil {
 					return errParse
 				}
 			} else if len(opts.Profiles) == 0 {
-				return fmt.Errorf("no target URL specified; use -u/--url, --url-file, or --profile with url/url-file config")
+				return fmt.Errorf("no target URL specified; use -u/--url, or --profile with url config")
 			}
 			// else: profiles provided, no URL flag — defer to RunE.
 
@@ -413,22 +405,16 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			}
 
 			// If no targets were resolved from CLI flags, attempt to populate them
-			// from values supplied via profile (url: or url-file:).
+			// from values supplied via profile (url:).
 			if len(opts.resolvedTargets) == 0 {
 				if len(cfg.URLs) > 0 {
 					for _, u := range cfg.URLs {
 						opts.resolvedTargets = append(opts.resolvedTargets, targets.Target{URL: u})
 					}
-				} else if cfg.URLFile != "" {
-					parsed, err := targets.Parse(targets.ParseOptions{URLFile: cfg.URLFile})
-					if err != nil {
-						return fmt.Errorf("profile url-file: %w", err)
-					}
-					opts.resolvedTargets = parsed
 				}
 			}
 			if len(opts.resolvedTargets) == 0 {
-				return fmt.Errorf("no target URL specified; use -u/--url, --url-file, or set url/url-file in the profile")
+				return fmt.Errorf("no target URL specified; use -u/--url, or set url in the profile")
 			}
 
 			if cfg.RequestFile != "" && len(opts.resolvedTargets) > 0 {
@@ -899,7 +885,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					}
 					manager.SetRequestManipulation(cfg.Method, []byte(cfg.Data), customHeaders, cfg.Cookies)
 					manager.SetFilterSuite(fs)
-					manager.SetDisplayHeaders(mapHeaders(cfg.IncludeHeaders), mapHeaders(cfg.ExcludeHeaders))
+					manager.SetDisplayHeaders(nil, nil)
 					manager.SetStats(collector)
 					manager.SetExtensions(cfg.Extensions)
 					manager.SetWarningHandler(printDiag)
@@ -940,8 +926,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						drainCtx,
 						appState.HTTPClient,
 						fs,
-						mapHeaders(cfg.IncludeHeaders),
-						mapHeaders(cfg.ExcludeHeaders),
+						nil,
+						nil,
 						cfg.Threads,
 						cfg.Delay,
 						limiter,
@@ -979,9 +965,11 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 							}
 						}
 
+						scanEncoder, _ := encode.NewEncoder(opts.Encode)
 						p := wordlist.Producer{
 							BaseURL:         targetURL,
 							Reader:          reader,
+							Encoder:         scanEncoder,
 							NormalizePaths:  cfg.Paths.NormalizePaths,
 							CollapseSlashes: cfg.Paths.CollapseSlashes,
 							Extensions:      cfg.Extensions,
@@ -1140,6 +1128,8 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"wordlist path",
 	)
 
+	cmd.Flags().StringVarP(&opts.Encode, "encode", "E", "", "encode candidates before substitution (base64, url, doubleurl, wl-base64, wl-url, wl-doubleurl)")
+
 	cmd.Flags().IntVarP(
 		&opts.Threads,
 		"threads",
@@ -1245,33 +1235,12 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 		"comma-separated content sizes to exclude (e.g. 0,123)",
 	)
 
-	cmd.Flags().StringSliceVar(
-		&opts.IncludeHeaders,
-		"include-header",
-		nil,
-		"HTTP headers to include (e.g. Server=nginx)",
-	)
-
-	cmd.Flags().StringSliceVar(
-		&opts.ExcludeHeaders,
-		"exclude-header",
-		nil,
-		"HTTP headers to exclude (e.g. Content-Type=text/plain)",
-	)
-
 	cmd.Flags().BoolVarP(
 		&opts.Quiet,
 		"quiet",
 		"q",
 		false,
 		"print only discovered URLs in text mode",
-	)
-
-	cmd.Flags().StringVar(
-		&opts.URLFile,
-		"url-file",
-		"",
-		"load targets from a file (one URL per line)",
 	)
 
 	cmd.Flags().StringVar(
@@ -1355,7 +1324,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	cmd.Flags().BoolVarP(&opts.Insecure, "insecure", "k", false, "skip TLS certificate verification")
 
 	cmd.Flags().StringVar(&opts.MatchStatus, "mc", "", "match status codes")
-	cmd.Flags().StringVar(&opts.MatchStatus, "filter-code", "", "match status codes (alias for --mc)")
+
 	cmd.Flags().StringVar(&opts.FilterStatus, "fc", "", "filter status codes")
 	cmd.Flags().StringVar(&opts.MatchSize, "ms", "", "match size")
 	cmd.Flags().StringVar(&opts.FilterSize, "fs", "", "filter size")
@@ -1385,7 +1354,7 @@ var scanHelpConfig = HelpConfig{
 	Groups: []FlagGroup{
 		{
 			Title: "General",
-			Names: []string{"url", "url-file", "wordlist"},
+			Names: []string{"url", "wordlist"},
 		},
 		{
 			Title: "Discovery",
@@ -1397,7 +1366,7 @@ var scanHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Matching / Filtering",
-			Names: []string{"mc", "filter-code", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
+			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
 		},
 		{
 			Title: "Performance",
@@ -1459,7 +1428,7 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 			cfg.Strategy = s
 		}
 	}
-	if cmd.Flags().Changed("mc") || cmd.Flags().Changed("filter-code") {
+	if cmd.Flags().Changed("mc") {
 		if f, err := status.Parse(opts.MatchStatus); err == nil {
 			cfg.Status.Include = f
 			if !cmd.Flags().Changed("fc") && !cmd.Flags().Changed("exclude-status") {
@@ -1544,12 +1513,7 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	if cmd.Flags().Changed("ft") {
 		cfg.FilterContent = opts.FilterContent
 	}
-	if cmd.Flags().Changed("include-header") {
-		cfg.IncludeHeaders = parseHeaderFlags(opts.IncludeHeaders)
-	}
-	if cmd.Flags().Changed("exclude-header") {
-		cfg.ExcludeHeaders = parseHeaderFlags(opts.ExcludeHeaders)
-	}
+
 	if cmd.Flags().Changed("method") {
 		cfg.Method = opts.Method
 	}
@@ -1594,37 +1558,6 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	if cmd.Flags().Changed("random-agent") {
 		cfg.RandomAgent = opts.RandomAgent
 	}
-}
-
-func validateHeaderFlag(val string) error {
-	idx := strings.Index(val, "=")
-	if idx <= 0 || idx == len(val)-1 {
-		return fmt.Errorf("header flag %q must be in Name=Value format", val)
-	}
-	return nil
-}
-
-func parseHeaderFlags(flags []string) []config.HeaderFilter {
-	res := make([]config.HeaderFilter, 0, len(flags))
-	for _, h := range flags {
-		idx := strings.Index(h, "=")
-		res = append(res, config.HeaderFilter{
-			Name:  strings.TrimSpace(h[:idx]),
-			Value: strings.TrimSpace(h[idx+1:]),
-		})
-	}
-	return res
-}
-
-func mapHeaders(filters []config.HeaderFilter) []engine.HeaderFilter {
-	out := make([]engine.HeaderFilter, len(filters))
-	for i, f := range filters {
-		out[i] = engine.HeaderFilter{
-			Name:  f.Name,
-			Value: f.Value,
-		}
-	}
-	return out
 }
 
 // shouldEnableProgress returns true when the live progress renderer should be

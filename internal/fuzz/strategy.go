@@ -53,13 +53,18 @@ func NewExecutor(
 	limiter *rate.Limiter,
 	collector *stats.Collector,
 	pauseBlocker func(context.Context) error,
+	opts ...WorkerOpts,
 ) *Executor {
+	var wOpts WorkerOpts
+	if len(opts) > 0 {
+		wOpts = opts[0]
+	}
 	bufSize := workers * 32
 	if bufSize < 512 {
 		bufSize = 512
 	}
 	jobsChan := make(chan WorkItem, bufSize)
-	resultsChan := Start(ctx, drainCtx, client, fs, workers, delay, limiter, jobsChan, collector, pauseBlocker)
+	resultsChan := Start(ctx, drainCtx, client, fs, workers, delay, limiter, jobsChan, collector, pauseBlocker, wOpts)
 
 	e := &Executor{
 		ctx:          ctx,
@@ -156,9 +161,10 @@ type Runner struct {
 	Limiter   *rate.Limiter
 	Collector *stats.Collector
 
-	Quiet       bool
-	ShowHeaders bool
-	ShowTitle   bool
+	Quiet         bool
+	OnlyRedirects bool
+	ShowHeaders   bool
+	ShowTitle     bool
 
 	Adaptive       bool
 	AdaptiveEngine *adaptive.Engine
@@ -313,7 +319,7 @@ func (r *Runner) CompiledURLTemplate() CompiledTemplate {
 // Run executes the fuzzer according to selected strategy.
 func (r *Runner) Run(ctx context.Context, drainCtx context.Context, strategy string, primaryChan <-chan string, yield ResultCallback) error {
 	r.compiledReq = r.compileRequest()
-	e := NewExecutor(ctx, drainCtx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector, r.PauseBlocker)
+	e := NewExecutor(ctx, drainCtx, r.Client, r.FS, r.Threads, r.Delay, r.Limiter, r.Collector, r.PauseBlocker, WorkerOpts{OnlyRedirects: r.OnlyRedirects})
 	defer e.Close()
 
 	if r.Collector != nil {

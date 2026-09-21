@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/unsubble/searchit/internal/encode"
 	"github.com/unsubble/searchit/internal/engine"
 	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/stats"
@@ -21,6 +22,7 @@ const DefaultWordBuffer = 4096
 type Producer struct {
 	BaseURL         string
 	Reader          Reader
+	Encoder         encode.Encoder
 	NormalizePaths  bool
 	CollapseSlashes bool
 	Extensions      []string
@@ -74,6 +76,10 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 						continue
 					}
 
+					if p.Encoder != nil && p.Encoder.IsWordlistScoped() {
+						cleaned = p.Encoder.Encode(cleaned)
+					}
+
 					if p.PauseBlocker != nil {
 						if err := p.PauseBlocker(ctx); err != nil {
 							errCh <- err
@@ -83,6 +89,9 @@ func (p Producer) Produce(ctx context.Context, jobs chan<- engine.Job) error {
 
 					variants := extensions.GenerateVariants(cleaned, p.Extensions)
 					for _, variant := range variants {
+						if p.Encoder != nil && !p.Encoder.IsWordlistScoped() {
+							variant = p.Encoder.Encode(variant)
+						}
 						url, err := Join(p.BaseURL, variant)
 						if err != nil {
 							atomic.AddInt64(&stats.GlobalInstrumentation.InvalidWords, 1)
