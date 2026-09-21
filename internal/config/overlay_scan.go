@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/unsubble/searchit/internal/extensions"
@@ -18,8 +17,7 @@ import (
 // Pointer fields distinguish "not present" (nil) from zero values.
 type ScanOverlay struct {
 	// Target
-	URL     *string `yaml:"url"`
-	URLFile *string `yaml:"url-file"`
+	URL *string `yaml:"url"`
 
 	// Wordlist & extensions
 	Wordlist   *string   `yaml:"wordlist"`
@@ -61,10 +59,6 @@ type ScanOverlay struct {
 	IncludeSize *string `yaml:"include-size"`
 	ExcludeSize *string `yaml:"exclude-size"`
 
-	// Response-header filtering
-	IncludeHeaders *[]string `yaml:"include-headers"`
-	ExcludeHeaders *[]string `yaml:"exclude-headers"`
-
 	// Regex / content filtering
 	MatchRegex    *[]string `yaml:"match-regex"`
 	FilterRegex   *[]string `yaml:"filter-regex"`
@@ -92,8 +86,7 @@ type ScanOverlay struct {
 
 func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 	type rawOverlay struct {
-		URL     *string `yaml:"url"`
-		URLFile *string `yaml:"url-file"`
+		URL *string `yaml:"url"`
 
 		Wordlist   *string   `yaml:"wordlist"`
 		Extensions *[]string `yaml:"ext"`
@@ -128,11 +121,6 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 		IncludeSize *string `yaml:"include-size"`
 		ExcludeSize *string `yaml:"exclude-size"`
-
-		IncludeHeaders *[]string `yaml:"include-headers"`
-		IncludeHeader  *[]string `yaml:"include-header"`
-		ExcludeHeaders *[]string `yaml:"exclude-headers"`
-		ExcludeHeader  *[]string `yaml:"exclude-header"`
 
 		MatchRegex    *[]string `yaml:"match-regex"`
 		FilterRegex   *[]string `yaml:"filter-regex"`
@@ -170,7 +158,7 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	o.URL = raw.URL
-	o.URLFile = raw.URLFile
+
 	o.Wordlist = raw.Wordlist
 	o.Extensions = raw.Extensions
 	o.Threads = raw.Threads
@@ -223,17 +211,6 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 	o.UserAgent = raw.UserAgent
 	o.RandomAgent = raw.RandomAgent
-
-	if raw.IncludeHeaders != nil {
-		o.IncludeHeaders = raw.IncludeHeaders
-	} else {
-		o.IncludeHeaders = raw.IncludeHeader
-	}
-	if raw.ExcludeHeaders != nil {
-		o.ExcludeHeaders = raw.ExcludeHeaders
-	} else {
-		o.ExcludeHeaders = raw.ExcludeHeader
-	}
 
 	if raw.Timeout.Kind != 0 {
 		var i int
@@ -300,9 +277,7 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 	if o.URL != nil {
 		cfg.URLs = []string{*o.URL}
 	}
-	if o.URLFile != nil {
-		cfg.URLFile = *o.URLFile
-	}
+
 	if o.Wordlist != nil {
 		cfg.Wordlist = *o.Wordlist
 	}
@@ -386,12 +361,7 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 			cfg.ExcludeSize = f
 		}
 	}
-	if o.IncludeHeaders != nil {
-		cfg.IncludeHeaders = parseHeaderFlags(*o.IncludeHeaders)
-	}
-	if o.ExcludeHeaders != nil {
-		cfg.ExcludeHeaders = parseHeaderFlags(*o.ExcludeHeaders)
-	}
+
 	if o.MatchRegex != nil {
 		valid := make([]string, 0, len(*o.MatchRegex))
 		for _, p := range *o.MatchRegex {
@@ -452,18 +422,4 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 	if o.RandomAgent != nil {
 		cfg.RandomAgent = *o.RandomAgent
 	}
-}
-
-func parseHeaderFlags(flags []string) []HeaderFilter {
-	res := make([]HeaderFilter, 0, len(flags))
-	for _, f := range flags {
-		idx := strings.Index(f, "=")
-		if idx > 0 && idx < len(f)-1 {
-			res = append(res, HeaderFilter{
-				Name:  f[:idx],
-				Value: f[idx+1:],
-			})
-		}
-	}
-	return res
 }

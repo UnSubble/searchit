@@ -39,9 +39,6 @@ type Config struct {
 	IncludeSize size.Filters
 	ExcludeSize size.Filters
 
-	IncludeHeaders []HeaderFilter
-	ExcludeHeaders []HeaderFilter
-
 	Status StatusConfig
 
 	// Request Manipulation fields
@@ -79,16 +76,6 @@ type Config struct {
 	// Resolution order is enforced by internal/useragent.Resolve.
 	UserAgent   string
 	RandomAgent bool
-
-	// URLFile is the path to a file containing one target URL per line.
-	// When set via a profile it is expanded in the command's RunE after all
-	// overlays and CLI overrides have been applied.
-	URLFile string
-}
-
-type HeaderFilter struct {
-	Name  string
-	Value string
 }
 
 type PathConfig struct {

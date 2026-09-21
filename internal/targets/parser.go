@@ -9,8 +9,8 @@ import (
 
 // ParseOptions contains the parameters required to parse targets from flags.
 type ParseOptions struct {
-	URL         string // from -u
-	URLFile     string // from --url-file
+	URL string // from -u
+
 	RequestFile string // from --request
 }
 
@@ -27,15 +27,6 @@ func Parse(opts ParseOptions) ([]Target, error) {
 				baseTargets = append(baseTargets, t)
 			}
 		}
-	}
-
-	// 2. Process --url-file
-	if opts.URLFile != "" {
-		fileTargets, err := ReadFile(opts.URLFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read url file: %w", err)
-		}
-		baseTargets = append(baseTargets, fileTargets...)
 	}
 
 	// 3. If there is a request template, we apply it to all baseTargets or extract it alone.

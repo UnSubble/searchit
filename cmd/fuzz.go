@@ -48,7 +48,6 @@ import (
 
 type FuzzOptions struct {
 	URL             string
-	URLFile         string // registered but not supported in fuzz
 	Wordlist        string
 	Ext             []string
 	Foo             string
@@ -57,6 +56,7 @@ type FuzzOptions struct {
 	Buzz            string
 	Threads         int
 	Timeout         int
+	ConnectTimeout  string
 	Delay           string
 	Rate            float64
 	Strategy        string
@@ -67,6 +67,7 @@ type FuzzOptions struct {
 	Quiet           bool
 	Verbose         bool
 	FollowRedirects bool
+	OnlyRedirects   bool
 	MaxRedirects    int
 	ExcludeStatus   string
 	MatchStatus     string
@@ -143,11 +144,7 @@ error:
 
         searchit fuzz --request request.txt
 
-    For multiple targets use:
-
-        searchit scan --url-file ...
-
-    or execute fuzz separately
+    For multiple targets execute fuzz separately
     for each target.
 `)
 }
@@ -177,6 +174,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				return fmt.Errorf("error: --verbose cannot be used with --quiet")
 			}
 
+			if cmd.Flags().Changed("follow-redirects") && cmd.Flags().Changed("only-redirects") {
+				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
+			}
+
 			if opts.RawProfile != "" {
 				for _, p := range strings.Split(opts.RawProfile, ",") {
 					p = strings.TrimSpace(p)
@@ -195,9 +196,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			if opts.URL != "" && opts.Request != "" {
 				return fuzzTargetError()
 			}
-			if opts.URLFile != "" {
-				return fuzzTargetError()
-			}
 			if opts.Threads < 1 {
 				return fmt.Errorf("threads must be at least 1")
 			}
@@ -206,7 +204,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				var errParse error
 				opts.resolvedFuzzTargets, errParse = targets.Parse(targets.ParseOptions{
 					URL:         opts.URL,
-					URLFile:     opts.URLFile,
 					RequestFile: opts.Request,
 				})
 				if errParse != nil {
@@ -251,6 +248,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 			if cmd.Flags().Changed("rate") && opts.Rate <= 0 {
 				return fmt.Errorf("rate must be greater than 0")
+			}
+
+			if opts.ConnectTimeout != "" {
+				if _, err := time.ParseDuration(opts.ConnectTimeout); err != nil {
+					return fmt.Errorf("invalid --connect-timeout: %w", err)
+				}
 			}
 
 			if opts.Output != "" {
@@ -1154,6 +1157,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					Limiter:         limiter,
 					Collector:       collector,
 					Quiet:           cfg.Quiet,
+					OnlyRedirects:   cfg.OnlyRedirects,
 					ShowHeaders:     cfg.ShowHeaders,
 					ShowTitle:       cfg.ShowTitle,
 					Adaptive:        cfg.Adaptive,
@@ -1343,7 +1347,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	}
 
 	cmd.Flags().StringVarP(&opts.URL, "url", "u", "", "target URL with placeholders (FUZZ, FOO, BAR, BAZ, BUZZ)")
-	cmd.Flags().StringVar(&opts.URLFile, "url-file", "", "Target URL file (NOT SUPPORTED in fuzz)")
 	cmd.Flags().StringVarP(&opts.Wordlist, "wordlist", "w", "", "primary wordlist path (maps to FUZZ)")
 	cmd.Flags().StringSliceVarP(&opts.Ext, "ext", "e", nil, "comma-separated extensions or @file")
 	cmd.Flags().StringVar(&opts.Foo, "foo", "", "wordlist path for FOO placeholder")
@@ -1356,12 +1359,18 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringSliceVarP(&opts.Headers, "header", "H", nil, "custom request headers with placeholders (e.g. -H 'X-Header=FUZZ')")
 	cmd.Flags().IntVarP(&opts.Threads, "threads", "t", 32, "number of concurrent worker threads")
 	cmd.Flags().IntVar(&opts.Timeout, "timeout", 10, "request timeout in seconds")
+	cmd.Flags().StringVar(
+		&opts.ConnectTimeout,
+		"connect-timeout",
+		"3s",
+		"timeout for establishing new TCP connections",
+	)
 	cmd.Flags().StringVarP(&opts.ExcludeStatus, "exclude-status", "x", "404", "comma-separated status codes to exclude")
 	cmd.Flags().StringVar(&opts.IncludeSize, "include-size", "", "comma-separated exact sizes or ranges to include")
 	cmd.Flags().StringVar(&opts.ExcludeSize, "exclude-size", "", "comma-separated exact sizes or ranges to exclude")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "write results to this file (default: stdout)")
 	cmd.Flags().StringVar(&opts.Format, "format", "text", "explicit output format (text, json, ndjson, csv, markdown)")
-	cmd.Flags().BoolVarP(&opts.Quiet, "quiet", "q", false, "disable status prefix printing in stdout")
+	cmd.Flags().BoolVarP(&opts.Quiet, "quiet", "q", false, "print only discovered URLs in text mode")
 	cmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "enable verbose diagnostic output")
 	cmd.Flags().StringVar(&opts.Delay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	cmd.Flags().Float64Var(&opts.Rate, "rate", 0, "maximum requests per second rate limit")
@@ -1384,6 +1393,12 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVar(&opts.Request, "request", "", "load raw HTTP request template from file")
 	cmd.Flags().StringVarP(&opts.RawProfile, "profile", "p", "", "apply one or more profiles (comma-separated)")
 	cmd.Flags().BoolVar(&opts.FollowRedirects, "follow-redirects", false, "follow HTTP redirects")
+	cmd.Flags().BoolVar(
+		&opts.OnlyRedirects,
+		"only-redirects",
+		false,
+		"follow redirects and report only the final response reached through a redirect",
+	)
 	cmd.Flags().IntVar(&opts.MaxRedirects, "max-redirects", 10, "maximum redirect limit")
 	cmd.Flags().StringVarP(&opts.Strategy, "strategy", "s", "eager", "Traversal strategy (eager, bfs, dfs, priority)")
 	cmd.Flags().BoolVar(&opts.Adaptive, "adaptive", false, "enable adaptive fuzzing (prioritization, framework detection, robots.txt, sitemaps)")
@@ -1420,7 +1435,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Matching / Filtering",
-			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr"},
+			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
 		},
 		{
 			Title: "Output",
@@ -1480,6 +1495,11 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	if cmd.Flags().Changed("timeout") {
 		cfg.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
+	if cmd.Flags().Changed("connect-timeout") {
+		if d, err := time.ParseDuration(opts.ConnectTimeout); err == nil {
+			cfg.ConnectTimeout = d
+		}
+	}
 	if cmd.Flags().Changed("delay") {
 		if d, err := time.ParseDuration(opts.Delay); err == nil {
 			cfg.Delay = d
@@ -1525,8 +1545,12 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 
 	if cmd.Flags().Changed("mc") {
-		inc, _ := status.Parse(opts.MatchStatus)
-		cfg.Status.Include = inc
+		if inc, err := status.Parse(opts.MatchStatus); err == nil {
+			cfg.Status.Include = inc
+			if !cmd.Flags().Changed("fc") && !cmd.Flags().Changed("exclude-status") {
+				cfg.Status.Exclude = nil
+			}
+		}
 	}
 	if cmd.Flags().Changed("fc") {
 		exc, _ := status.Parse(opts.FilterStatus)
@@ -1565,6 +1589,9 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("follow-redirects") {
 		cfg.FollowRedirects = opts.FollowRedirects
+	}
+	if cmd.Flags().Changed("only-redirects") {
+		cfg.OnlyRedirects = opts.OnlyRedirects
 	}
 	if cmd.Flags().Changed("max-redirects") {
 		cfg.MaxRedirects = opts.MaxRedirects

@@ -31,6 +31,7 @@ type FuzzOverlay struct {
 	Quiet  *bool   `yaml:"quiet"`
 
 	FollowRedirects *bool `yaml:"follow-redirects"`
+	OnlyRedirects   *bool `yaml:"only-redirects"`
 	MaxRedirects    *int  `yaml:"max-redirects"`
 	Insecure        *bool `yaml:"insecure"`
 
@@ -39,9 +40,6 @@ type FuzzOverlay struct {
 
 	IncludeSize *string `yaml:"include-size"`
 	ExcludeSize *string `yaml:"exclude-size"`
-
-	IncludeHeaders *[]string `yaml:"include-headers"`
-	ExcludeHeaders *[]string `yaml:"exclude-headers"`
 
 	MatchRegex    *[]string `yaml:"match-regex"`
 	FilterRegex   *[]string `yaml:"filter-regex"`
@@ -85,6 +83,7 @@ func (o *FuzzOverlay) UnmarshalYAML(value *yaml.Node) error {
 		LogCount   *int    `yaml:"log-count"`
 
 		FollowRedirects *bool `yaml:"follow-redirects"`
+		OnlyRedirects   *bool `yaml:"only-redirects"`
 		MaxRedirects    *int  `yaml:"max-redirects"`
 		Insecure        *bool `yaml:"insecure"`
 
@@ -93,11 +92,6 @@ func (o *FuzzOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 		IncludeSize *string `yaml:"include-size"`
 		ExcludeSize *string `yaml:"exclude-size"`
-
-		IncludeHeaders *[]string `yaml:"include-headers"`
-		IncludeHeader  *[]string `yaml:"include-header"`
-		ExcludeHeaders *[]string `yaml:"exclude-headers"`
-		ExcludeHeader  *[]string `yaml:"exclude-header"`
 
 		MatchRegex    *[]string `yaml:"match-regex"`
 		FilterRegex   *[]string `yaml:"filter-regex"`
@@ -149,6 +143,7 @@ func (o *FuzzOverlay) UnmarshalYAML(value *yaml.Node) error {
 	o.Quiet = raw.Quiet
 
 	o.FollowRedirects = raw.FollowRedirects
+	o.OnlyRedirects = raw.OnlyRedirects
 	o.MaxRedirects = raw.MaxRedirects
 	o.Insecure = raw.Insecure
 
@@ -180,17 +175,6 @@ func (o *FuzzOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 	o.UserAgent = raw.UserAgent
 	o.RandomAgent = raw.RandomAgent
-
-	if raw.IncludeHeaders != nil {
-		o.IncludeHeaders = raw.IncludeHeaders
-	} else {
-		o.IncludeHeaders = raw.IncludeHeader
-	}
-	if raw.ExcludeHeaders != nil {
-		o.ExcludeHeaders = raw.ExcludeHeaders
-	} else {
-		o.ExcludeHeaders = raw.ExcludeHeader
-	}
 
 	if raw.Timeout.Kind != 0 {
 		var i int
@@ -292,6 +276,9 @@ func ApplyFuzzOverlay(cfg *Config, o FuzzOverlay) {
 	if o.FollowRedirects != nil {
 		cfg.FollowRedirects = *o.FollowRedirects
 	}
+	if o.OnlyRedirects != nil {
+		cfg.OnlyRedirects = *o.OnlyRedirects
+	}
 	if o.MaxRedirects != nil {
 		cfg.MaxRedirects = *o.MaxRedirects
 	}
@@ -317,12 +304,6 @@ func ApplyFuzzOverlay(cfg *Config, o FuzzOverlay) {
 		if f, err := size.Parse(*o.ExcludeSize); err == nil {
 			cfg.ExcludeSize = f
 		}
-	}
-	if o.IncludeHeaders != nil {
-		cfg.IncludeHeaders = parseHeaderFlags(*o.IncludeHeaders)
-	}
-	if o.ExcludeHeaders != nil {
-		cfg.ExcludeHeaders = parseHeaderFlags(*o.ExcludeHeaders)
 	}
 	if o.MatchRegex != nil {
 		valid := make([]string, 0, len(*o.MatchRegex))

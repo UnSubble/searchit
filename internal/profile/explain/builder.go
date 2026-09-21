@@ -150,14 +150,6 @@ func Build(store profile.Store, rootName string) (*ExplanationModel, error) {
 			}
 			listFields["Exclude Status"] = trimmed
 		}
-		// Include Headers
-		if o.IncludeHeaders != nil {
-			listFields["Include Headers"] = *o.IncludeHeaders
-		}
-		// Exclude Headers
-		if o.ExcludeHeaders != nil {
-			listFields["Exclude Headers"] = *o.ExcludeHeaders
-		}
 	}
 
 	// Filter and convert overridesMap to the ordered FieldOverrides slice.
