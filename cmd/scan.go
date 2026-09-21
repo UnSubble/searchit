@@ -130,8 +130,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 				return fmt.Errorf("error: --verbose cannot be used with --quiet")
 			}
 
-			if opts.OnlyRedirects {
-				opts.FollowRedirects = true
+			isFollow := opts.FollowRedirects || (cmd.Flags().Lookup("follow-redirects") != nil && cmd.Flags().Lookup("follow-redirects").Changed)
+			isOnly := opts.OnlyRedirects || (cmd.Flags().Lookup("only-redirects") != nil && cmd.Flags().Lookup("only-redirects").Changed)
+			if isFollow && isOnly {
+				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
 			}
 
 			if opts.RawProfile != "" {
@@ -405,6 +407,9 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 
 			if opts.Verbose && cfg.Quiet {
 				return fmt.Errorf("error: --verbose cannot be used with --quiet")
+			}
+			if cfg.FollowRedirects && cfg.OnlyRedirects {
+				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
 			}
 
 			// If no targets were resolved from CLI flags, attempt to populate them
@@ -1350,6 +1355,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	cmd.Flags().BoolVarP(&opts.Insecure, "insecure", "k", false, "skip TLS certificate verification")
 
 	cmd.Flags().StringVar(&opts.MatchStatus, "mc", "", "match status codes")
+	cmd.Flags().StringVar(&opts.MatchStatus, "filter-code", "", "match status codes (alias for --mc)")
 	cmd.Flags().StringVar(&opts.FilterStatus, "fc", "", "filter status codes")
 	cmd.Flags().StringVar(&opts.MatchSize, "ms", "", "match size")
 	cmd.Flags().StringVar(&opts.FilterSize, "fs", "", "filter size")
@@ -1391,7 +1397,7 @@ var scanHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Matching / Filtering",
-			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
+			Names: []string{"mc", "filter-code", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
 		},
 		{
 			Title: "Performance",
@@ -1453,9 +1459,12 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 			cfg.Strategy = s
 		}
 	}
-	if cmd.Flags().Changed("mc") {
+	if cmd.Flags().Changed("mc") || cmd.Flags().Changed("filter-code") {
 		if f, err := status.Parse(opts.MatchStatus); err == nil {
 			cfg.Status.Include = f
+			if !cmd.Flags().Changed("fc") && !cmd.Flags().Changed("exclude-status") {
+				cfg.Status.Exclude = nil
+			}
 		}
 	}
 	if cmd.Flags().Changed("fc") {
@@ -1501,9 +1510,6 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	}
 	if cmd.Flags().Changed("only-redirects") {
 		cfg.OnlyRedirects = opts.OnlyRedirects
-	}
-	if cfg.OnlyRedirects {
-		cfg.FollowRedirects = true
 	}
 	if cmd.Flags().Changed("max-redirects") {
 		cfg.MaxRedirects = opts.MaxRedirects

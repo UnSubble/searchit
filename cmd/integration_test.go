@@ -426,8 +426,11 @@ func TestIntegration_Scans(t *testing.T) {
 		if err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
-		if !strings.Contains(out, "[301]") && !strings.Contains(out, "[302]") {
-			t.Errorf("expected followed redirect report with original 3xx status, got:\n%s", out)
+		if !strings.Contains(out, "200") {
+			t.Errorf("expected followed redirect report with final 200 status, got:\n%s", out)
+		}
+		if strings.Contains(out, "[301]") || strings.Contains(out, "[302]") {
+			t.Errorf("expected no intermediate redirect status in output, got:\n%s", out)
 		}
 	})
 }

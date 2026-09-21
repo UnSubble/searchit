@@ -7,22 +7,96 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
-func TestOnlyRedirects(t *testing.T) {
-	// A. Basic redirect:
+func TestOnlyRedirectsMatrix(t *testing.T) {
+	// 1. No follow:
 	//    /login -> 302 /login/
 	//    /login/ -> 200
-	// Expected: [200] http://.../login/ and NOT [302] http://.../login
-	t.Run("A_BasicRedirect", func(t *testing.T) {
+	// Expected: [302] /login
+	t.Run("1_NoFollow", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/login":
 				http.Redirect(w, r, "/login/", http.StatusFound)
 			case "/login/":
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("welcome"))
+				_, _ = w.Write([]byte("ok"))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		tmpDir := t.TempDir()
+		wlPath := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlPath, []byte("login\n"), 0644)
+
+		outStr, err := runIntegrationCommand([]string{
+			"scan", "-u", srv.URL, "-w", wlPath,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !strings.Contains(outStr, "[302]") || !strings.Contains(outStr, "/login") {
+			t.Errorf("expected '[302]' and '/login' in output, got:\n%s", outStr)
+		}
+		if strings.Contains(outStr, "[+] 200") || (strings.Contains(outStr, "/login/") && !strings.Contains(outStr, "->")) {
+			t.Errorf("expected no final 200 result in no-follow mode, got:\n%s", outStr)
+		}
+	})
+
+	// 2. Follow:
+	//    /login -> 302 /login/
+	//    /login/ -> 200
+	// Expected exactly: [200] /login/
+	t.Run("2_Follow", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/login":
+				http.Redirect(w, r, "/login/", http.StatusFound)
+			case "/login/":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		tmpDir := t.TempDir()
+		wlPath := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlPath, []byte("login\n"), 0644)
+
+		outStr, err := runIntegrationCommand([]string{
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/login/") {
+			t.Errorf("expected '[+] 200' and '/login/' in output, got:\n%s", outStr)
+		}
+		if strings.Contains(outStr, "[302]") {
+			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
+		}
+	})
+
+	// 3. Only redirects:
+	//    same chain
+	// Expected exactly: [200] /login/
+	t.Run("3_OnlyRedirects", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/login":
+				http.Redirect(w, r, "/login/", http.StatusFound)
+			case "/login/":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
 			default:
 				w.WriteHeader(http.StatusNotFound)
 			}
@@ -40,25 +114,22 @@ func TestOnlyRedirects(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if !strings.Contains(outStr, "[+] 200") {
-			t.Errorf("expected '[+] 200' in output, got:\n%s", outStr)
-		}
-		if !strings.Contains(outStr, "/login/") {
-			t.Errorf("expected final URL '/login/' in output, got:\n%s", outStr)
+		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/login/") {
+			t.Errorf("expected '[+] 200' and '/login/' in output, got:\n%s", outStr)
 		}
 		if strings.Contains(outStr, "[302]") {
 			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
 		}
 	})
 
-	// B. No redirect:
-	//    /admin -> 200
-	// Expected: no finding
-	t.Run("B_NoRedirect_Suppressed", func(t *testing.T) {
+	// 4. Direct 200 with only-redirects:
+	//    /direct -> 200
+	// Expected: no result
+	t.Run("4_Direct200_WithOnlyRedirects", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/admin" {
+			if r.URL.Path == "/direct" {
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("admin panel"))
+				_, _ = w.Write([]byte("direct"))
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
@@ -67,7 +138,7 @@ func TestOnlyRedirects(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		wlPath := filepath.Join(tmpDir, "wl.txt")
-		_ = os.WriteFile(wlPath, []byte("admin\n"), 0644)
+		_ = os.WriteFile(wlPath, []byte("direct\n"), 0644)
 
 		outStr, err := runIntegrationCommand([]string{
 			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects",
@@ -76,16 +147,16 @@ func TestOnlyRedirects(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if strings.Contains(outStr, "[+] 200") || strings.Contains(outStr, "/admin") {
-			t.Errorf("expected no finding for direct 200 in --only-redirects mode, got:\n%s", outStr)
+		if strings.Contains(outStr, "[+] 200") || strings.Contains(outStr, "/direct") {
+			t.Errorf("expected no result for direct 200 in --only-redirects mode, got:\n%s", outStr)
 		}
 	})
 
-	// C. Redirect to 404:
+	// 5. Redirect + final 404:
 	//    /old -> 302 /missing
 	//    /missing -> 404
-	// Expected: [404] http://.../missing
-	t.Run("C_RedirectTo404", func(t *testing.T) {
+	// Expected final result: [404] /missing
+	t.Run("5_RedirectFinal404", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/old":
@@ -103,30 +174,111 @@ func TestOnlyRedirects(t *testing.T) {
 		wlPath := filepath.Join(tmpDir, "wl.txt")
 		_ = os.WriteFile(wlPath, []byte("old\n"), 0644)
 
+		// Test with --follow-redirects --filter-code 404
 		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "--mc", "404", "--fc", "500",
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--filter-code", "404",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if !strings.Contains(outStr, "[+] 404") {
-			t.Errorf("expected '[+] 404' in output, got:\n%s", outStr)
+		if !strings.Contains(outStr, "[+] 404") || !strings.Contains(outStr, "/missing") {
+			t.Errorf("expected '[+] 404' and '/missing' in output, got:\n%s", outStr)
 		}
-		if !strings.Contains(outStr, "/missing") {
-			t.Errorf("expected final URL '/missing' in output, got:\n%s", outStr)
+		if strings.Contains(outStr, "[302]") {
+			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
+		}
+
+		// Also test with --only-redirects --filter-code 404
+		outStr2, err2 := runIntegrationCommand([]string{
+			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "--filter-code", "404",
+		})
+		if err2 != nil {
+			t.Fatalf("unexpected error with --only-redirects: %v", err2)
+		}
+		if !strings.Contains(outStr2, "[+] 404") || !strings.Contains(outStr2, "/missing") {
+			t.Errorf("expected '[+] 404' and '/missing' with --only-redirects, got:\n%s", outStr2)
+		}
+	})
+
+	// 6. Redirect + filter-code 200:
+	//    /login -> 302 /login/
+	//    /login/ -> 200
+	// With: --filter-code 200
+	// Expected: [200] /login/
+	t.Run("6_Redirect_FilterCode200", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/login":
+				http.Redirect(w, r, "/login/", http.StatusFound)
+			case "/login/":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		tmpDir := t.TempDir()
+		wlPath := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlPath, []byte("login\n"), 0644)
+
+		outStr, err := runIntegrationCommand([]string{
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--filter-code", "200",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/login/") {
+			t.Errorf("expected '[+] 200' and '/login/' with --filter-code 200, got:\n%s", outStr)
 		}
 		if strings.Contains(outStr, "[302]") {
 			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
 		}
 	})
 
-	// D. Redirect chain:
+	// 7. Redirect + filter-code 302:
+	//    same chain
+	// With: --filter-code 302
+	// Expected: no result
+	t.Run("7_Redirect_FilterCode302", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/login":
+				http.Redirect(w, r, "/login/", http.StatusFound)
+			case "/login/":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		tmpDir := t.TempDir()
+		wlPath := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlPath, []byte("login\n"), 0644)
+
+		outStr, err := runIntegrationCommand([]string{
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--filter-code", "302",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if strings.Contains(outStr, "[+] 200") || strings.Contains(outStr, "[302]") || strings.Contains(outStr, "/login") {
+			t.Errorf("expected no result when final response (200) does not match --filter-code 302, got:\n%s", outStr)
+		}
+	})
+
+	// 8. Multi-hop chain:
 	//    /a -> 301 /b
 	//    /b -> 302 /c
 	//    /c -> 200
-	// Expected: [200] http://.../c
-	t.Run("D_RedirectChain", func(t *testing.T) {
+	// Expected exactly one result: [200] /c
+	t.Run("8_MultiHopChain", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/a":
@@ -135,7 +287,7 @@ func TestOnlyRedirects(t *testing.T) {
 				http.Redirect(w, r, "/c", http.StatusFound)
 			case "/c":
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("target C"))
+				_, _ = w.Write([]byte("final C"))
 			default:
 				w.WriteHeader(http.StatusNotFound)
 			}
@@ -153,121 +305,80 @@ func TestOnlyRedirects(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if !strings.Contains(outStr, "[+] 200") {
-			t.Errorf("expected '[+] 200' in output, got:\n%s", outStr)
-		}
-		if !strings.Contains(outStr, "/c") {
-			t.Errorf("expected final URL '/c' in output, got:\n%s", outStr)
+		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/c") {
+			t.Errorf("expected exactly '[+] 200' and '/c' in output, got:\n%s", outStr)
 		}
 		if strings.Contains(outStr, "[301]") || strings.Contains(outStr, "[302]") {
 			t.Errorf("expected intermediate 301/302 to NOT be in output, got:\n%s", outStr)
 		}
+
+		count := strings.Count(outStr, "[+] 200")
+		if count != 1 {
+			t.Errorf("expected exactly 1 finding for multi-hop chain, got %d:\n%s", count, outStr)
+		}
 	})
 
-	// E. --only-redirects alone follows redirects
-	t.Run("E_OnlyRedirectsAloneFollowsRedirects", func(t *testing.T) {
+	// 9. Flag conflict:
+	//    --follow-redirects --only-redirects
+	// Expected: validation error, zero requests
+	t.Run("9_FlagConflict_FollowThenOnly", func(t *testing.T) {
+		var reqCount int64
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/redir":
-				http.Redirect(w, r, "/final-dest", http.StatusTemporaryRedirect)
-			case "/final-dest":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("ok"))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
+			atomic.AddInt64(&reqCount, 1)
+			w.WriteHeader(http.StatusOK)
 		}))
 		defer srv.Close()
 
 		tmpDir := t.TempDir()
 		wlPath := filepath.Join(tmpDir, "wl.txt")
-		_ = os.WriteFile(wlPath, []byte("redir\n"), 0644)
+		_ = os.WriteFile(wlPath, []byte("test\n"), 0644)
 
-		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects",
+		_, err := runIntegrationCommand([]string{
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--only-redirects",
 		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Fatal("expected validation error for --follow-redirects and --only-redirects, got nil")
 		}
-
-		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/final-dest") {
-			t.Errorf("expected --only-redirects alone to follow redirect to /final-dest, got:\n%s", outStr)
+		if !strings.Contains(err.Error(), "--follow-redirects cannot be used with --only-redirects") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+		if count := atomic.LoadInt64(&reqCount); count != 0 {
+			t.Errorf("expected zero HTTP requests, got %d", count)
 		}
 	})
 
-	// F. --only-redirects --follow-redirects behaves identically
-	t.Run("F_CompatibleWithFollowRedirects", func(t *testing.T) {
+	// 10. Reverse flag order:
+	//    --only-redirects --follow-redirects
+	// Expected: validation error, zero requests
+	t.Run("10_FlagConflict_OnlyThenFollow", func(t *testing.T) {
+		var reqCount int64
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/redir":
-				http.Redirect(w, r, "/final-dest", http.StatusFound)
-			case "/final-dest":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("ok"))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
+			atomic.AddInt64(&reqCount, 1)
+			w.WriteHeader(http.StatusOK)
 		}))
 		defer srv.Close()
 
 		tmpDir := t.TempDir()
 		wlPath := filepath.Join(tmpDir, "wl.txt")
-		_ = os.WriteFile(wlPath, []byte("redir\n"), 0644)
+		_ = os.WriteFile(wlPath, []byte("test\n"), 0644)
 
-		outStr, err := runIntegrationCommand([]string{
+		_, err := runIntegrationCommand([]string{
 			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "--follow-redirects",
 		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Fatal("expected validation error for --only-redirects and --follow-redirects, got nil")
 		}
-
-		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/final-dest") {
-			t.Errorf("expected --only-redirects with --follow-redirects to report final destination, got:\n%s", outStr)
+		if !strings.Contains(err.Error(), "--follow-redirects cannot be used with --only-redirects") {
+			t.Errorf("unexpected error message: %v", err)
 		}
-		if strings.Contains(outStr, "[302]") {
-			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
-		}
-	})
-
-	// G. Direct 200 and redirected 200 are distinguished
-	t.Run("G_DirectVsRedirectedDistinction", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/direct":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("direct response"))
-			case "/indirect":
-				http.Redirect(w, r, "/target", http.StatusFound)
-			case "/target":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("indirect response"))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
-		}))
-		defer srv.Close()
-
-		tmpDir := t.TempDir()
-		wlPath := filepath.Join(tmpDir, "wl.txt")
-		_ = os.WriteFile(wlPath, []byte("direct\nindirect\n"), 0644)
-
-		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if strings.Contains(outStr, "/direct") {
-			t.Errorf("direct 200 must NOT be emitted in --only-redirects mode, got:\n%s", outStr)
-		}
-		if !strings.Contains(outStr, "/target") {
-			t.Errorf("redirected 200 /target must be emitted in --only-redirects mode, got:\n%s", outStr)
+		if count := atomic.LoadInt64(&reqCount); count != 0 {
+			t.Errorf("expected zero HTTP requests, got %d", count)
 		}
 	})
 
-	// H. Structured output reports the final response and final URL
-	t.Run("H_StructuredOutputFormats", func(t *testing.T) {
+	// 11. Structured output:
+	// Verify JSON/NDJSON/CSV contain only the final response and do not emit intermediate 3xx responses.
+	t.Run("11_StructuredOutput", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/login":
@@ -288,7 +399,7 @@ func TestOnlyRedirects(t *testing.T) {
 		wlPath := filepath.Join(tmpDir, "wl.txt")
 		_ = os.WriteFile(wlPath, []byte("direct\nlogin\n"), 0644)
 
-		// 1. JSON format
+		// A. JSON format with --only-redirects
 		jsonFile := filepath.Join(tmpDir, "out.json")
 		_, err := runIntegrationCommand([]string{
 			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "-o", jsonFile, "--format", "json",
@@ -317,7 +428,7 @@ func TestOnlyRedirects(t *testing.T) {
 			t.Errorf("json URL = %q, want suffix '/login/'", jsonResults[0].URL)
 		}
 
-		// 2. NDJSON format
+		// B. NDJSON format with --only-redirects
 		ndjsonFile := filepath.Join(tmpDir, "out.ndjson")
 		_, err = runIntegrationCommand([]string{
 			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "-o", ndjsonFile, "--format", "ndjson",
@@ -344,7 +455,7 @@ func TestOnlyRedirects(t *testing.T) {
 			t.Errorf("ndjson result = %+v, want status 200 and URL suffix '/login/'", ndResult)
 		}
 
-		// 3. CSV format
+		// C. CSV format with --only-redirects
 		csvFile := filepath.Join(tmpDir, "out.csv")
 		_, err = runIntegrationCommand([]string{
 			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "-o", csvFile, "--format", "csv",
@@ -363,57 +474,13 @@ func TestOnlyRedirects(t *testing.T) {
 		if strings.Contains(csvStr, "/direct") {
 			t.Errorf("csv must not contain '/direct', got:\n%s", csvStr)
 		}
-
-		// 4. Quiet text format
-		quietOut, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "-q",
-		})
-		if err != nil {
-			t.Fatalf("quiet run failed: %v", err)
-		}
-		quietLines := strings.Fields(quietOut)
-		if len(quietLines) != 1 || !strings.HasSuffix(quietLines[0], "/login/") {
-			t.Errorf("quiet output = %q, want single line with suffix '/login/'", quietOut)
+		if strings.Contains(csvStr, "302") {
+			t.Errorf("csv must not contain 302 intermediate response, got:\n%s", csvStr)
 		}
 	})
 
-	// I. Existing --follow-redirects behavior remains unchanged
-	t.Run("I_ExistingFollowRedirectsUnchanged", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/test":
-				http.Redirect(w, r, "/target/", http.StatusMovedPermanently)
-			case "/target/":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("hello"))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
-		}))
-		defer srv.Close()
-
-		tmpDir := t.TempDir()
-		wlPath := filepath.Join(tmpDir, "wl.txt")
-		_ = os.WriteFile(wlPath, []byte("test\n"), 0644)
-
-		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Existing behavior reports [301] with arrow -> destination
-		if !strings.Contains(outStr, "[301]") {
-			t.Errorf("expected '[301]' in normal --follow-redirects output, got:\n%s", outStr)
-		}
-		if !strings.Contains(outStr, "->") {
-			t.Errorf("expected '->' in normal --follow-redirects output, got:\n%s", outStr)
-		}
-	})
-
-	// J. Redirect loops / maximum redirect handling does not panic or emit invalid findings
-	t.Run("J_RedirectLoopsAndLimits", func(t *testing.T) {
+	// Loop & limits handling
+	t.Run("RedirectLoopsAndLimits", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/loop1":
@@ -438,19 +505,17 @@ func TestOnlyRedirects(t *testing.T) {
 		wlPath := filepath.Join(tmpDir, "wl.txt")
 		_ = os.WriteFile(wlPath, []byte("loop1\nchain1\n"), 0644)
 
-		// With max-redirects 1, chain1 will exceed limit. loop1 will detect loop.
 		outStr, _ := runIntegrationCommand([]string{
 			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "--max-redirects", "1",
 		})
 
-		// Neither should produce an accepted finding
 		if strings.Contains(outStr, "[+] 200") {
 			t.Errorf("loop / limit exceeded requests should NOT produce 200 findings, got:\n%s", outStr)
 		}
 	})
 
-	// K. Recursive scan with --only-redirects
-	t.Run("K_RecursiveScan", func(t *testing.T) {
+	// Recursive scan with --only-redirects
+	t.Run("RecursiveScan_OnlyRedirects", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/":
@@ -488,8 +553,8 @@ func TestOnlyRedirects(t *testing.T) {
 		}
 	})
 
-	// L. CLI Help contains --only-redirects
-	t.Run("L_CLIHelpVerification", func(t *testing.T) {
+	// CLI Help contains --only-redirects and --filter-code
+	t.Run("CLIHelpVerification", func(t *testing.T) {
 		scanCmd, _ := NewScanCmd()
 		var sb strings.Builder
 		scanCmd.SetOut(&sb)
@@ -499,6 +564,9 @@ func TestOnlyRedirects(t *testing.T) {
 		helpStr := sb.String()
 		if !strings.Contains(helpStr, "--only-redirects") {
 			t.Errorf("expected '--only-redirects' in 'searchit scan --help', got:\n%s", helpStr)
+		}
+		if !strings.Contains(helpStr, "--filter-code") {
+			t.Errorf("expected '--filter-code' in 'searchit scan --help', got:\n%s", helpStr)
 		}
 	})
 }

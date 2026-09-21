@@ -360,9 +360,6 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 	if o.OnlyRedirects != nil {
 		cfg.OnlyRedirects = *o.OnlyRedirects
 	}
-	if cfg.OnlyRedirects {
-		cfg.FollowRedirects = true
-	}
 	if o.MaxRedirects != nil {
 		cfg.MaxRedirects = *o.MaxRedirects
 	}

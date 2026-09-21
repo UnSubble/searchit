@@ -143,8 +143,14 @@ func TestConcurrencyCorrectness_WorkerCounts(t *testing.T) {
 			excludeFilters, _ := status.Parse("404")
 			recurseOnFilters, _ := status.Parse("200,302")
 
+			client := &http.Client{
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			}
+
 			manager := recursion.NewManager(
-				http.DefaultClient,
+				client,
 				excludeFilters,
 				reader,
 				recursion.BFS,

@@ -250,16 +250,10 @@ func process(
 
 	effectiveURL := job.URL
 	statusCode := resp.StatusCode
-	if opts.OnlyRedirects {
-		if wasRedirected && resp.Request != nil && resp.Request.URL != nil {
+	if wasRedirected {
+		if resp.Request != nil && resp.Request.URL != nil {
 			effectiveURL = resp.Request.URL.String()
 		}
-	} else if wasRedirected {
-		origResp := resp.Request.Response
-		for origResp.Request != nil && origResp.Request.Response != nil {
-			origResp = origResp.Request.Response
-		}
-		statusCode = origResp.StatusCode
 	}
 
 	contentType := resp.Header.Get("Content-Type")
@@ -404,29 +398,7 @@ func process(
 	}
 
 	var redirectURL string
-	if !opts.OnlyRedirects {
-		if resp.Request != nil && resp.Request.URL != nil {
-			finalURL := resp.Request.URL.String()
-			if finalURL != job.URL {
-				redirectURL = finalURL
-			}
-		}
-		if redirectURL == "" && statusCode >= 300 && statusCode < 400 {
-			if resolvedLoc != "" {
-				redirectURL = resolvedLoc
-			}
-		}
-		if redirectURL != "" && resp.Request != nil && resp.Request.URL != nil {
-			destURL, err2 := url.Parse(redirectURL)
-			if err2 == nil {
-				if resp.Request.URL.Host != destURL.Host {
-					redirectURL = ""
-				}
-			} else {
-				redirectURL = ""
-			}
-		}
-	} else if statusCode >= 300 && statusCode < 400 {
+	if !wasRedirected && statusCode >= 300 && statusCode < 400 {
 		if resolvedLoc != "" {
 			redirectURL = resolvedLoc
 		}
