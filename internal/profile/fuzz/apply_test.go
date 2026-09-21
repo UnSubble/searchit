@@ -31,8 +31,6 @@ follow-redirects: true
 exclude-status: "404,500"
 include-size: "100-200"
 exclude-size: "0"
-include-headers: ["X-Token=abc"]
-exclude-headers: ["Server=bad"]
 method: POST
 data: "body=FUZZ"
 headers: ["Content-Type=application/json"]
@@ -76,12 +74,6 @@ random-agent: true
 				}
 				if o.ExcludeSize == nil || *o.ExcludeSize != "0" {
 					t.Errorf("exclude-size = %v, want 0", o.ExcludeSize)
-				}
-				if o.IncludeHeaders == nil || len(*o.IncludeHeaders) != 1 {
-					t.Errorf("include-headers = %v", o.IncludeHeaders)
-				}
-				if o.ExcludeHeaders == nil || len(*o.ExcludeHeaders) != 1 {
-					t.Errorf("exclude-headers = %v", o.ExcludeHeaders)
 				}
 				if o.Method == nil || *o.Method != "POST" {
 					t.Errorf("method = %v, want POST", o.Method)
@@ -175,21 +167,6 @@ log-count: 15
 			verify: func(t *testing.T, o fuzz.Overlay) {
 				if o.Cookies == nil || *o.Cookies != "session=abc" {
 					t.Errorf("cookies plural should win: Cookies = %v, want session=abc", o.Cookies)
-				}
-			},
-		},
-		{
-			name: "singular header aliases",
-			yamlData: `
-include-header: ["X-Foo=bar"]
-exclude-header: ["X-Baz=qux"]
-`,
-			verify: func(t *testing.T, o fuzz.Overlay) {
-				if o.IncludeHeaders == nil || len(*o.IncludeHeaders) != 1 {
-					t.Errorf("include-header alias: %v", o.IncludeHeaders)
-				}
-				if o.ExcludeHeaders == nil || len(*o.ExcludeHeaders) != 1 {
-					t.Errorf("exclude-header alias: %v", o.ExcludeHeaders)
 				}
 			},
 		},

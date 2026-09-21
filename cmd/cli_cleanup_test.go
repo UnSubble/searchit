@@ -13,9 +13,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/unsubble/searchit/internal/config"
 )
 
 // executeCmd captures stdout and stderr while executing cmd with given args.
@@ -321,4 +323,213 @@ func TestAdaptiveTechDiscovery(t *testing.T) {
 	if !strings.Contains(stderr, "Adaptive") && !strings.Contains(stdout, srv.URL) {
 		t.Logf("Scan output: stdout=%s\nstderr=%s", stdout, stderr)
 	}
+}
+
+// TestRemovedFlagsComprehensive verifies that removed flags are rejected as unknown on both scan and fuzz.
+func TestRemovedFlagsComprehensive(t *testing.T) {
+	tests := []struct {
+		cmdName string
+		flag    string
+		val     string
+		newCmd  func() *cobra.Command
+	}{
+		{"scan", "--url-file", "urls.txt", func() *cobra.Command { c, _ := NewScanCmd(); return c }},
+		{"fuzz", "--url-file", "urls.txt", func() *cobra.Command { c, _ := NewFuzzCmd(); return c }},
+		{"scan", "--filter-code", "200", func() *cobra.Command { c, _ := NewScanCmd(); return c }},
+		{"scan", "--include-header", "Server=nginx", func() *cobra.Command { c, _ := NewScanCmd(); return c }},
+		{"scan", "--exclude-header", "Server=Apache", func() *cobra.Command { c, _ := NewScanCmd(); return c }},
+		{"scan", "--tech", "laravel", func() *cobra.Command { c, _ := NewScanCmd(); return c }},
+		{"fuzz", "--tech", "laravel", func() *cobra.Command { c, _ := NewFuzzCmd(); return c }},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.cmdName+"_"+strings.TrimPrefix(tc.flag, "--"), func(t *testing.T) {
+			cmd := tc.newCmd()
+			args := []string{"-u", "http://localhost", tc.flag}
+			if tc.val != "" {
+				args = append(args, tc.val)
+			}
+			_, _, err := executeCmd(cmd, args)
+			if err == nil {
+				t.Fatalf("expected error passing %s to %s, got nil", tc.flag, tc.cmdName)
+			}
+			expectedPrefix := "unknown flag: " + tc.flag
+			if !strings.Contains(err.Error(), expectedPrefix) {
+				t.Errorf("expected %q in error, got: %v", expectedPrefix, err)
+			}
+		})
+	}
+}
+
+// TestQuietConsistency_ScanAndFuzz verifies that --quiet mode produces URL-only terminal output
+// for both scan and fuzz commands, and that non-quiet output contains status, size, etc.
+func TestQuietConsistency_ScanAndFuzz(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok response"))
+	}))
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	wlFile := filepath.Join(tmpDir, "wl.txt")
+	_ = os.WriteFile(wlFile, []byte("item\n"), 0600)
+
+	t.Run("scan quiet is URL only", func(t *testing.T) {
+		cmd, _ := NewScanCmd()
+		stdout, _, err := executeCmd(cmd, []string{"-u", srv.URL, "-w", wlFile, "-q"})
+		if err != nil {
+			t.Fatalf("unexpected scan error: %v", err)
+		}
+		lines := strings.Split(strings.TrimSpace(stdout), "\n")
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if strings.Contains(line, "[+]") || strings.Contains(line, "200") || strings.Contains(line, "SCAN CONFIGURATION") {
+				t.Errorf("scan quiet mode emitted formatted line instead of bare URL: %q", line)
+			}
+			if !strings.HasPrefix(line, srv.URL) {
+				t.Errorf("expected bare URL starting with %q, got %q", srv.URL, line)
+			}
+		}
+	})
+
+	t.Run("fuzz quiet is URL only", func(t *testing.T) {
+		cmd, _ := NewFuzzCmd()
+		stdout, _, err := executeCmd(cmd, []string{"-u", srv.URL + "/FUZZ", "-w", wlFile, "-q"})
+		if err != nil {
+			t.Fatalf("unexpected fuzz error: %v", err)
+		}
+		lines := strings.Split(strings.TrimSpace(stdout), "\n")
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if strings.Contains(line, "[+]") || strings.Contains(line, "200") || strings.Contains(line, "FUZZ CONFIGURATION") {
+				t.Errorf("fuzz quiet mode emitted formatted line instead of bare URL: %q", line)
+			}
+			if !strings.HasPrefix(line, srv.URL) {
+				t.Errorf("expected bare URL starting with %q, got %q", srv.URL, line)
+			}
+		}
+	})
+
+	t.Run("scan non-quiet has status prefix", func(t *testing.T) {
+		cmd, _ := NewScanCmd()
+		stdout, _, err := executeCmd(cmd, []string{"-u", srv.URL, "-w", wlFile})
+		if err != nil {
+			t.Fatalf("unexpected scan error: %v", err)
+		}
+		if !strings.Contains(stdout, "200") {
+			t.Errorf("non-quiet scan output should contain status code 200, got:\n%s", stdout)
+		}
+	})
+
+	t.Run("fuzz non-quiet has status prefix", func(t *testing.T) {
+		cmd, _ := NewFuzzCmd()
+		stdout, _, err := executeCmd(cmd, []string{"-u", srv.URL + "/FUZZ", "-w", wlFile})
+		if err != nil {
+			t.Fatalf("unexpected fuzz error: %v", err)
+		}
+		if !strings.Contains(stdout, "200") {
+			t.Errorf("non-quiet fuzz output should contain status code 200, got:\n%s", stdout)
+		}
+	})
+}
+
+// TestConnectTimeout_Fuzz verifies that --connect-timeout is accepted by fuzz,
+// actually reaches the configuration/transport, and invalid formats are rejected.
+func TestConnectTimeout_Fuzz(t *testing.T) {
+	t.Run("connect-timeout accepted and applied", func(t *testing.T) {
+		cmd, opts := NewFuzzCmd()
+		var capturedCfg config.Config
+		opts.testHookConfigApplied = func(cfg config.Config) {
+			capturedCfg = cfg
+		}
+
+		tmpDir := t.TempDir()
+		wlFile := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlFile, []byte("item\n"), 0600)
+
+		_, _, _ = executeCmd(cmd, []string{
+			"-u", "http://127.0.0.1:54321/FUZZ", "-w", wlFile, "--connect-timeout", "4500ms", "--dry-run",
+		})
+
+		if capturedCfg.ConnectTimeout != 4500*time.Millisecond {
+			t.Errorf("expected ConnectTimeout=4.5s, got %v", capturedCfg.ConnectTimeout)
+		}
+	})
+
+	t.Run("invalid connect-timeout rejected in validation", func(t *testing.T) {
+		cmd, _ := NewFuzzCmd()
+		tmpDir := t.TempDir()
+		wlFile := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlFile, []byte("item\n"), 0600)
+
+		_, _, err := executeCmd(cmd, []string{
+			"-u", "http://127.0.0.1:54321/FUZZ", "-w", wlFile, "--connect-timeout", "not-a-duration",
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid connect-timeout duration, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid --connect-timeout") {
+			t.Errorf("expected 'invalid --connect-timeout' error, got: %v", err)
+		}
+	})
+}
+
+// TestScanEncode verifies that scan accepts --encode and applies transformations
+// identically to fuzz semantics.
+func TestScanEncode(t *testing.T) {
+	t.Run("scan accepts valid encodings", func(t *testing.T) {
+		validEncodings := []string{"base64", "url", "doubleurl", "wl-base64", "wl-url", "wl-doubleurl"}
+		for _, enc := range validEncodings {
+			cmd, _ := NewScanCmd()
+			_, _, err := executeCmd(cmd, []string{
+				"-u", "http://127.0.0.1:54321", "--encode", enc, "--dry-run",
+			})
+			if err != nil {
+				t.Errorf("encoding %q rejected: %v", enc, err)
+			}
+		}
+	})
+
+	t.Run("scan rejects invalid encoding", func(t *testing.T) {
+		cmd, _ := NewScanCmd()
+		_, _, err := executeCmd(cmd, []string{
+			"-u", "http://127.0.0.1:54321", "--encode", "rot13", "--dry-run",
+		})
+		if err == nil {
+			t.Fatal("expected error for unknown encoding 'rot13', got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid encoding") {
+			t.Errorf("expected 'invalid encoding' error, got: %v", err)
+		}
+	})
+
+	t.Run("scan base64 transforms candidate words", func(t *testing.T) {
+		var requestedPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestedPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		tmpDir := t.TempDir()
+		wlFile := filepath.Join(tmpDir, "wl.txt")
+		_ = os.WriteFile(wlFile, []byte("secret\n"), 0600)
+
+		cmd, _ := NewScanCmd()
+		_, _, err := executeCmd(cmd, []string{
+			"-u", srv.URL, "-w", wlFile, "--encode", "base64", "-t", "1",
+		})
+		if err != nil {
+			t.Fatalf("unexpected scan error: %v", err)
+		}
+
+		// "secret" in base64 is "c2VjcmV0"
+		if !strings.Contains(requestedPath, "c2VjcmV0") {
+			t.Errorf("expected base64 encoded path containing 'c2VjcmV0', got %q", requestedPath)
+		}
+	})
 }

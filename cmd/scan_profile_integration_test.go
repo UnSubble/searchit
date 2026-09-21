@@ -280,7 +280,6 @@ func TestScanProfile_OutputText(t *testing.T) {
 	}()
 
 	opts.URL = "http://localhost"
-	opts.URLFile = ""
 	opts.Wordlist = ""
 	opts.Threads = 32
 	opts.Timeout = 10
@@ -296,8 +295,6 @@ func TestScanProfile_OutputText(t *testing.T) {
 	opts.Quiet = false
 	opts.IncludeSize = ""
 	opts.ExcludeSize = ""
-	opts.IncludeHeaders = nil
-	opts.ExcludeHeaders = nil
 	opts.Delay = ""
 	opts.Rate = 0
 	opts.ConnectTimeout = "3s"
@@ -336,7 +333,6 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 	}()
 
 	opts.URL = "http://localhost"
-	opts.URLFile = ""
 	opts.Wordlist = ""
 	opts.Threads = 32
 	opts.Timeout = 10
@@ -352,8 +348,6 @@ func TestScanProfile_OutputJSON(t *testing.T) {
 	opts.Quiet = false
 	opts.IncludeSize = ""
 	opts.ExcludeSize = ""
-	opts.IncludeHeaders = nil
-	opts.ExcludeHeaders = nil
 	opts.Delay = ""
 	opts.Rate = 0
 	opts.ConnectTimeout = "3s"

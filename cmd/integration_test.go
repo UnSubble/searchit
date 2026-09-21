@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -151,23 +150,6 @@ func TestIntegration_Scans(t *testing.T) {
 
 		if strings.Count(out, "SCAN CONFIGURATION") != 2 {
 			t.Errorf("expected 2 separate scan configurations for multi-target scan. Output:\n%s", out)
-		}
-	})
-
-	t.Run("url file behavior", func(t *testing.T) {
-		urlFilePath := filepath.Join(tmpDir, "urls.txt")
-		urlFileContent := fmt.Sprintf("# comment\n  \n  %s  \n", srv.URL)
-		if err := os.WriteFile(urlFilePath, []byte(urlFileContent), 0600); err != nil {
-			t.Fatalf("failed to write url file: %v", err)
-		}
-
-		out, err := runIntegrationCommand([]string{"scan", "--url-file", urlFilePath, "-w", wordlistPath})
-		if err != nil {
-			t.Fatalf("command failed: %v", err)
-		}
-
-		if !strings.Contains(out, srv.URL) {
-			t.Errorf("expected target from file, got:\n%s", out)
 		}
 	})
 
@@ -442,11 +424,6 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "missing url file",
-			args:    []string{"scan", "--url-file", "nonexistent_file_xyz.txt"},
-			wantErr: "failed to read url file",
-		},
-		{
 			name:    "invalid rate float string",
 			args:    []string{"scan", "-u", "http://localhost", "--rate", "abc"},
 			wantErr: "invalid argument",
@@ -505,16 +482,6 @@ func TestIntegration_ValidationErrors(t *testing.T) {
 			name:    "invalid exclude size range",
 			args:    []string{"scan", "-u", "http://localhost", "--exclude-size", "200-100"},
 			wantErr: "invalid exclude-size",
-		},
-		{
-			name:    "invalid include header equal format",
-			args:    []string{"scan", "-u", "http://localhost", "--include-header", "Server"},
-			wantErr: "invalid include-header",
-		},
-		{
-			name:    "invalid exclude header equal format",
-			args:    []string{"scan", "-u", "http://localhost", "--exclude-header", "="},
-			wantErr: "invalid exclude-header",
 		},
 		{
 			name:    "invalid threads",

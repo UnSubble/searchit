@@ -93,6 +93,7 @@ func TestWorker_ExecutionAndFiltering(t *testing.T) {
 		results,
 		nil,
 		nil,
+		fuzz.WorkerOpts{},
 	)
 	close(results)
 
@@ -180,6 +181,7 @@ func TestWorker_Cancellation(t *testing.T) {
 			results,
 			nil,
 			nil,
+			fuzz.WorkerOpts{},
 		)
 		close(results)
 	}()

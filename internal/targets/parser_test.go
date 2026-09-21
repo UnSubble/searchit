@@ -3,8 +3,6 @@ package targets_test
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 
@@ -13,13 +11,6 @@ import (
 )
 
 func TestParse_TableDriven(t *testing.T) {
-	tmpDir := t.TempDir()
-	urlFilePath := filepath.Join(tmpDir, "urls.txt")
-	err := os.WriteFile(urlFilePath, []byte("http://target1.local\n\n# comment\nhttp://target2.local\n"), 0644)
-	if err != nil {
-		t.Fatalf("failed to create temp url file: %v", err)
-	}
-
 	tests := []struct {
 		name       string
 		opts       targets.ParseOptions
@@ -50,25 +41,8 @@ func TestParse_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name:    "URL File Parsing",
-			opts:    targets.ParseOptions{URLFile: urlFilePath},
-			wantLen: 2,
-			wantErr: false,
-			checkFirst: func(t *testing.T, target targets.Target) {
-				if target.ID != 1 || target.URL != "http://target1.local" {
-					t.Errorf("unexpected first target: %+v", target)
-				}
-			},
-		},
-		{
 			name:    "Missing Target Error",
 			opts:    targets.ParseOptions{},
-			wantLen: 0,
-			wantErr: true,
-		},
-		{
-			name:    "Nonexistent URL File",
-			opts:    targets.ParseOptions{URLFile: filepath.Join(tmpDir, "nonexistent.txt")},
 			wantLen: 0,
 			wantErr: true,
 		},

@@ -174,9 +174,9 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 		wlPath := filepath.Join(tmpDir, "wl.txt")
 		_ = os.WriteFile(wlPath, []byte("old\n"), 0644)
 
-		// Test with --follow-redirects --filter-code 404
+		// Test with --follow-redirects --mc 404
 		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--filter-code", "404",
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--mc", "404",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -189,9 +189,9 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
 		}
 
-		// Also test with --only-redirects --filter-code 404
+		// Also test with --only-redirects --mc 404
 		outStr2, err2 := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "--filter-code", "404",
+			"scan", "-u", srv.URL, "-w", wlPath, "--only-redirects", "--mc", "404",
 		})
 		if err2 != nil {
 			t.Fatalf("unexpected error with --only-redirects: %v", err2)
@@ -225,14 +225,14 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 		_ = os.WriteFile(wlPath, []byte("login\n"), 0644)
 
 		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--filter-code", "200",
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--mc", "200",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		if !strings.Contains(outStr, "[+] 200") || !strings.Contains(outStr, "/login/") {
-			t.Errorf("expected '[+] 200' and '/login/' with --filter-code 200, got:\n%s", outStr)
+			t.Errorf("expected '[+] 200' and '/login/' with --mc 200, got:\n%s", outStr)
 		}
 		if strings.Contains(outStr, "[302]") {
 			t.Errorf("expected intermediate [302] to NOT be in output, got:\n%s", outStr)
@@ -241,7 +241,7 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 
 	// 7. Redirect + filter-code 302:
 	//    same chain
-	// With: --filter-code 302
+	// With: --mc 302
 	// Expected: no result
 	t.Run("7_Redirect_FilterCode302", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -262,14 +262,14 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 		_ = os.WriteFile(wlPath, []byte("login\n"), 0644)
 
 		outStr, err := runIntegrationCommand([]string{
-			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--filter-code", "302",
+			"scan", "-u", srv.URL, "-w", wlPath, "--follow-redirects", "--mc", "302",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		if strings.Contains(outStr, "[+] 200") || strings.Contains(outStr, "[302]") || strings.Contains(outStr, "/login") {
-			t.Errorf("expected no result when final response (200) does not match --filter-code 302, got:\n%s", outStr)
+			t.Errorf("expected no result when final response (200) does not match --mc 302, got:\n%s", outStr)
 		}
 	})
 
@@ -553,7 +553,7 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 		}
 	})
 
-	// CLI Help contains --only-redirects and --filter-code
+	// CLI Help contains --only-redirects on both scan and fuzz, and does NOT contain --filter-code
 	t.Run("CLIHelpVerification", func(t *testing.T) {
 		scanCmd, _ := NewScanCmd()
 		var sb strings.Builder
@@ -565,8 +565,19 @@ func TestOnlyRedirectsMatrix(t *testing.T) {
 		if !strings.Contains(helpStr, "--only-redirects") {
 			t.Errorf("expected '--only-redirects' in 'searchit scan --help', got:\n%s", helpStr)
 		}
-		if !strings.Contains(helpStr, "--filter-code") {
-			t.Errorf("expected '--filter-code' in 'searchit scan --help', got:\n%s", helpStr)
+		if strings.Contains(helpStr, "--filter-code") {
+			t.Errorf("expected '--filter-code' to NOT be in 'searchit scan --help', got:\n%s", helpStr)
+		}
+
+		fuzzCmd, _ := NewFuzzCmd()
+		var fsb strings.Builder
+		fuzzCmd.SetOut(&fsb)
+		fuzzCmd.SetArgs([]string{"--help"})
+		_ = fuzzCmd.Execute()
+
+		fuzzHelpStr := fsb.String()
+		if !strings.Contains(fuzzHelpStr, "--only-redirects") {
+			t.Errorf("expected '--only-redirects' in 'searchit fuzz --help', got:\n%s", fuzzHelpStr)
 		}
 	})
 }

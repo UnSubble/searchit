@@ -118,8 +118,6 @@ match-content: ["welcome"]
 filter-content: ["error"]
 headers: ["X-Custom: 123"]
 cookies: "session=xyz"
-include-headers: ["Server"]
-exclude-headers: ["Date"]
 show-headers: true
 show-title: true
 adaptive: true

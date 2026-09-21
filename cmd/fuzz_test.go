@@ -5,20 +5,13 @@ import (
 	"testing"
 )
 
-func FuzzHeaderFlagsAndTargetSplitting(f *testing.F) {
+func FuzzTargetSplitting(f *testing.F) {
 	f.Add("Server=nginx")
 	f.Add("Server")
 	f.Add("=")
 	f.Add("http://a.com,http://b.com")
 
 	f.Fuzz(func(t *testing.T, s string) {
-		// Fuzz validateHeaderFlag
-		err := validateHeaderFlag(s)
-
-		// Fuzz parseHeaderFlags only if it is a valid format to avoid bounds panic
-		if err == nil {
-			_ = parseHeaderFlags([]string{s})
-		}
 
 		// Fuzz target comma splitting logic
 		var targets []string

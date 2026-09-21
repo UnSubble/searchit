@@ -36,8 +36,6 @@ exclude-status: "404,500"
 recurse-on: "200-300"
 include-size: "100-200"
 exclude-size: "0"
-include-headers: ["Server=nginx"]
-exclude-headers: ["Server=Apache"]
 `,
 			verify: func(t *testing.T, o scan.Overlay) {
 				if o.Threads == nil || *o.Threads != 10 {
@@ -88,19 +86,12 @@ exclude-headers: ["Server=Apache"]
 				if o.ExcludeSize == nil || *o.ExcludeSize != "0" {
 					t.Errorf("exclude-size = %v, want 0", o.ExcludeSize)
 				}
-				if o.IncludeHeaders == nil || len(*o.IncludeHeaders) != 1 || (*o.IncludeHeaders)[0] != "Server=nginx" {
-					t.Errorf("include-headers = %v", o.IncludeHeaders)
-				}
-				if o.ExcludeHeaders == nil || len(*o.ExcludeHeaders) != 1 || (*o.ExcludeHeaders)[0] != "Server=Apache" {
-					t.Errorf("exclude-headers = %v", o.ExcludeHeaders)
-				}
 			},
 		},
 		{
 			name: "new fields: url, url-file, ext, match-status, match-regex, proxy",
 			yamlData: `
 url: "http://example.com"
-url-file: "/tmp/urls.txt"
 ext: [".php", ".asp"]
 match-status: "200,301"
 match-regex: ["admin", "secret"]
@@ -118,9 +109,6 @@ log-count: 20
 			verify: func(t *testing.T, o scan.Overlay) {
 				if o.URL == nil || *o.URL != "http://example.com" {
 					t.Errorf("url = %v, want http://example.com", o.URL)
-				}
-				if o.URLFile == nil || *o.URLFile != "/tmp/urls.txt" {
-					t.Errorf("url-file = %v, want /tmp/urls.txt", o.URLFile)
 				}
 				if o.Extensions == nil || len(*o.Extensions) != 2 {
 					t.Errorf("ext = %v, want 2 items", o.Extensions)
@@ -157,21 +145,6 @@ log-count: 20
 				}
 				if o.UserAgent == nil || *o.UserAgent != "Mozilla/5.0" {
 					t.Errorf("user-agent = %v, want Mozilla/5.0", o.UserAgent)
-				}
-			},
-		},
-		{
-			name: "singular header key aliases",
-			yamlData: `
-include-header: ["Server=nginx"]
-exclude-header: ["Server=Apache"]
-`,
-			verify: func(t *testing.T, o scan.Overlay) {
-				if o.IncludeHeaders == nil || len(*o.IncludeHeaders) != 1 || (*o.IncludeHeaders)[0] != "Server=nginx" {
-					t.Errorf("include-header = %v", o.IncludeHeaders)
-				}
-				if o.ExcludeHeaders == nil || len(*o.ExcludeHeaders) != 1 || (*o.ExcludeHeaders)[0] != "Server=Apache" {
-					t.Errorf("exclude-header = %v", o.ExcludeHeaders)
 				}
 			},
 		},
@@ -282,8 +255,6 @@ func TestApply(t *testing.T) {
 				recurseOnVal := "200,302"
 				includeSizeVal := "500-1000"
 				excludeSizeVal := "123"
-				includeHeadersVal := []string{"Server=nginx"}
-				excludeHeadersVal := []string{"X-Header=val"}
 				return scan.Overlay{
 					Wordlist:        &wordlistVal,
 					Threads:         &threadsVal,
@@ -303,8 +274,6 @@ func TestApply(t *testing.T) {
 					RecurseOn:       &recurseOnVal,
 					IncludeSize:     &includeSizeVal,
 					ExcludeSize:     &excludeSizeVal,
-					IncludeHeaders:  &includeHeadersVal,
-					ExcludeHeaders:  &excludeHeadersVal,
 				}
 			},
 			verify: func(t *testing.T, cfg config.Config) {
@@ -362,12 +331,6 @@ func TestApply(t *testing.T) {
 				if !cfg.ExcludeSize.Match(123) {
 					t.Errorf("ExcludeSize failed")
 				}
-				if len(cfg.IncludeHeaders) != 1 || cfg.IncludeHeaders[0].Name != "Server" {
-					t.Errorf("IncludeHeaders failed")
-				}
-				if len(cfg.ExcludeHeaders) != 1 || cfg.ExcludeHeaders[0].Value != "val" {
-					t.Errorf("ExcludeHeaders failed")
-				}
 			},
 		},
 		{
@@ -379,18 +342,6 @@ func TestApply(t *testing.T) {
 			verify: func(t *testing.T, cfg config.Config) {
 				if len(cfg.URLs) != 1 || cfg.URLs[0] != "http://example.com" {
 					t.Errorf("URLs = %v, want [http://example.com]", cfg.URLs)
-				}
-			},
-		},
-		{
-			name: "url-file sets cfg.URLFile",
-			setup: func() scan.Overlay {
-				f := "/tmp/targets.txt"
-				return scan.Overlay{URLFile: &f}
-			},
-			verify: func(t *testing.T, cfg config.Config) {
-				if cfg.URLFile != "/tmp/targets.txt" {
-					t.Errorf("URLFile = %q, want /tmp/targets.txt", cfg.URLFile)
 				}
 			},
 		},

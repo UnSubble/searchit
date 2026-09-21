@@ -254,8 +254,6 @@ delay: 150ms
 rate: 2.5
 recurse-on: "200,301"
 exclude-status: "404"
-include-headers: ["Server=nginx"]
-exclude-headers: ["Server=Apache"]
 `),
 				},
 			},
@@ -287,8 +285,6 @@ exclude-headers: ["Server=Apache"]
 			"Rate:                 2.5",
 			"Recurse On:\n\n    200\n    301",
 			"Exclude Status:\n\n    404",
-			"Include Headers:\n\n    Server=nginx",
-			"Exclude Headers:\n\n    Server=Apache",
 		}
 
 		for _, s := range wantSubstrings {

@@ -549,8 +549,6 @@ depends:
 config:
   threads: 128
   recursive: true
-  include-headers:
-    - Server=nginx
 `
 	_ = os.WriteFile(filepath.Join(userConfigDir, "wordpress.yaml"), []byte(profileYAML), 0o644)
 
@@ -561,8 +559,6 @@ depends:
   - base
 config:
   threads: 64
-  exclude-headers:
-    - Server=Apache
 `
 	_ = os.WriteFile(filepath.Join(userConfigDir, "php.yaml"), []byte(phpYAML), 0o644)
 
@@ -580,7 +576,7 @@ config:
 	}
 
 	// Verify dependency chain
-	if !strings.Contains(out, "scan/base\n        \u2193\n    scan/php\n        \u2193\n    scan/wordpress") {
+	if !strings.Contains(out, "scan/base\n        ↓\n    scan/php\n        ↓\n    scan/wordpress") {
 		t.Errorf("expected dependency chain, got:\n%s", out)
 	}
 
@@ -590,14 +586,6 @@ config:
 	}
 	if !strings.Contains(out, "Recursive:            true") {
 		t.Errorf("expected Final Config Recursive true, got:\n%s", out)
-	}
-
-	// Verify List Config headers
-	if !strings.Contains(out, "Include Headers:\n\n    Server=nginx") {
-		t.Errorf("expected Include Headers, got:\n%s", out)
-	}
-	if !strings.Contains(out, "Exclude Headers:\n\n    Server=Apache") {
-		t.Errorf("expected Exclude Headers, got:\n%s", out)
 	}
 
 	// Verify Overrides

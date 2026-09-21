@@ -6,14 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/config"
-	"github.com/unsubble/searchit/internal/targets"
 )
 
 func TestCLI_Validation(t *testing.T) {
@@ -156,26 +154,6 @@ func TestCLI_Validation(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "invalid include-header missing equal",
-			args:    []string{"-u", "http://localhost", "--include-header", "Server"},
-			wantErr: true,
-		},
-		{
-			name:    "invalid exclude-header empty value",
-			args:    []string{"-u", "http://localhost", "--exclude-header", "Server="},
-			wantErr: true,
-		},
-		{
-			name:    "invalid include-header empty name",
-			args:    []string{"-u", "http://localhost", "--include-header", "=nginx"},
-			wantErr: true,
-		},
-		{
-			name:    "valid include-header and exclude-size",
-			args:    []string{"-u", "http://localhost", "--include-header", "Server=nginx", "--exclude-size", "0,123"},
-			wantErr: false,
-		},
-		{
 			name:    "valid quiet mode option long-form",
 			args:    []string{"-u", "http://localhost", "--quiet"},
 			wantErr: false,
@@ -186,13 +164,8 @@ func TestCLI_Validation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "empty target URL and URL file",
+			name:    "empty target URL",
 			args:    []string{"scan"},
-			wantErr: true,
-		},
-		{
-			name:    "missing URL file",
-			args:    []string{"--url-file", "nonexistent.txt"},
 			wantErr: true,
 		},
 		{
@@ -415,8 +388,6 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 		"-s", "dfs",
 		"-x", "404,500",
 		"--format", "ndjson",
-		"--include-header", "Server=nginx",
-		"--include-header", "X-Header=val",
 	})
 
 	buf := new(bytes.Buffer)
@@ -448,9 +419,6 @@ func TestCLI_ShorthandsValueBinding(t *testing.T) {
 	}
 	if opts.Format != "ndjson" {
 		t.Errorf("expected opts.Format='ndjson', got %q", opts.Format)
-	}
-	if len(opts.IncludeHeaders) != 2 || opts.IncludeHeaders[0] != "Server=nginx" || opts.IncludeHeaders[1] != "X-Header=val" {
-		t.Errorf("expected opts.IncludeHeaders=[Server=nginx, X-Header=val], got %v", opts.IncludeHeaders)
 	}
 }
 
@@ -486,40 +454,6 @@ func TestCLI_QuietMode_StartupPrints(t *testing.T) {
 
 	if strings.Contains(gotOut, "[*] Recursive scan enabled") {
 		t.Error("expected quiet mode to suppress recursive scan startup message")
-	}
-}
-
-func TestCLI_MultipleTargetsAndFile(t *testing.T) {
-	cmd, opts := NewScanCmd()
-	_ = opts
-	_ = cmd
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "targets.txt")
-	content := "http://b.com\nhttp://c.com\n"
-	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	cmd.SetContext(ctx)
-
-	cmd.SetArgs([]string{"-u", "http://a.com", "--url-file", filePath})
-
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-
-	_ = cmd.ExecuteContext(ctx)
-
-	wantTargets := []targets.Target{
-		{URL: "http://a.com", ID: 1},
-		{URL: "http://b.com", ID: 2},
-		{URL: "http://c.com", ID: 3},
-	}
-	if !reflect.DeepEqual(opts.resolvedTargets, wantTargets) {
-		t.Errorf("opts.resolvedTargets = %v, want %v", opts.resolvedTargets, wantTargets)
 	}
 }
 
