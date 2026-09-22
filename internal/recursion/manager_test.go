@@ -569,7 +569,7 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 		// Push more than default buffer capacity (2048) to trigger grow
 		numJobs := 2500
 		for i := 0; i < numJobs; i++ {
-			f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
+			f.Push(recursion.NewSliceGenerator([]engine.Job{{URL: fmt.Sprintf("url-%d", i)}}))
 		}
 
 		if f.Len() != numJobs {
@@ -594,7 +594,7 @@ func TestFrontier_Grow_BFS_DFS(t *testing.T) {
 		f := recursion.NewFrontier(recursion.DFS)
 		numJobs := 2500
 		for i := 0; i < numJobs; i++ {
-			f.PushFront(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("url-%d", i)}}))
+			f.PushFront(recursion.NewSliceGenerator([]engine.Job{{URL: fmt.Sprintf("url-%d", i)}}))
 		}
 
 		if f.Len() != numJobs {
@@ -876,7 +876,7 @@ func TestFrontier_GrowthAndStress(t *testing.T) {
 
 			// 3. Interleaved push/pop to verify head wrap-around correctness
 			for i := 0; i < 1000; i++ {
-				f.Push(recursion.NewSliceGenerator([]engine.Job{engine.Job{URL: fmt.Sprintf("interleaved-%d", i)}}))
+				f.Push(recursion.NewSliceGenerator([]engine.Job{{URL: fmt.Sprintf("interleaved-%d", i)}}))
 				gen, ok := f.Peek()
 				if !ok {
 					t.Fatalf("expected peek to succeed at %d", i)
