@@ -713,9 +713,6 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			if countable, ok := primaryReader.(wordlist.Countable); ok {
 				if cnt, err := countable.Count(); err == nil {
 					baseCount = cnt
-					if len(cfg.Extensions) > 0 {
-						baseCount *= len(cfg.Extensions)
-					}
 				}
 			}
 
@@ -891,6 +888,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 						BodyTemplate:    opts.Data,
 						HeaderTemplates: headers,
 						CookieTemplate:  opts.Cookie,
+						Extensions:      cfg.Extensions,
 						FooWords:        fooWords,
 						BarWords:        barWords,
 						BazWords:        bazWords,
@@ -1112,13 +1110,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							if wlEncoder != nil {
 								w = wlEncoder.Encode(w)
 							}
-							variants := extensions.GenerateVariants(w, cfg.Extensions)
-							for _, v := range variants {
-								select {
-								case <-ctx.Done():
-									return
-								case primaryChan <- v:
-								}
+							select {
+							case <-ctx.Done():
+								return
+							case primaryChan <- w:
 							}
 						}
 					}()
@@ -1146,6 +1141,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					BodyTemplate:    opts.Data,
 					HeaderTemplates: headers,
 					CookieTemplate:  opts.Cookie,
+					Extensions:      cfg.Extensions,
 					FooWords:        fooWords,
 					BarWords:        barWords,
 					BazWords:        bazWords,

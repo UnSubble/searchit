@@ -14,6 +14,7 @@ import (
 	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/adaptive/summary"
 	"github.com/unsubble/searchit/internal/engine"
+	"github.com/unsubble/searchit/internal/extensions"
 	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/fingerprint"
 	"github.com/unsubble/searchit/internal/stats"
@@ -148,11 +149,12 @@ type Runner struct {
 	HeaderTemplates http.Header
 	CookieTemplate  string
 
-	FuzzWords []string
-	FooWords  []string
-	BarWords  []string
-	BazWords  []string
-	BuzzWords []string
+	FuzzWords  []string
+	Extensions []string
+	FooWords   []string
+	BarWords   []string
+	BazWords   []string
+	BuzzWords  []string
 
 	Client    *http.Client
 	FS        *filter.FilterSuite
@@ -183,6 +185,11 @@ type Runner struct {
 	Encoder       Encoder
 
 	compiledReq *compiledRequest
+}
+
+// Expander returns an Expander configured with the Runner's extensions.
+func (r *Runner) Expander() extensions.Expander {
+	return extensions.NewExpander(r.Extensions)
 }
 
 // printInfo emits an informational message via InfoHandler when set,
@@ -222,7 +229,7 @@ func (r *Runner) EstimateCandidates(primaryWordlistSize int) int64 {
 	total := int64(1)
 	if hasFUZZ {
 		if primaryWordlistSize > 0 {
-			total *= int64(primaryWordlistSize)
+			total *= int64(primaryWordlistSize) * int64(r.Expander().VariantCount())
 		} else {
 			return 0
 		}
@@ -415,20 +422,25 @@ func (r *Runner) IterateCandidates(ctx context.Context, primaryChan <-chan strin
 		buzzList = []string{""}
 	}
 
-	expand := func(fuzzVal string) bool {
-		for _, fooVal := range fooList {
-			for _, barVal := range barList {
-				for _, bazVal := range bazList {
-					for _, buzzVal := range buzzList {
-						vars := map[string]string{
-							"FUZZ": fuzzVal,
-							"FOO":  fooVal,
-							"BAR":  barVal,
-							"BAZ":  bazVal,
-							"BUZZ": buzzVal,
-						}
-						if !yield(vars) {
-							return false
+	expander := r.Expander()
+
+	expandWord := func(baseWord string) bool {
+		variants := expander.Variants(baseWord)
+		for _, fuzzVal := range variants {
+			for _, fooVal := range fooList {
+				for _, barVal := range barList {
+					for _, bazVal := range bazList {
+						for _, buzzVal := range buzzList {
+							vars := map[string]string{
+								"FUZZ": fuzzVal,
+								"FOO":  fooVal,
+								"BAR":  barVal,
+								"BAZ":  bazVal,
+								"BUZZ": buzzVal,
+							}
+							if !yield(vars) {
+								return false
+							}
 						}
 					}
 				}
@@ -444,7 +456,7 @@ func (r *Runner) IterateCandidates(ctx context.Context, primaryChan <-chan strin
 				return
 			default:
 			}
-			if !expand(word) {
+			if !expandWord(word) {
 				return
 			}
 		}
@@ -460,7 +472,7 @@ func (r *Runner) IterateCandidates(ctx context.Context, primaryChan <-chan strin
 			}
 		}
 		for _, fuzzVal := range fuzzList {
-			if !expand(fuzzVal) {
+			if !expandWord(fuzzVal) {
 				return
 			}
 		}

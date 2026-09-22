@@ -61,6 +61,14 @@ type DirectoryGenerator struct {
 	words   []string
 	wordIdx int
 	buffer  []engine.Job
+
+	strategy Strategy
+	extIdx   int
+}
+
+// SetStrategy sets the traversal strategy for extension expansion.
+func (g *DirectoryGenerator) SetStrategy(s Strategy) {
+	g.strategy = s
 }
 
 // NewDirectoryGenerator constructs a generator backed by a direct word iterator without channels or goroutines.
@@ -84,10 +92,16 @@ func NewDirectoryGenerator(
 	statsCollector *stats.Collector,
 	highPriorityCounter *int,
 	lowPriorityCounter *int,
+	optionalStrategy ...Strategy,
 ) (*DirectoryGenerator, error) {
 	words, err := wordlist.LoadWords(ctx, reader)
 	if err != nil {
 		return nil, err
+	}
+
+	strat := BFS
+	if len(optionalStrategy) > 0 {
+		strat = optionalStrategy[0]
 	}
 
 	g := &DirectoryGenerator{
@@ -110,6 +124,7 @@ func NewDirectoryGenerator(
 		highPriorityCounter:  highPriorityCounter,
 		lowPriorityCounter:   lowPriorityCounter,
 		words:                words,
+		strategy:             strat,
 	}
 
 	return g, nil
@@ -127,6 +142,83 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 		return job, true
 	}
 
+	expander := extensions.NewExpander(g.extensions)
+
+	if g.strategy == BFS && expander.HasExtensions() {
+		for g.extIdx < expander.VariantCount() {
+			if g.ctx != nil && g.ctx.Err() != nil {
+				return engine.Job{}, false
+			}
+
+			if g.wordIdx >= len(g.words) {
+				g.wordIdx = 0
+				g.extIdx++
+				if g.extIdx >= expander.VariantCount() {
+					break
+				}
+			}
+
+			word := g.words[g.wordIdx]
+			currentExtIdx := g.extIdx
+			g.wordIdx++
+
+			cleaned, ok := wordlist.CleanWord(word, g.normalizePaths, g.collapseSlashes)
+			if !ok {
+				continue
+			}
+
+			variant := expander.VariantAt(cleaned, currentExtIdx)
+			childURL, err := wordlist.Join(g.parentURL, variant)
+			if err != nil {
+				continue
+			}
+			key := normalizeURL(childURL)
+			if _, seen := g.visited[key]; seen {
+				continue
+			}
+
+			// Adaptive scoring
+			score := 0
+			isAdaptive := g.fingerprintCache != nil
+			if isAdaptive {
+				sigs := prioritizer.CalculateSignals(
+					variant,
+					g.parentPath,
+					g.depth,
+					g.parentResContentType,
+					g.prioritizedSegments,
+					g.prioritizedPaths,
+					g.laravel,
+					g.wp,
+					g.express,
+				)
+				score = prioritizer.GetScore(sigs)
+			}
+
+			g.visited[key] = struct{}{}
+
+			if isAdaptive && score > 50 {
+				if g.highPriorityCounter != nil {
+					*g.highPriorityCounter++
+				}
+				g.buffer = append(g.buffer, engine.Job{URL: childURL, Depth: uint16(g.depth), Origin: engine.OriginWordlist})
+			} else {
+				if g.lowPriorityCounter != nil {
+					*g.lowPriorityCounter++
+				}
+				g.buffer = append(g.buffer, engine.Job{URL: childURL, Depth: uint16(g.depth), Origin: engine.OriginWordlist})
+			}
+
+			if len(g.buffer) > 0 {
+				job := g.buffer[0]
+				g.buffer = g.buffer[1:]
+				return job, true
+			}
+		}
+
+		return engine.Job{}, false
+	}
+
 	for g.wordIdx < len(g.words) {
 		word := g.words[g.wordIdx]
 		g.wordIdx++
@@ -140,7 +232,7 @@ func (g *DirectoryGenerator) Next() (engine.Job, bool) {
 			continue
 		}
 
-		variants := extensions.GenerateVariants(cleaned, g.extensions)
+		variants := expander.Variants(cleaned)
 		for _, variant := range variants {
 			childURL, err := wordlist.Join(g.parentURL, variant)
 			if err != nil {

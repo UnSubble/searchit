@@ -59,9 +59,15 @@ func GenerateScanDryRunRequests(
 	collapseSlashes bool,
 	extensions []string,
 	limit int,
+	optionalStrategy ...Strategy,
 ) (requests []ScanDryRunRequest, total int64, err error) {
 	// Shared visited set across seeds — same deduplication as the real manager.
 	visited := make(map[string]struct{})
+
+	strat := BFS
+	if len(optionalStrategy) > 0 {
+		strat = optionalStrategy[0]
+	}
 
 	for _, seed := range seeds {
 		if ctx.Err() != nil {
@@ -89,6 +95,7 @@ func GenerateScanDryRunRequests(
 			nil, // statsCollector
 			nil, // highPriorityCounter
 			nil, // lowPriorityCounter
+			strat,
 		)
 		if genErr != nil {
 			err = genErr

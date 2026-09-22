@@ -719,6 +719,7 @@ func (m *Manager) handleResult(ctx context.Context, result engine.Result, fronti
 		m.stats,
 		&m.HighPriorityCount,
 		&m.LowPriorityCount,
+		m.strategy,
 	)
 	if err != nil {
 		if m.warningHandler != nil {

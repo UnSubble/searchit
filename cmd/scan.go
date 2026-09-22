@@ -625,6 +625,7 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 						cfg.Paths.CollapseSlashes,
 						cfg.Extensions,
 						opts.DryRunLimit,
+						cfg.Strategy,
 					)
 					if dryErr != nil && !errors.Is(dryErr, context.Canceled) {
 						return dryErr

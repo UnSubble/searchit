@@ -195,6 +195,8 @@ func (p *TraversalPlan) TruncateTemplate(urlTemplate string, currentDepth int) s
 func (r *Runner) runDFS(ctx context.Context, e *Executor, plan TraversalPlan, yield ResultCallback) error {
 	var dfsVisit func(currentDepth int, vars map[string]string)
 
+	expander := r.Expander()
+
 	dfsVisit = func(currentDepth int, vars map[string]string) {
 		select {
 		case <-ctx.Done():
@@ -206,8 +208,15 @@ func (r *Runner) runDFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 		cTmpl := CompileTemplate(tmpl, SupportedPlaceholders)
 		level := plan.Levels[currentDepth]
 
+		var words []string
+		if level.Placeholder == "FUZZ" && expander.HasExtensions() {
+			words = expander.ExpandEager(level.Words)
+		} else {
+			words = level.Words
+		}
+
 		var reqs []evaluateReq
-		for _, word := range level.Words {
+		for _, word := range words {
 			newVars := make(map[string]string)
 			for k, v := range vars {
 				newVars[k] = v
@@ -261,6 +270,7 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 	}
 
 	queue := []queueItem{{vars: make(map[string]string)}}
+	expander := r.Expander()
 
 	for depth := 0; depth < len(plan.Levels); depth++ {
 		if len(queue) == 0 {
@@ -271,44 +281,60 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 		cTmpl := CompileTemplate(tmpl, SupportedPlaceholders)
 		level := plan.Levels[depth]
 
-		var reqs []evaluateReq
-		for _, qItem := range queue {
-			for _, word := range level.Words {
-				newVars := make(map[string]string)
-				for k, v := range qItem.vars {
-					newVars[k] = v
-				}
-				newVars[level.Placeholder] = word
-				reqs = append(reqs, evaluateReq{word: word, vars: newVars})
-			}
+		extLevels := 1
+		if level.Placeholder == "FUZZ" && expander.HasExtensions() {
+			extLevels = expander.VariantCount()
 		}
 
 		var nextQueue []queueItem
-		pending := r.evaluateLevel(ctx, e, cTmpl, depth < len(plan.Levels)-1, reqs)
-
-		for p := range pending {
-			if p.err != nil {
-				r.recordPruned(plan, depth)
-				continue
+		for extIdx := 0; extIdx < extLevels; extIdx++ {
+			var words []string
+			if level.Placeholder == "FUZZ" && expander.HasExtensions() {
+				words = expander.Level(level.Words, extIdx)
+			} else {
+				words = level.Words
 			}
-			res := <-p.ch
-			atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
 
-			if ctx.Err() == nil {
-				if res.Accepted || res.Err != nil {
-					yield(res)
+			var reqs []evaluateReq
+			for _, qItem := range queue {
+				for _, word := range words {
+					newVars := make(map[string]string)
+					for k, v := range qItem.vars {
+						newVars[k] = v
+					}
+					newVars[level.Placeholder] = word
+					reqs = append(reqs, evaluateReq{word: word, vars: newVars})
 				}
-				if !res.Accepted && depth < len(plan.Levels)-1 {
-					r.recordPruned(plan, depth)
-				}
-			}
-			if ctx.Err() != nil {
-				continue
 			}
 
-			if res.Accepted {
-				if depth < len(plan.Levels)-1 {
-					nextQueue = append(nextQueue, queueItem{vars: p.vars})
+			pending := r.evaluateLevel(ctx, e, cTmpl, depth < len(plan.Levels)-1, reqs)
+
+			for p := range pending {
+				if p.err != nil {
+					if depth < len(plan.Levels)-1 && extIdx == extLevels-1 {
+						r.recordPruned(plan, depth)
+					}
+					continue
+				}
+				res := <-p.ch
+				atomic.AddInt64(&stats.GlobalInstrumentation.ResultsConsumed, 1)
+
+				if ctx.Err() == nil {
+					if res.Accepted || res.Err != nil {
+						yield(res)
+					}
+					if !res.Accepted && depth < len(plan.Levels)-1 && extIdx == extLevels-1 {
+						r.recordPruned(plan, depth)
+					}
+				}
+				if ctx.Err() != nil {
+					continue
+				}
+
+				if res.Accepted {
+					if depth < len(plan.Levels)-1 {
+						nextQueue = append(nextQueue, queueItem{vars: p.vars})
+					}
 				}
 			}
 		}
@@ -320,8 +346,9 @@ func (r *Runner) runBFS(ctx context.Context, e *Executor, plan TraversalPlan, yi
 }
 
 type priorityTask struct {
-	depth int
-	vars  map[string]string
+	depth    int
+	baseWord string
+	vars     map[string]string
 }
 
 type priorityResult struct {
@@ -342,15 +369,31 @@ func (r *Runner) runPriority(ctx context.Context, e *Executor, plan TraversalPla
 		cTmpls[d] = CompileTemplate(tmpl, SupportedPlaceholders)
 	}
 
-	// Seed priority deque with level 0 tasks in original wordlist order.
+	expander := r.Expander()
 	level0 := plan.Levels[0]
 	var deque []priorityTask
-	for _, word := range level0.Words {
-		vars := map[string]string{level0.Placeholder: word}
-		deque = append(deque, priorityTask{
-			depth: 0,
-			vars:  vars,
-		})
+
+	if expander.HasExtensions() && level0.Placeholder == "FUZZ" {
+		for extIdx := 0; extIdx < expander.VariantCount(); extIdx++ {
+			for _, baseWord := range level0.Words {
+				v := expander.VariantAt(baseWord, extIdx)
+				vars := map[string]string{level0.Placeholder: v}
+				deque = append(deque, priorityTask{
+					depth:    0,
+					baseWord: baseWord,
+					vars:     vars,
+				})
+			}
+		}
+	} else {
+		for _, word := range level0.Words {
+			vars := map[string]string{level0.Placeholder: word}
+			deque = append(deque, priorityTask{
+				depth:    0,
+				baseWord: word,
+				vars:     vars,
+			})
+		}
 	}
 
 	maxInFlight := r.Threads
@@ -449,13 +492,30 @@ func (r *Runner) runPriority(ctx context.Context, e *Executor, plan TraversalPla
 					}
 					childVars[nextLevel.Placeholder] = word
 					childTasks = append(childTasks, priorityTask{
-						depth: nextDepth,
-						vars:  childVars,
+						depth:    nextDepth,
+						baseWord: word,
+						vars:     childVars,
 					})
 				}
 
 				// Push child tasks to the FRONT of the priority deque
 				deque = append(childTasks, deque...)
+			}
+
+			// If accepted and candidate has remaining extension variants in deque, prioritize them to the FRONT
+			if res.Accepted && expander.HasExtensions() && comp.task.baseWord != "" {
+				var matching []priorityTask
+				var remaining []priorityTask
+				for _, t := range deque {
+					if t.depth == 0 && t.baseWord == comp.task.baseWord {
+						matching = append(matching, t)
+					} else {
+						remaining = append(remaining, t)
+					}
+				}
+				if len(matching) > 0 {
+					deque = append(matching, remaining...)
+				}
 			}
 		}
 	}
@@ -491,9 +551,14 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 		cTmpl := CompileTemplate(tmpl, SupportedPlaceholders)
 		level := plan.Levels[currentDepth]
 
+		words := level.Words
+		if level.Placeholder == "FUZZ" && r.Expander().HasExtensions() {
+			words = r.Expander().ExpandEager(level.Words)
+		}
+
 		// Score and sort candidates
-		payloads := make([]payload, len(level.Words))
-		for i, w := range level.Words {
+		payloads := make([]payload, len(words))
+		for i, w := range words {
 			payloads[i] = payload{word: w, idx: i}
 		}
 
@@ -503,7 +568,7 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 				score int
 			}
 			var scoredItems []scoredItem
-			for _, w := range level.Words {
+			for _, w := range words {
 				score := engine.GetScore(w, nil, 1, "")
 				scoredItems = append(scoredItems, scoredItem{word: w, score: score})
 			}
@@ -621,7 +686,11 @@ func (r *Runner) runAdaptive(ctx context.Context, e *Executor, plan TraversalPla
 									}
 
 									curLevel := plan.Levels[d]
-									for i, w := range curLevel.Words {
+									curWords := curLevel.Words
+									if curLevel.Placeholder == "FUZZ" && r.Expander().HasExtensions() {
+										curWords = r.Expander().ExpandEager(curLevel.Words)
+									}
+									for i, w := range curWords {
 										vCopy := make(map[string]string)
 										for k, val := range v {
 											vCopy[k] = val
