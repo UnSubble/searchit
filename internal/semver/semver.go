@@ -70,15 +70,81 @@ func (v Version) Compare(other Version) int {
 		return 1
 	}
 
-	// Lexicographic comparison for prereleases (sufficient for our experimental tags)
-	if v.PreRelease != other.PreRelease {
-		if v.PreRelease > other.PreRelease {
+	if v.PreRelease == other.PreRelease {
+		return 0
+	}
+
+	return comparePreRelease(v.PreRelease, other.PreRelease)
+}
+
+func comparePreRelease(pr1, pr2 string) int {
+	parts1 := strings.Split(pr1, ".")
+	parts2 := strings.Split(pr2, ".")
+	minLen := len(parts1)
+	if len(parts2) < minLen {
+		minLen = len(parts2)
+	}
+
+	for i := 0; i < minLen; i++ {
+		p1, p2 := parts1[i], parts2[i]
+		if p1 == p2 {
+			continue
+		}
+		isNum1 := isNumeric(p1)
+		isNum2 := isNumeric(p2)
+		if isNum1 && isNum2 {
+			n1, err1 := strconv.ParseUint(p1, 10, 64)
+			n2, err2 := strconv.ParseUint(p2, 10, 64)
+			if err1 == nil && err2 == nil {
+				if n1 > n2 {
+					return 1
+				}
+				if n1 < n2 {
+					return -1
+				}
+				continue
+			}
+			if len(p1) > len(p2) {
+				return 1
+			} else if len(p1) < len(p2) {
+				return -1
+			}
+			if p1 > p2 {
+				return 1
+			}
+			return -1
+		}
+		if isNum1 {
+			// Numeric identifier always has lower precedence than non-numeric identifier
+			return -1
+		}
+		if isNum2 {
+			return 1
+		}
+		if p1 > p2 {
 			return 1
 		}
 		return -1
 	}
 
+	if len(parts1) > len(parts2) {
+		return 1
+	} else if len(parts1) < len(parts2) {
+		return -1
+	}
 	return 0
+}
+
+func isNumeric(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // IsStable returns true if there is no prerelease suffix.

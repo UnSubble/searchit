@@ -91,12 +91,16 @@ func (m *Manager) Check(experimental bool, targetVersionStr string, isRollback b
 				result.Status = "ROLLBACK TARGET IS NEWER (POSSIBLY INCORRECT)"
 			}
 		} else if cmp < 0 {
-			result.IsDowngrade = true
-			if isRollback {
-				result.IsRollback = true
-				result.Status = "ROLLBACK AVAILABLE"
+			if targetVersionStr != "" || isRollback {
+				result.IsDowngrade = true
+				if isRollback {
+					result.IsRollback = true
+					result.Status = "ROLLBACK AVAILABLE"
+				} else {
+					result.Status = "DOWNGRADE REQUESTED (WARNING)"
+				}
 			} else {
-				result.Status = "DOWNGRADE REQUESTED (WARNING)"
+				result.Status = "UP TO DATE"
 			}
 		} else {
 			result.Status = "UP TO DATE"

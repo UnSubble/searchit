@@ -153,6 +153,126 @@ func TestCheck(t *testing.T) {
 	}
 }
 
+func TestCheck_DevPrereleaseClassification(t *testing.T) {
+	tests := []struct {
+		name             string
+		currentVer       string
+		targetVersionStr string
+		experimental     bool
+		releasesJSON     string
+		wantStatus       string
+		wantIsUpdate     bool
+		wantIsDowngrade  bool
+	}{
+		{
+			name:             "current_v0.6.2-dev_recommended_v0.6.1_not_downgrade",
+			currentVer:       "v0.6.2-dev",
+			targetVersionStr: "",
+			experimental:     false,
+			releasesJSON: `[
+				{"tag_name": "v0.6.1", "draft": false},
+				{"tag_name": "v0.6.0", "draft": false}
+			]`,
+			wantStatus:      "UP TO DATE",
+			wantIsUpdate:    false,
+			wantIsDowngrade: false,
+		},
+		{
+			name:             "current_v0.6.2-dev_recommended_v0.6.2_update_available",
+			currentVer:       "v0.6.2-dev",
+			targetVersionStr: "",
+			experimental:     false,
+			releasesJSON: `[
+				{"tag_name": "v0.6.2", "draft": false},
+				{"tag_name": "v0.6.1", "draft": false}
+			]`,
+			wantStatus:      "UPDATE AVAILABLE",
+			wantIsUpdate:    true,
+			wantIsDowngrade: false,
+		},
+		{
+			name:             "current_v0.6.2_recommended_v0.6.1_not_downgrade",
+			currentVer:       "v0.6.2",
+			targetVersionStr: "",
+			experimental:     false,
+			releasesJSON: `[
+				{"tag_name": "v0.6.1", "draft": false},
+				{"tag_name": "v0.6.0", "draft": false}
+			]`,
+			wantStatus:      "UP TO DATE",
+			wantIsUpdate:    false,
+			wantIsDowngrade: false,
+		},
+		{
+			name:             "current_v0.6.1_recommended_v0.6.2_update_available",
+			currentVer:       "v0.6.1",
+			targetVersionStr: "",
+			experimental:     false,
+			releasesJSON: `[
+				{"tag_name": "v0.6.2", "draft": false},
+				{"tag_name": "v0.6.1", "draft": false}
+			]`,
+			wantStatus:      "UPDATE AVAILABLE",
+			wantIsUpdate:    true,
+			wantIsDowngrade: false,
+		},
+		{
+			name:             "current_v0.6.2-dev_target_v0.6.2-dev_up_to_date",
+			currentVer:       "v0.6.2-dev",
+			targetVersionStr: "v0.6.2-dev",
+			experimental:     false,
+			releasesJSON: `[
+				{"tag_name": "v0.6.2-dev", "draft": false},
+				{"tag_name": "v0.6.1", "draft": false}
+			]`,
+			wantStatus:      "UP TO DATE",
+			wantIsUpdate:    false,
+			wantIsDowngrade: false,
+		},
+		{
+			name:             "current_v0.6.2-dev_experimental_latest_v0.6.2-dev_up_to_date",
+			currentVer:       "v0.6.2-dev",
+			targetVersionStr: "",
+			experimental:     true,
+			releasesJSON: `[
+				{"tag_name": "v0.6.2-dev", "draft": false},
+				{"tag_name": "v0.6.1", "draft": false}
+			]`,
+			wantStatus:      "UP TO DATE",
+			wantIsUpdate:    false,
+			wantIsDowngrade: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := setupMockServer(tt.releasesJSON, 200)
+			defer server.Close()
+
+			oldVersion := version.Version
+			version.Version = tt.currentVer
+			defer func() { version.Version = oldVersion }()
+
+			mgr := NewManager()
+			mgr.Client.HTTPClient.Transport = &mockTransport{serverURL: server.URL}
+
+			res, err := mgr.Check(tt.experimental, tt.targetVersionStr, false)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res.Status != tt.wantStatus {
+				t.Errorf("expected status %q, got %q", tt.wantStatus, res.Status)
+			}
+			if res.IsUpdate != tt.wantIsUpdate {
+				t.Errorf("expected IsUpdate %v, got %v", tt.wantIsUpdate, res.IsUpdate)
+			}
+			if res.IsDowngrade != tt.wantIsDowngrade {
+				t.Errorf("expected IsDowngrade %v, got %v", tt.wantIsDowngrade, res.IsDowngrade)
+			}
+		})
+	}
+}
+
 type mockTransport struct {
 	serverURL string
 }

@@ -57,11 +57,30 @@ func TestCompare(t *testing.T) {
 		{"v1.0.0", "v1.0.0-beta", 1},
 		{"v1.0.0-beta", "v1.0.0", -1},
 
-		// Prerelease comparisons (lexicographical)
+		// Prerelease comparisons (lexicographical and numeric)
 		{"v1.0.0-beta", "v1.0.0-alpha", 1},
 		{"v1.0.0-alpha", "v1.0.0-beta", -1},
 		{"v1.0.0-rc2", "v1.0.0-rc1", 1},
 		{"v1.0.0-rc1", "v1.0.0-rc1", 0},
+
+		// Dev / prerelease vs patch and stable comparisons
+		{"v0.6.2-dev", "v0.6.1", 1},
+		{"v0.6.2-dev", "v0.6.2", -1},
+		{"v0.6.1", "v0.6.2-dev", -1},
+		{"v0.6.1", "v0.6.2", -1},
+		{"v0.6.2", "v0.6.2-dev", 1},
+		{"v1.0.0", "v0.6.2-dev", 1},
+		{"v0.6.2-alpha", "v0.6.2-beta", -1},
+		{"v0.6.2-beta", "v0.6.2-rc", -1},
+		{"v0.6.2-rc", "v0.6.2", -1},
+
+		// Dot-separated prerelease identifiers (numeric vs string precedence)
+		{"v0.6.2-beta.2", "v0.6.2-beta.10", -1},
+		{"v0.6.2-beta.10", "v0.6.2-beta.2", 1},
+		{"v0.6.2-beta.1", "v0.6.2-beta.2", -1},
+		{"v0.6.2-alpha", "v0.6.2-alpha.1", -1},
+		{"v0.6.2-alpha.1", "v0.6.2-alpha.beta", -1},
+		{"v0.6.2-alpha.beta", "v0.6.2-beta", -1},
 	}
 
 	for _, tt := range tests {
