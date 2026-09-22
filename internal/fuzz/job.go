@@ -25,6 +25,7 @@ type Result struct {
 	StatusCode  int
 	Length      int64
 	Accepted    bool
+	Redirected  bool
 	Err         error
 	UserData    any
 

@@ -253,6 +253,7 @@ func process(
 			StatusCode: statusCode,
 			Length:     length,
 			Accepted:   false,
+			Redirected: wasRedirected,
 			UserData:   item.Req.UserData,
 		})
 		return true
@@ -279,6 +280,7 @@ func process(
 			StatusCode: statusCode,
 			Length:     length,
 			Accepted:   false,
+			Redirected: wasRedirected,
 			UserData:   item.Req.UserData,
 		})
 		return true
@@ -326,6 +328,7 @@ func process(
 				StatusCode: resp.StatusCode,
 				Length:     length,
 				Accepted:   false,
+				Redirected: wasRedirected,
 				Err:        err,
 				UserData:   item.Req.UserData,
 			})
@@ -349,6 +352,7 @@ func process(
 			StatusCode: resp.StatusCode,
 			Length:     length,
 			Accepted:   false,
+			Redirected: wasRedirected,
 			Err:        readErr,
 			UserData:   item.Req.UserData,
 		})
@@ -366,6 +370,7 @@ func process(
 				StatusCode: resp.StatusCode,
 				Length:     length,
 				Accepted:   false,
+				Redirected: wasRedirected,
 				Err:        readErr,
 				UserData:   item.Req.UserData,
 			})
@@ -398,7 +403,7 @@ func process(
 
 	// Capture redirect destination for display (same-host only, like scan engine).
 	var redirectURL string
-	if statusCode >= 300 && statusCode < 400 {
+	if !wasRedirected && statusCode >= 300 && statusCode < 400 {
 		if resolvedLoc != "" {
 			if u, err := url.Parse(resolvedLoc); err == nil && resp.Request != nil && resp.Request.URL != nil {
 				if u.Host == resp.Request.URL.Host {
@@ -420,6 +425,7 @@ func process(
 		StatusCode:  statusCode,
 		Length:      length,
 		Accepted:    true,
+		Redirected:  wasRedirected,
 		Title:       title,
 		Headers:     resHeaders,
 		UserData:    item.Req.UserData,

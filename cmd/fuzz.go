@@ -174,7 +174,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				return fmt.Errorf("error: --verbose cannot be used with --quiet")
 			}
 
-			if cmd.Flags().Changed("follow-redirects") && cmd.Flags().Changed("only-redirects") {
+			isFollow := opts.FollowRedirects || (cmd.Flags().Lookup("follow-redirects") != nil && cmd.Flags().Lookup("follow-redirects").Changed)
+			isOnly := opts.OnlyRedirects || (cmd.Flags().Lookup("only-redirects") != nil && cmd.Flags().Lookup("only-redirects").Changed)
+			if isFollow && isOnly {
 				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
 			}
 
@@ -430,6 +432,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 
 			// 3. Apply CLI flag overrides to ensure they take precedence
 			applyFuzzCLIOverrides(opts, cmd, &cfg)
+
+			if cfg.FollowRedirects && cfg.OnlyRedirects {
+				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
+			}
 
 			if opts.Verbose && cfg.Quiet {
 				return fmt.Errorf("error: --verbose cannot be used with --quiet")
@@ -1225,6 +1231,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 							StatusCode:  r.StatusCode,
 							Length:      r.Length,
 							Accepted:    r.Accepted,
+							Redirected:  r.Redirected,
 							Err:         r.Err,
 							Origin:      "fuzz",
 							IsFuzz:      true,
@@ -1583,13 +1590,13 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	if cmd.Flags().Changed("ft") {
 		cfg.FilterContent = opts.FilterContent
 	}
-	if cmd.Flags().Changed("follow-redirects") {
+	if opts.FollowRedirects || cmd.Flags().Changed("follow-redirects") {
 		cfg.FollowRedirects = opts.FollowRedirects
 	}
-	if cmd.Flags().Changed("only-redirects") {
+	if opts.OnlyRedirects || cmd.Flags().Changed("only-redirects") {
 		cfg.OnlyRedirects = opts.OnlyRedirects
 	}
-	if cmd.Flags().Changed("max-redirects") {
+	if cmd.Flags().Changed("max-redirects") || opts.MaxRedirects != 10 {
 		cfg.MaxRedirects = opts.MaxRedirects
 	}
 	if cmd.Flags().Changed("insecure") {

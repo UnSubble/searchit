@@ -35,7 +35,10 @@ func PrintSummary(tm *terminal.Manager, owner terminal.Owner, info SummaryInfo, 
 		reqPerSec = int64(float64(info.Snapshot.RequestsSent) / wallTimeSec)
 	}
 
-	candidates := int(info.Snapshot.JobsProduced)
+	candidates := int(info.Snapshot.TotalCandidates)
+	if candidates == 0 {
+		candidates = int(info.Snapshot.JobsProduced)
+	}
 	if candidates == 0 && info.IsFuzz {
 		candidates = int(info.Snapshot.RequestsSent)
 	}
