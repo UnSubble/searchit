@@ -24,26 +24,63 @@ type News struct {
 
 // Fetch reads the news file for a given version.
 func Fetch(version string) (News, error) {
-	// For production, the NEWS files might not be deployed with the binary unless embedded.
-	// We'll read from the current working directory for development,
-	// but normally you'd either embed them or fetch from GitHub.
-	// Since the maintainer wants `NEWS/vX.Y.Z.md` as the source of truth,
-	// we will look for it locally first.
-
-	filename := filepath.Join(newsDir, fmt.Sprintf("%s.md", version))
+	targetFile := fmt.Sprintf("%s.md", version)
+	filename := filepath.Join(newsDir, targetFile)
 
 	data, err := os.ReadFile(filename)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return News{}, fmt.Errorf("no news available for %s", version)
-		}
+	if err == nil {
+		return News{
+			Version: version,
+			Content: string(data),
+		}, nil
+	}
+	if !os.IsNotExist(err) {
 		return News{}, err
 	}
 
-	return News{
-		Version: version,
-		Content: string(data),
-	}, nil
+	// If not found and newsDir is relative, attempt to search parent directories from cwd
+	if !filepath.IsAbs(newsDir) {
+		if cwd, err := os.Getwd(); err == nil {
+			dir := cwd
+			for {
+				candidate := filepath.Join(dir, newsDir, targetFile)
+				if data, err := os.ReadFile(candidate); err == nil {
+					return News{
+						Version: version,
+						Content: string(data),
+					}, nil
+				}
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					break
+				}
+				dir = parent
+			}
+		}
+
+		// Also check relative to executable
+		if exe, err := os.Executable(); err == nil {
+			if exePath, err := filepath.EvalSymlinks(exe); err == nil {
+				dir := filepath.Dir(exePath)
+				for {
+					candidate := filepath.Join(dir, newsDir, targetFile)
+					if data, err := os.ReadFile(candidate); err == nil {
+						return News{
+							Version: version,
+							Content: string(data),
+						}, nil
+					}
+					parent := filepath.Dir(dir)
+					if parent == dir {
+						break
+					}
+					dir = parent
+				}
+			}
+		}
+	}
+
+	return News{}, fmt.Errorf("no news available for %s", version)
 }
 
 // FormatPreview formats a news preview block.
