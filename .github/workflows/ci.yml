@@ -19,11 +19,11 @@ concurrency:
 
 jobs:
 # ----------------------------------------------------
-# Tier 1: FAST CI (Immediate developer feedback)
+# Tier 1: LINT  (fast fail — blocks everything below)
 # ----------------------------------------------------
 
-  fast-ci:
-    name: Fast CI
+  lint:
+    name: Lint & Static Analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -33,28 +33,89 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
-          go-version: "1.26.x"
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Pre-install Staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+        run: go install honnef.co/go/tools/cmd/staticcheck@master
 
       - name: Lint
         run: |
           chmod +x scripts/ci/lint.sh
           ./scripts/ci/lint.sh
 
+# ----------------------------------------------------
+# Tier 2: CORE JOBS  (run in parallel after lint)
+# ----------------------------------------------------
+
+  build:
+    name: Build
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
       - name: Build
-        run: |
-          go build ./...
+        run: go build ./...
+
+  test:
+    name: Unit Tests
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
 
       - name: Tests
-        run: |
-          go test ./...
+        run: go test ./...
+
+  race:
+    name: Race Detector
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
 
       - name: Race Tests
-        run: |
-          go test -race ./...
+        run: go test -race ./...
+
+  smoke:
+    name: Binary Smoke Tests
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
 
       - name: Build Binaries
         run: |
@@ -67,12 +128,12 @@ jobs:
           ./scripts/ci/binary_smoke_test.sh
 
 # ----------------------------------------------------
-# Tier 2: FULL COMPATIBILITY MATRIX
+# Tier 3: EXTENDED CHECKS  (run in parallel after core)
 # ----------------------------------------------------
 
   compatibility:
     name: Compatibility (${{ matrix.os }}, Go ${{ matrix.go-version }})
-    needs: fast-ci
+    needs: [build, test]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -117,37 +178,23 @@ jobs:
           echo "GOFLAGS=-ldflags=-linkmode=external" >> $GITHUB_ENV
 
       - name: Build
-        run: |
-          go build ./...
+        run: go build ./...
 
       - name: Unit Tests
-        run: |
-          go test ./...
+        run: go test ./...
 
       # Additional verification runs restricted to Ubuntu + Latest Go (avoid duplication overhead)
       - name: Shuffle Tests
         if: matrix.go-version == '1.26.x' && matrix.os == 'ubuntu-latest'
-        run: |
-          go test -shuffle=on ./...
+        run: go test -shuffle=on ./...
 
       - name: Race Tests
         if: matrix.go-version == '1.26.x' && matrix.os == 'ubuntu-latest'
-        run: |
-          go test -race ./...
-
-      - name: Binary Build
-        if: matrix.go-version == '1.26.x' && matrix.os == 'ubuntu-latest'
-        run: |
-          chmod +x build.sh
-          ./build.sh
-
-# ----------------------------------------------------
-# Tier 3: SCIENTIFIC TESTS
-# ----------------------------------------------------
+        run: go test -race ./...
 
   determinism:
     name: Determinism Verification
-    needs: fast-ci
+    needs: [build, test, race]
     runs-on: ubuntu-latest
 
     steps:
@@ -157,7 +204,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
-          go-version: "1.26.x"
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Determinism Tests
@@ -167,7 +214,7 @@ jobs:
 
   stress:
     name: Stress & Race Safety
-    needs: fast-ci
+    needs: [build, test, race]
     runs-on: ubuntu-latest
 
     steps:
@@ -177,7 +224,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
-          go-version: "1.26.x"
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Stress Tests
@@ -187,7 +234,7 @@ jobs:
 
   pipeline:
     name: Pipeline Verification
-    needs: fast-ci
+    needs: [build, test]
     runs-on: ubuntu-latest
 
     steps:
@@ -197,7 +244,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
-          go-version: "1.26.x"
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Pipeline Tests
@@ -207,7 +254,7 @@ jobs:
 
   compatibility-tests:
     name: Output & Profile Compatibility
-    needs: fast-ci
+    needs: [build, test]
     runs-on: ubuntu-latest
 
     steps:
@@ -217,7 +264,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
-          go-version: "1.26.x"
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Compatibility Tests

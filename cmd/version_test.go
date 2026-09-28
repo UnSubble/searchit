@@ -35,8 +35,9 @@ func TestVersionCmd_Output(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "searchit v0.7.0") {
-		t.Errorf("expected version output to contain 'searchit v0.7.0', got %q", out)
+	wantVersion := "searchit " + version.Version
+	if !strings.Contains(out, wantVersion) {
+		t.Errorf("expected version output to contain %q, got %q", wantVersion, out)
 	}
 	if !strings.Contains(out, "Commit:") {
 		t.Errorf("expected version output to contain 'Commit:', got %q", out)

@@ -27,15 +27,28 @@ jobs:
           cache: true
 
       - name: Run unit tests
-        run: go test -v ./...
+        run: go test ./...
 
       - name: Run tests with race detector
-        run: go test -race -v ./...
+        run: go test -race ./...
 
       - name: Build binaries
         run: |
           chmod +x build.sh
           ./build.sh
+
+      - name: Verify binary version matches tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          BIN_VERSION="$(./dist/searchit --version)"
+          echo "Git tag:        ${TAG}"
+          echo "Binary version: ${BIN_VERSION}"
+          if ! echo "${BIN_VERSION}" | grep -Fq "${TAG}"; then
+            echo "ERROR: Binary version '${BIN_VERSION}' does not contain tag '${TAG}'."
+            echo "Ensure internal/version/version.go was updated before tagging."
+            exit 1
+          fi
+          echo "✓ Binary version matches tag."
 
       - name: Upload artifacts
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
