@@ -165,6 +165,19 @@ func TestCheck_DevPrereleaseClassification(t *testing.T) {
 		wantIsDowngrade  bool
 	}{
 		{
+			name:             "current_v0.7.0_recommended_v0.6.1_not_downgrade",
+			currentVer:       "v0.7.0",
+			targetVersionStr: "",
+			experimental:     false,
+			releasesJSON: `[
+				{"tag_name": "v0.6.1", "draft": false},
+				{"tag_name": "v0.6.0", "draft": false}
+			]`,
+			wantStatus:      "UP TO DATE",
+			wantIsUpdate:    false,
+			wantIsDowngrade: false,
+		},
+		{
 			name:             "current_v0.6.2-dev_recommended_v0.6.1_not_downgrade",
 			currentVer:       "v0.6.2-dev",
 			targetVersionStr: "",

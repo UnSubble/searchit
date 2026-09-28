@@ -16,9 +16,9 @@ Here are common scenarios using the `scan` command:
    `searchit scan -u http://example.com -w ~/wordlists/rockyou.txt -r -d 3`
    Enable recursion and limit it to a maximum depth of 3.
 
-3. **Scan multiple targets**
-   `searchit scan -u http://example.com -u http://test.com --url-file targets.txt -w ~/wordlists/rockyou.txt`
-   Scan multiple targets provided via multiple `-u` flags and a file.
+3. **Scan multiple targets from a file**
+   `xargs -I{} searchit scan -u {} -w ~/wordlists/rockyou.txt < targets.txt`
+   Scan multiple targets listed in a file using `xargs`.
 
    ![Scan multiple targets](../../assets/screenshots/scan_multiple.png)
 

@@ -18,8 +18,7 @@ The `scan` command is used for directory and file enumeration.
 
 
 ### Target Options
-* `-u, --url`: Target URL to scan (can be provided multiple times, comma-separated values not supported here but you can provide multiple `-u`).
-* `--url-file`: File containing a list of target URLs.
+* `-u, --url`: Target URL to scan.
 * `-w, --wordlist`: Wordlist to use for enumeration.
 
 ### Request Options
@@ -28,6 +27,7 @@ The `scan` command is used for directory and file enumeration.
 * `-H, --header`: Custom header to send with the request.
 * `-b, --cookie`: Custom cookie to send with the request.
 * `--request`: File containing a raw HTTP request.
+* `-E, --encode`: Encode candidates before substitution (base64, url, doubleurl, wl-base64, wl-url, wl-doubleurl).
 
 ### Execution Options
 * `-t, --threads`: Number of concurrent threads (default 32).
@@ -61,8 +61,6 @@ The `scan` command is used for directory and file enumeration.
 * `-x, --exclude-status`: Exclude status codes (default 404).
 * `--include-size`: Include responses with this size.
 * `--exclude-size`: Exclude responses with this size.
-* `--include-header`: Include responses matching this header.
-* `--exclude-header`: Exclude responses matching this header.
 
 ### Output Options
 * `--show-headers`: Show headers in the output.
@@ -70,6 +68,7 @@ The `scan` command is used for directory and file enumeration.
 * `-o, --output`: Output file.
 * `--format`: Output format (e.g., json, csv, markdown).
 * `-q, --quiet`: Quiet mode (only show results).
+* `-R, --human-readable`: Display response sizes in human-readable units.
 * `--no-progress`: Disable progress bar.
 
 ### Profile Options
@@ -96,10 +95,12 @@ The `fuzz` command is used for advanced fuzzing, replacing placeholders in reque
 * `-H, --header`: Custom header to send with the request.
 * `-b, --cookie`: Custom cookie to send with the request.
 * `--request`: File containing a raw HTTP request.
+* `-E, --encode`: Encode candidates before substitution (base64, url, doubleurl, wl-base64, wl-url, wl-doubleurl).
 
 ### Execution Options
 * `-t, --threads`: Number of concurrent threads (default 32).
 * `--timeout`: Request timeout in seconds (int, default 10).
+* `--connect-timeout`: Connection timeout (string, default "3s").
 * `--rate`: Maximum requests per second.
 * `--delay`: Delay between requests.
 
@@ -107,6 +108,7 @@ The `fuzz` command is used for advanced fuzzing, replacing placeholders in reque
 * `-s, --strategy`: Fuzzing strategy (eager|bfs|dfs, **default: eager**).
 * `--adaptive`: Enable adaptive scanning.
 * `--follow-redirects`: Follow HTTP redirects.
+* `--only-redirects`: Follow redirects and report only the final response reached through a redirect (suppresses intermediate 3xx responses).
 * `--max-redirects`: Maximum number of redirects to follow.
 
 ### Filtering Options
@@ -129,6 +131,7 @@ The `fuzz` command is used for advanced fuzzing, replacing placeholders in reque
 * `-o, --output`: Output file.
 * `--format`: Output format.
 * `-q, --quiet`: Quiet mode (only show results).
+* `-R, --human-readable`: Display response sizes in human-readable units.
 * `--no-progress`: Disable progress bar.
 
 ### Profile Options

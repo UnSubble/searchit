@@ -64,6 +64,9 @@ func TestCompare(t *testing.T) {
 		{"v1.0.0-rc1", "v1.0.0-rc1", 0},
 
 		// Dev / prerelease vs patch and stable comparisons
+		{"v0.7.0", "v0.6.2", 1},
+		{"v0.7.0", "v0.6.1", 1},
+		{"v0.7.0", "v1.0.0", -1},
 		{"v0.6.2-dev", "v0.6.1", 1},
 		{"v0.6.2-dev", "v0.6.2", -1},
 		{"v0.6.1", "v0.6.2-dev", -1},

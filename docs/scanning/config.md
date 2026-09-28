@@ -64,7 +64,6 @@ Filters are applied in a strict, low-cost pipeline to discard unwanted HTTP resp
 - **Size Filter**: Include/exclude response body size bounds (`--ms 100-500`, `--fs 0`).
 - **Regex Filter**: Match/filter response body content (`--mr "admin"`, `--fr "not found"`).
 - **Content-Type Filter**: Match/filter by Content-Type header (`--mt "application/json"`, `--ft "text/html"`).
-- **Header Filter**: Match custom HTTP headers case-insensitively using `-H Name=Value` (include) or `--exclude-header Name=Value` (exclude).
 
 ![Response Filter Pipeline](../../assets/docs/response-filter-pipeline.png)
 

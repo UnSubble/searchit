@@ -9,7 +9,7 @@ const Name = "searchit"
 
 // Defined as variables so they can be overridden via -ldflags at build time.
 var (
-	Version = "v0.6.2-dev"
+	Version = "v0.7.0"
 	Commit  = "dev"
 	Date    = "unknown"
 )

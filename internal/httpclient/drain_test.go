@@ -139,8 +139,8 @@ func TestDrainAndClose_HTTPTrace_ConnectionReuse(t *testing.T) {
 			expectedReuse: true,
 		},
 		{
-			name:          "Oversized Response (256 KB) - Not Reused (Capped Drain)",
-			bodySize:      256 * 1024,
+			name:          "Oversized Response (512 KB) - Not Reused (Capped Drain)",
+			bodySize:      512 * 1024,
 			chunked:       false,
 			expectedReuse: false,
 		},

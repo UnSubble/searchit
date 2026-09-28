@@ -172,8 +172,6 @@ The `config` block of a `scan` profile supports the following keys:
 | `recurse-on` | string / list | `200,301,302,403` | `--recurse-on` | Status codes that trigger recursive scanning. |
 | `include-size` | string | — | `--include-size` | Only accept responses whose body size matches the specified filter. |
 | `exclude-size` | string | — | `--exclude-size` | Exclude responses whose body size matches the specified filter. |
-| `include-header(s)` | string / list | — | `--include-header` | Require one or more response headers to match before accepting a result. Supports both `include-header` and `include-headers` in YAML. |
-| `exclude-header(s)` | string / list | — | `--exclude-header` | Reject responses matching one or more response header filters. Supports both `exclude-header` and `exclude-headers` in YAML. |
 
 ### Fuzz Profile Config Keys
 
