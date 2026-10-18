@@ -62,6 +62,7 @@ type ScanOverlay struct {
 	// Regex / content filtering
 	MatchRegex    *[]string `yaml:"match-regex"`
 	FilterRegex   *[]string `yaml:"filter-regex"`
+	RegexScope    *string   `yaml:"regex-scope"`
 	MatchContent  *[]string `yaml:"match-content"`
 	FilterContent *[]string `yaml:"filter-content"`
 
@@ -124,6 +125,7 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 		MatchRegex    *[]string `yaml:"match-regex"`
 		FilterRegex   *[]string `yaml:"filter-regex"`
+		RegexScope    *string   `yaml:"regex-scope"`
 		MatchContent  *[]string `yaml:"match-content"`
 		FilterContent *[]string `yaml:"filter-content"`
 
@@ -190,6 +192,7 @@ func (o *ScanOverlay) UnmarshalYAML(value *yaml.Node) error {
 
 	o.MatchRegex = raw.MatchRegex
 	o.FilterRegex = raw.FilterRegex
+	o.RegexScope = raw.RegexScope
 	o.MatchContent = raw.MatchContent
 	o.FilterContent = raw.FilterContent
 
@@ -379,6 +382,9 @@ func ApplyScanOverlay(cfg *Config, o ScanOverlay) {
 			}
 		}
 		cfg.FilterRegex = valid
+	}
+	if o.RegexScope != nil && *o.RegexScope != "" {
+		cfg.RegexScope = *o.RegexScope
 	}
 	if o.MatchContent != nil {
 		cfg.MatchContent = *o.MatchContent

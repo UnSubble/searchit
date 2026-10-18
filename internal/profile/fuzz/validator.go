@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"regexp"
 
+	"github.com/unsubble/searchit/internal/filter"
 	"github.com/unsubble/searchit/internal/profile/types"
 	"github.com/unsubble/searchit/internal/size"
 	"github.com/unsubble/searchit/internal/status"
@@ -79,6 +80,11 @@ func (v *FuzzValidator) Validate(p *types.Profile) error {
 			if _, err := regexp.Compile(p); err != nil {
 				return fmt.Errorf("invalid filter-regex %q: %w", p, err)
 			}
+		}
+	}
+	if o.RegexScope != nil && *o.RegexScope != "" {
+		if !filter.IsValidRegexScope(*o.RegexScope) {
+			return fmt.Errorf("invalid regex-scope %q: must be one of url, body, header, status, all", *o.RegexScope)
 		}
 	}
 	if o.Proxy != nil && *o.Proxy != "" {

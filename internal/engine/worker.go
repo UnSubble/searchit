@@ -348,7 +348,7 @@ func process(
 		return
 	}
 
-	if readErr != nil || !fs.MatchBody(bodyBytes) {
+	if readErr != nil || !fs.MatchResponse(effectiveURL, statusCode, resp.Header, bodyBytes) {
 		if collector != nil {
 			collector.RecordResponseReceived(statusCode, recLen)
 			collector.RecordRequestFiltered()

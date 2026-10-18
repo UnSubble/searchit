@@ -56,6 +56,7 @@ The `scan` command is used for directory and file enumeration.
 * `--fs`: Filter sizes.
 * `--mr`: Match regex in response.
 * `--fr`: Filter regex in response.
+* `--regex-scope`: Scope for `--mr`/`--fr` matching: `url` (default), `body`, `header`, `status`, or `all`.
 * `--mt`: Match response time.
 * `--ft`: Filter response time.
 * `-x, --exclude-status`: Exclude status codes (default 404).
@@ -119,6 +120,7 @@ The `fuzz` command is used for advanced fuzzing, replacing placeholders in reque
 * `--fs`: Filter sizes.
 * `--mr`: Match regex in response.
 * `--fr`: Filter regex in response.
+* `--regex-scope`: Scope for `-mr`/`-fr` matching: `url` (default), `body`, `header`, `status`, or `all`.
 * `--mt`: Match response time.
 * `--ft`: Filter response time.
 * `-x, --exclude-status`: Exclude status codes (default 404).

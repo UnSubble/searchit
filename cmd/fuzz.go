@@ -80,6 +80,7 @@ type FuzzOptions struct {
 	ExcludeHeaders  []string
 	MatchRegex      []string
 	FilterRegex     []string
+	RegexScope      string
 	MatchContent    []string
 	FilterContent   []string
 	Method          string
@@ -311,6 +312,9 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 				if _, err := regexp.Compile(rx); err != nil {
 					return fmt.Errorf("invalid filter-regex (--fr) %q: %w", rx, err)
 				}
+			}
+			if opts.RegexScope != "" && !filter.IsValidRegexScope(opts.RegexScope) {
+				return fmt.Errorf("invalid --regex-scope %q: must be one of url, body, header, status, all", opts.RegexScope)
 			}
 
 			if len(opts.Ext) > 0 {
@@ -1134,6 +1138,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					cfg.FilterRegex,
 					cfg.MatchContent,
 					cfg.FilterContent,
+					cfg.RegexScope,
 				)
 				if err != nil {
 					return err
@@ -1388,6 +1393,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVar(&opts.FilterSize, "fs", "", "filter size")
 	cmd.Flags().StringSliceVar(&opts.MatchRegex, "mr", nil, "match regex")
 	cmd.Flags().StringSliceVar(&opts.FilterRegex, "fr", nil, "filter regex")
+	cmd.Flags().StringVar(&opts.RegexScope, "regex-scope", "url", "target scope for regex matching (url, body, header, status, all)")
 	cmd.Flags().StringSliceVar(&opts.MatchContent, "mt", nil, "match content types")
 	cmd.Flags().StringSliceVar(&opts.FilterContent, "ft", nil, "filter content types")
 	cmd.Flags().BoolVar(&opts.ShowHeaders, "show-headers", false, "show response headers in output")
@@ -1438,7 +1444,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Matching / Filtering",
-			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr", "only-redirects"},
+			Names: []string{"mc", "ms", "mr", "fc", "fs", "fr", "only-redirects", "regex-scope"},
 		},
 		{
 			Title: "Output",
@@ -1583,6 +1589,9 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("fr") {
 		cfg.FilterRegex = opts.FilterRegex
+	}
+	if cmd.Flags().Changed("regex-scope") {
+		cfg.RegexScope = opts.RegexScope
 	}
 	if cmd.Flags().Changed("mt") {
 		cfg.MatchContent = opts.MatchContent

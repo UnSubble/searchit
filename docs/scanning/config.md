@@ -62,7 +62,12 @@ searchit scan -u http://127.0.0.1:8080 -r -d 3 -s bfs
 Filters are applied in a strict, low-cost pipeline to discard unwanted HTTP responses:
 - **Status Filter**: Ignore/match HTTP status codes (`--mc 200,302`, `--fc 404,500`).
 - **Size Filter**: Include/exclude response body size bounds (`--ms 100-500`, `--fs 0`).
-- **Regex Filter**: Match/filter response body content (`--mr "admin"`, `--fr "not found"`).
+- **Regex Filter**: Match/filter using a configurable regex scope (`--mr "admin"`, `--fr "not found"`).
+  - `--regex-scope url` *(default)*: match against the request URL.
+  - `--regex-scope body`: match against the response body.
+  - `--regex-scope header`: match against response headers (`Header: Value` lines, sorted).
+  - `--regex-scope status`: match against the HTTP status code string (e.g. `"200"`).
+  - `--regex-scope all`: match against URL, status, headers, and body independently.
 - **Content-Type Filter**: Match/filter by Content-Type header (`--mt "application/json"`, `--ft "text/html"`).
 
 ![Response Filter Pipeline](../../assets/docs/response-filter-pipeline.png)

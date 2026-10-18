@@ -359,23 +359,21 @@ func process(
 		return true
 	}
 
-	if bodyRead {
-		if readErr != nil || !fs.MatchBody(bodyBytes) {
-			if collector != nil {
-				collector.RecordResponseReceived(resp.StatusCode, recLen)
-				collector.RecordRequestFiltered()
-			}
-			sendResult(results, item, Result{
-				URL:        item.Req.URL,
-				StatusCode: resp.StatusCode,
-				Length:     length,
-				Accepted:   false,
-				Redirected: wasRedirected,
-				Err:        readErr,
-				UserData:   item.Req.UserData,
-			})
-			return true
+	if (fs.RequiresBody() && readErr != nil) || !fs.MatchResponse(effectiveURL, statusCode, resp.Header, bodyBytes) {
+		if collector != nil {
+			collector.RecordResponseReceived(statusCode, recLen)
+			collector.RecordRequestFiltered()
 		}
+		sendResult(results, item, Result{
+			URL:        item.Req.URL,
+			StatusCode: statusCode,
+			Length:     length,
+			Accepted:   false,
+			Redirected: wasRedirected,
+			Err:        readErr,
+			UserData:   item.Req.UserData,
+		})
+		return true
 	}
 
 	rawLoc := resp.Header.Get("Location")

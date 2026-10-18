@@ -37,5 +37,6 @@ func Default() Config {
 		},
 		Adaptive:     false,
 		FuzzStrategy: "eager",
+		RegexScope:   "url",
 	}
 }

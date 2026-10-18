@@ -53,6 +53,7 @@ type Config struct {
 	// Response Filtering fields
 	MatchRegex    []string
 	FilterRegex   []string
+	RegexScope    string
 	MatchContent  []string
 	FilterContent []string
 
