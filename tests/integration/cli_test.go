@@ -56,9 +56,17 @@ func verifyGolden(t *testing.T, actual string, goldenFile string) {
 	goldenPath := filepath.Join("..", "..", "testdata", goldenFile)
 	actual = strings.ReplaceAll(actual, "\r\n", "\n")
 
+	var goVersionStr string
+	if out, err := exec.Command("go", "version").Output(); err == nil {
+		goVersionStr = strings.TrimSpace(string(out))
+	}
+
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
 		actualForGolden := strings.ReplaceAll(actual, version.Version, "{{CURRENT_VERSION}}")
 		actualForGolden = strings.ReplaceAll(actualForGolden, binPath, "{{ACTIVE_EXECUTABLE}}")
+		if goVersionStr != "" {
+			actualForGolden = strings.ReplaceAll(actualForGolden, goVersionStr, "{{GO_VERSION}}")
+		}
 		os.MkdirAll(filepath.Dir(goldenPath), 0755)
 		os.WriteFile(goldenPath, []byte(actualForGolden), 0644)
 	}
@@ -70,6 +78,9 @@ func verifyGolden(t *testing.T, actual string, goldenFile string) {
 	expectedStr := strings.ReplaceAll(string(expected), "\r\n", "\n")
 	expectedStr = strings.ReplaceAll(expectedStr, "{{CURRENT_VERSION}}", version.Version)
 	expectedStr = strings.ReplaceAll(expectedStr, "{{ACTIVE_EXECUTABLE}}", binPath)
+	if goVersionStr != "" {
+		expectedStr = strings.ReplaceAll(expectedStr, "{{GO_VERSION}}", goVersionStr)
+	}
 
 	if expectedStr != actual {
 		t.Errorf("output does not match golden file %s.\nExpected:\n%s\nGot:\n%s\n", goldenPath, expectedStr, actual)
@@ -115,6 +126,9 @@ func TestDoctorCommand(t *testing.T) {
 	defer server.Close()
 
 	tempDir := t.TempDir()
+	newsDir := filepath.Join(tempDir, "NEWS")
+	os.Mkdir(newsDir, 0755)
+	os.WriteFile(filepath.Join(newsDir, version.Version+".md"), []byte("# Notes\n"), 0644)
 
 	pathEnv := tempDir
 	goDir := ""
@@ -188,10 +202,10 @@ func TestDoctorCommand_NoGoToolchain(t *testing.T) {
 	}
 
 	outStr := string(out)
-	if !strings.Contains(outStr, "GO VERSION\n\n                NOT VERIFIED") {
+	if !strings.Contains(outStr, "NOT VERIFIED  GO VERSION") {
 		t.Errorf("expected GO VERSION to be NOT VERIFIED when go is missing from PATH, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "STATUS\n\n                NOT READY") {
+	if !strings.Contains(outStr, "STATUS: NOT READY") {
 		t.Errorf("expected STATUS to be NOT READY when go is missing from PATH, got:\n%s", outStr)
 	}
 }
