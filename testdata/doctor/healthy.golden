@@ -1,54 +1,28 @@
-        VERSION
+searchit doctor
 
-                PASS
+  PASS  VERSION
+        {{CURRENT_VERSION}}
 
+  PASS  GO VERSION
+        {{GO_VERSION}}
 
-        UPDATE SYSTEM
+  PASS  CONFIGURATION
+        profile store loaded, 24 profile(s) available
 
-                PASS
+  PASS  NEWS SYSTEM
+        news available for {{CURRENT_VERSION}}
 
+  PASS  GITHUB CONNECTIVITY
+        GitHub API reachable, 1 release(s) found
 
-        NEWS SYSTEM
+  PASS  UPDATE SYSTEM
+        current: {{CURRENT_VERSION}} — update available: v1.0.0
 
-                PASS
+  PASS  MULTIPLE BINARIES
+        single searchit executable detected
 
+  PASS  ACTIVE EXECUTABLE
+        {{ACTIVE_EXECUTABLE}}
 
-        CONFIGURATION
-
-                PASS
-
-
-        GITHUB CONNECTIVITY
-
-                PASS
-
-
-        RELEASE CHANNEL
-
-                PASS
-
-
-        MULTIPLE BINARIES
-
-                PASS
-
-
-        ACTIVE EXECUTABLE
-
-                PASS
-
-
-        INSTALLATION METHOD
-
-                WARNING
-
-
-        GO VERSION
-
-                PASS
-
-
-        STATUS
-
-                NOT READY
-
+----------------------------------------
+STATUS: HEALTHY
