@@ -144,13 +144,14 @@ func TestDoctorCommand(t *testing.T) {
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
 		"PATH":              pathEnv,
+		"HOME":              tempDir,
 	}
 
 	cmd := exec.Command(binPath, "doctor")
 	var cmdEnv []string
 	for _, e := range os.Environ() {
 		key := strings.SplitN(e, "=", 2)[0]
-		if strings.EqualFold(key, "PATH") {
+		if strings.EqualFold(key, "PATH") || strings.EqualFold(key, "HOME") {
 			continue
 		}
 		cmdEnv = append(cmdEnv, e)
@@ -179,13 +180,14 @@ func TestDoctorCommand_NoGoToolchain(t *testing.T) {
 	env := map[string]string{
 		"SEARCHIT_API_BASE": server.URL,
 		"PATH":              tempDir, // Empty directory with no go binary
+		"HOME":              tempDir,
 	}
 
 	cmd := exec.Command(binPath, "doctor")
 	var cmdEnv []string
 	for _, e := range os.Environ() {
 		key := strings.SplitN(e, "=", 2)[0]
-		if strings.EqualFold(key, "PATH") {
+		if strings.EqualFold(key, "PATH") || strings.EqualFold(key, "HOME") {
 			continue
 		}
 		cmdEnv = append(cmdEnv, e)

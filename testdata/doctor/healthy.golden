@@ -7,7 +7,7 @@ searchit doctor
         {{GO_VERSION}}
 
   PASS  CONFIGURATION
-        profile store loaded, 24 profile(s) available
+        profile store loaded, 21 profile(s) available
 
   PASS  NEWS SYSTEM
         news available for {{CURRENT_VERSION}}
