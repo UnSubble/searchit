@@ -86,8 +86,8 @@ compatibility:
 # ---------------------------------------------------------------------------
 
 ## audit: run go vet + staticcheck (mirrors CI lint, no gofmt check)
-audit: vet
-	$(STATICCHECK) ./...
+audit:
+	./scripts/ci/lint.sh --audit
 
 ## lint: full lint check via CI lint script (gofmt + go vet + staticcheck)
 lint:
