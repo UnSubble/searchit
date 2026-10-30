@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/app"
+	"github.com/unsubble/searchit/internal/color"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/diagnostics"
@@ -60,6 +61,7 @@ type ScanOptions struct {
 	Output          string
 	Format          string
 	Quiet           bool
+	Color           string
 	IncludeSize     string
 	ExcludeSize     string
 
@@ -135,6 +137,15 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 			isOnly := opts.OnlyRedirects || (cmd.Flags().Lookup("only-redirects") != nil && cmd.Flags().Lookup("only-redirects").Changed)
 			if isFollow && isOnly {
 				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
+			}
+
+			if flagColor != "" && (cmd.Flags().Lookup("color") == nil || !cmd.Flags().Lookup("color").Changed) {
+				opts.Color = flagColor
+			}
+			if opts.Color != "" {
+				if !color.IsValidMode(opts.Color) {
+					return fmt.Errorf("invalid --color option %q: must be one of auto, always, never", opts.Color)
+				}
 			}
 
 			if opts.RawProfile != "" {
@@ -539,7 +550,10 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 					termFmt = parsed
 				}
 			}
-			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes)
+			useColor := color.Resolve(opts.Color, cfg.Quiet, func() bool {
+				return color.IsTerminal(cmd.OutOrStdout())
+			})
+			termFmttr = output.NewColored(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes, useColor)
 			if termFmttr != nil {
 				defer termFmttr.Close()
 			}
@@ -1250,6 +1264,13 @@ func NewScanCmd() (*cobra.Command, *ScanOptions) {
 	)
 
 	cmd.Flags().StringVar(
+		&opts.Color,
+		"color",
+		"auto",
+		"control colored output (auto, always, never)",
+	)
+
+	cmd.Flags().StringVar(
 		&opts.Delay,
 		"delay",
 		"",
@@ -1381,7 +1402,7 @@ var scanHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Output",
-			Names: []string{"output", "quiet", "human-readable", "random-agent", "verbose"},
+			Names: []string{"output", "quiet", "human-readable", "color", "random-agent", "verbose"},
 		},
 	},
 	HelpAllCmd: "searchit scan --help-all",
@@ -1480,6 +1501,9 @@ func applyCLIOverrides(opts *ScanOptions, cmd *cobra.Command, cfg *config.Config
 	}
 	if cmd.Flags().Changed("quiet") {
 		cfg.Quiet = opts.Quiet
+	}
+	if cmd.Flags().Changed("color") || opts.Color != "" {
+		cfg.Color = opts.Color
 	}
 	if cmd.Flags().Changed("follow-redirects") {
 		cfg.FollowRedirects = opts.FollowRedirects

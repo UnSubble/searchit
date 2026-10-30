@@ -68,7 +68,8 @@ The `scan` command is used for directory and file enumeration.
 * `--show-title`: Show page titles in the output.
 * `-o, --output`: Output file.
 * `--format`: Output format (e.g., json, csv, markdown).
-* `-q, --quiet`: Quiet mode (only show results).
+* `-q, --quiet`: Quiet mode (only show results). Automatically disables colors in `auto` mode.
+* `--color`: Control color output (`auto`, `always`, `never`; default `auto`).
 * `-R, --human-readable`: Display response sizes in human-readable units.
 * `--no-progress`: Disable progress bar.
 
@@ -132,7 +133,8 @@ The `fuzz` command is used for advanced fuzzing, replacing placeholders in reque
 * `--show-title`: Show page titles in the output.
 * `-o, --output`: Output file.
 * `--format`: Output format.
-* `-q, --quiet`: Quiet mode (only show results).
+* `-q, --quiet`: Quiet mode (only show results). Automatically disables colors in `auto` mode.
+* `--color`: Control color output (`auto`, `always`, `never`; default `auto`).
 * `-R, --human-readable`: Display response sizes in human-readable units.
 * `--no-progress`: Disable progress bar.
 
@@ -165,3 +167,30 @@ During an active scan or fuzz operation, you can use the following interactive s
 | `s` | Stats | Prints current execution statistics |
 | `q` | Stop Target | Stops the current target and moves to the next (if any) |
 | `Ctrl+C` | Abort Everything | Aborts everything gracefully |
+
+## Color Output Configuration
+
+Searchit provides semantic colored terminal output enabled by default:
+
+* `--color auto` (default): Enables colors when connected to an interactive terminal. Automatically disables colors when output is redirected, piped, or when quiet mode (`-q`) is active.
+* `--color always`: Forces ANSI color codes even when redirected, piped, or in quiet mode. Quiet mode does not override `--color always`.
+* `--color never`: Disables all ANSI color codes unconditionally.
+
+| Invocation | Colors |
+|---|---|
+| `searchit scan ...` | Auto (enabled on TTY, disabled if piped/redirected) |
+| `searchit scan ... --color always` | Enabled |
+| `searchit scan ... --color never` | Disabled |
+| `searchit scan ... -q` | Disabled |
+| `searchit scan ... -q --color always` | Enabled (colored findings) |
+| Output redirected to a file via shell `>` | Disabled in auto mode |
+| File output via `-o` | Always clean text (no ANSI codes) |
+| Structured formats (`json`, `csv`, etc.) | Always clean structured data (no ANSI codes) |
+
+### Palette
+
+* **Green**: Successful findings (`[+]`), 2xx HTTP status codes, and `PASS`/`HEALTHY` status.
+* **Yellow**: Noteworthy conditions and warnings (3xx redirects, 4xx notices, `WARN`).
+* **Red**: Failures and errors (5xx server errors, `FAIL`, `NOT READY`).
+* **Default Terminal Color**: URLs, sizes, metadata, descriptions, and regular text.
+

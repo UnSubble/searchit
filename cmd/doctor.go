@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/unsubble/searchit/internal/color"
 	"github.com/unsubble/searchit/internal/doctor"
 )
 
@@ -27,25 +28,36 @@ func init() {
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	w := cmd.OutOrStdout()
 
-	fmt.Fprintln(w, "searchit doctor")
+	colorMode := "auto"
+	if f := cmd.Flags().Lookup("color"); f != nil && f.Value.String() != "" {
+		colorMode = f.Value.String()
+	} else if flagColor != "" {
+		colorMode = flagColor
+	}
+	useColor := color.Resolve(colorMode, false, func() bool {
+		return color.IsTerminal(w)
+	})
+	c := color.New(useColor)
+
+	fmt.Fprintln(w, c.Heading("searchit doctor"))
 	fmt.Fprintln(w)
 
 	d := doctor.NewDoctor()
 	summary := d.RunAllChecks()
 
 	for _, r := range summary.Results {
-		printCheckResult(w, r)
+		printCheckResult(w, r, c)
 	}
 
 	fmt.Fprintln(w, strings.Repeat("-", doctorSepWidth))
 
 	switch {
 	case summary.HasFail || summary.HasUnverified:
-		fmt.Fprintln(w, "STATUS: NOT READY")
+		fmt.Fprintf(w, "%s: %s\n", c.Heading("STATUS"), c.Error("NOT READY"))
 	case summary.HasWarn:
-		fmt.Fprintln(w, "STATUS: HEALTHY WITH WARNINGS")
+		fmt.Fprintf(w, "%s: %s\n", c.Heading("STATUS"), c.Warning("HEALTHY WITH WARNINGS"))
 	default:
-		fmt.Fprintln(w, "STATUS: HEALTHY")
+		fmt.Fprintf(w, "%s: %s\n", c.Heading("STATUS"), c.Success("HEALTHY"))
 	}
 
 	if summary.HasFail {
@@ -62,8 +74,19 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 //
 //	PASS  CHECK NAME
 //	      diagnostic message
-func printCheckResult(w io.Writer, r doctor.CheckResult) {
-	fmt.Fprintf(w, "  %s  %s\n", r.Status, r.Name)
+func printCheckResult(w io.Writer, r doctor.CheckResult, c *color.Palette) {
+	statusStr := r.Status
+	if c != nil && c.Enabled() {
+		switch r.Status {
+		case "PASS":
+			statusStr = c.Success(r.Status)
+		case "WARN", "NOT VERIFIED":
+			statusStr = c.Warning(r.Status)
+		case "FAIL":
+			statusStr = c.Error(r.Status)
+		}
+	}
+	fmt.Fprintf(w, "  %s  %s\n", statusStr, r.Name)
 
 	// Message (may be multi-line for paths list etc.)
 	for _, line := range strings.Split(r.Message, "\n") {

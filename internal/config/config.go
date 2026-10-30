@@ -35,6 +35,7 @@ type Config struct {
 	OutputFile   string // "" means write to stdout
 	OutputFormat string // "text", "json", "ndjson", "csv", "markdown"
 	Quiet        bool
+	Color        string // "auto", "always", "never"
 
 	IncludeSize size.Filters
 	ExcludeSize size.Filters

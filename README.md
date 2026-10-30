@@ -88,7 +88,7 @@ searchit profile list
 
 ![Profile List](assets/screenshots/profile_list.png)
 
-## Output Formats
+## Output Formats and Colors
 
 Searchit supports various structured output formats for downstream pipeline integrations.
 
@@ -99,6 +99,16 @@ Searchit supports various structured output formats for downstream pipeline inte
 | `ndjson`| Newline-delimited JSON | `--format ndjson` |
 | `csv` | Comma-separated values | `--format csv` |
 | `markdown` | Markdown table | `--format markdown` |
+
+### Colored Output
+
+Terminal output uses semantic colors by default:
+
+* `--color auto` (default): Colored when connected to a terminal; disabled when redirected, piped, or in quiet mode (`-q`).
+* `--color always`: Force colors regardless of redirection or quiet mode.
+* `--color never`: Disable all ANSI color codes.
+
+Structured output formats (`json`, `csv`, `ndjson`, `markdown`) and files written via `-o` are always clean and ANSI-free.
 
 ## Documentation
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/unsubble/searchit/internal/color"
 	"github.com/unsubble/searchit/internal/profile"
 	"github.com/unsubble/searchit/internal/version"
 
@@ -14,6 +15,7 @@ var (
 	cfgFile   string
 	verbose   bool
 	flagDebug bool
+	flagColor string
 )
 
 var rootCmd = &cobra.Command{
@@ -24,6 +26,15 @@ var rootCmd = &cobra.Command{
 
 It combines the simplicity of dirsearch with modern concurrency,
 profiles, technology-aware mutations and smart enumeration.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Lookup("color") != nil {
+			c, _ := cmd.Flags().GetString("color")
+			if c != "" && !color.IsValidMode(c) {
+				return fmt.Errorf("invalid --color option %q: must be one of auto, always, never", c)
+			}
+		}
+		return nil
+	},
 }
 
 func Execute() {
@@ -72,4 +83,10 @@ func init() {
 		"enable debug logging",
 	)
 
+	rootCmd.PersistentFlags().StringVar(
+		&flagColor,
+		"color",
+		"auto",
+		"control colored output (auto, always, never)",
+	)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/unsubble/searchit/internal/adaptive"
 	"github.com/unsubble/searchit/internal/app"
+	"github.com/unsubble/searchit/internal/color"
 	"github.com/unsubble/searchit/internal/config"
 	"github.com/unsubble/searchit/internal/console"
 	"github.com/unsubble/searchit/internal/diagnostics"
@@ -65,6 +66,7 @@ type FuzzOptions struct {
 	Profiles        []string
 	RawProfile      string
 	Quiet           bool
+	Color           string
 	Verbose         bool
 	FollowRedirects bool
 	OnlyRedirects   bool
@@ -179,6 +181,15 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 			isOnly := opts.OnlyRedirects || (cmd.Flags().Lookup("only-redirects") != nil && cmd.Flags().Lookup("only-redirects").Changed)
 			if isFollow && isOnly {
 				return fmt.Errorf("error: --follow-redirects cannot be used with --only-redirects")
+			}
+
+			if flagColor != "" && (cmd.Flags().Lookup("color") == nil || !cmd.Flags().Lookup("color").Changed) {
+				opts.Color = flagColor
+			}
+			if opts.Color != "" {
+				if !color.IsValidMode(opts.Color) {
+					return fmt.Errorf("invalid --color option %q: must be one of auto, always, never", opts.Color)
+				}
 			}
 
 			if opts.RawProfile != "" {
@@ -708,7 +719,10 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 					termFmt = parsed
 				}
 			}
-			termFmttr = output.New(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes)
+			useColor := color.Resolve(opts.Color, cfg.Quiet, func() bool {
+				return color.IsTerminal(cmd.OutOrStdout())
+			})
+			termFmttr = output.NewColored(termFmt, cmd.OutOrStdout(), cfg.Quiet, cfg.ShowHeaders, cfg.ShowTitle, cfg.HumanReadableSizes, useColor)
 			if termFmttr != nil {
 				defer termFmttr.Close()
 			}
@@ -1379,6 +1393,7 @@ func NewFuzzCmd() (*cobra.Command, *FuzzOptions) {
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "write results to this file (default: stdout)")
 	cmd.Flags().StringVar(&opts.Format, "format", "text", "explicit output format (text, json, ndjson, csv, markdown)")
 	cmd.Flags().BoolVarP(&opts.Quiet, "quiet", "q", false, "print only discovered URLs in text mode")
+	cmd.Flags().StringVar(&opts.Color, "color", "auto", "control colored output (auto, always, never)")
 	cmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "enable verbose diagnostic output")
 	cmd.Flags().StringVar(&opts.Delay, "delay", "", "delay between requests (e.g. 50ms, 1s)")
 	cmd.Flags().Float64Var(&opts.Rate, "rate", 0, "maximum requests per second rate limit")
@@ -1448,7 +1463,7 @@ var fuzzHelpConfig = HelpConfig{
 		},
 		{
 			Title: "Output",
-			Names: []string{"output", "quiet", "human-readable", "verbose"},
+			Names: []string{"output", "quiet", "human-readable", "color", "verbose"},
 		},
 		{
 			Title: "Performance",
@@ -1519,6 +1534,9 @@ func applyFuzzCLIOverrides(opts *FuzzOptions, cmd *cobra.Command, cfg *config.Co
 	}
 	if cmd.Flags().Changed("quiet") {
 		cfg.Quiet = opts.Quiet
+	}
+	if cmd.Flags().Changed("color") || opts.Color != "" {
+		cfg.Color = opts.Color
 	}
 	if cmd.Flags().Changed("proxy") {
 		cfg.Proxy = opts.Proxy

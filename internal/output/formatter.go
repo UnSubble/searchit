@@ -92,9 +92,10 @@ func FormatFromPath(path string) Format {
 	return FormatFromExtension(filepath.Ext(path))
 }
 
-// New constructs the appropriate Formatter for fmt, writing directly to w.
-// Use this for writing to files or secondary outputs.
-func New(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool, humanReadable bool) Formatter {
+// NewColored constructs the appropriate Formatter for fmt with configurable color support,
+// writing directly to w.
+// Structured output formats (JSON, NDJSON, CSV, Markdown) never emit colors.
+func NewColored(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool, humanReadable bool, useColor bool) Formatter {
 	switch f {
 	case FormatJSON:
 		return NewJSONFormatter(w, showHeaders, showTitle)
@@ -105,23 +106,32 @@ func New(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool, hu
 	case FormatMarkdown:
 		return NewMarkdownFormatter(w, showHeaders, showTitle)
 	default:
-		return NewTextFormatter(w, quiet, showHeaders, showTitle, humanReadable)
+		return NewColoredTextFormatter(w, quiet, showHeaders, showTitle, humanReadable, useColor)
 	}
 }
 
-// NewWithManager constructs a Formatter that writes through the TerminalManager.
+// New constructs the appropriate Formatter for fmt, writing directly to w.
+// Use this for writing to files or secondary outputs (colors are disabled).
+func New(f Format, w io.Writer, quiet bool, showHeaders bool, showTitle bool, humanReadable bool) Formatter {
+	return NewColored(f, w, quiet, showHeaders, showTitle, humanReadable, false)
+}
+
+// NewWithManagerColored constructs a Formatter with color support writing through the TerminalManager.
+// Use this for stdout formatting so it respects the global output lock.
+func NewWithManagerColored(f Format, tm *terminal.Manager, owner terminal.Owner, quiet bool, showHeaders bool, showTitle bool, humanReadable bool, useColor bool) Formatter {
+	switch f {
+	case FormatText:
+		return NewColoredTerminalTextFormatter(tm, owner, quiet, showHeaders, showTitle, humanReadable, useColor)
+	default:
+		return NewColored(f, newTerminalAdapter(tm, owner), quiet, showHeaders, showTitle, humanReadable, useColor)
+	}
+}
+
+// NewWithManager constructs a Formatter that writes through the TerminalManager with colors disabled.
 // Use this for stdout formatting so it respects the global output lock.
 // Currently only FormatText supports this directly via TerminalTextFormatter.
 func NewWithManager(f Format, tm *terminal.Manager, owner terminal.Owner, quiet bool, showHeaders bool, showTitle bool, humanReadable bool) Formatter {
-	switch f {
-	case FormatText:
-		return NewTerminalTextFormatter(tm, owner, quiet, showHeaders, showTitle, humanReadable)
-	default:
-		// Other formats don't write to the terminal natively, but if someone
-		// passes one, we create an adapter that routes io.Writer calls through TM.
-		// (This covers the edge case where a user requests JSON output to stdout).
-		return New(f, newTerminalAdapter(tm, owner), quiet, showHeaders, showTitle, humanReadable)
-	}
+	return NewWithManagerColored(f, tm, owner, quiet, showHeaders, showTitle, humanReadable, false)
 }
 
 // terminalAdapter wraps a Manager to implement io.Writer for legacy formatters.
